@@ -21,7 +21,7 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   });
   const laidOutNodes = lanes.nodes.map((node) => ({ ...node, row: rows.rows.get(node.id) ?? node.row }));
   const rowHeight = options.rowHeight ?? 38;
-  const laneWidth = options.laneWidth ?? 28;
+  const laneWidth = options.laneWidth ?? 34;
   return {
     nodes: laidOutNodes,
     edges: facts.edges,

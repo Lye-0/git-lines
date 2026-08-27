@@ -21,6 +21,7 @@ export class GraphPanel {
   private density: 'comfortable' | 'compact';
   private watcher?: RepositoryWatcher;
   private disposed = false;
+  private loading = false;
 
   private constructor(private readonly context: vscode.ExtensionContext, repositoryRoot: string) {
     this.repositoryRoot = repositoryRoot;
@@ -63,6 +64,7 @@ export class GraphPanel {
   }
 
   public async loadMore(): Promise<void> {
+    if (this.loading || (this.snapshot && !this.snapshot.hasMore)) return;
     const step = vscode.workspace.getConfiguration('branchGraph').get<number>('loadMoreCount', 10);
     this.commitLimit += Math.max(1, step);
     await this.load(true);
@@ -82,7 +84,8 @@ export class GraphPanel {
   }
 
   private async load(isAppend: boolean): Promise<void> {
-    if (this.disposed) return;
+    if (this.disposed || this.loading) return;
+    this.loading = true;
     await this.send({ type: 'loading', loading: true });
     const started = Date.now();
     try {
@@ -128,6 +131,7 @@ export class GraphPanel {
           : 'Unable to read Git repository';
       await this.send({ type: 'error', title, detail });
     } finally {
+      this.loading = false;
       await this.send({ type: 'loading', loading: false });
     }
   }

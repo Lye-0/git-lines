@@ -129,9 +129,22 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     if (trackId === primaryCandidate?.id) return -10;
     return candidate.kind === 'local' ? 0 : 1;
   };
-  const laidOut = facts.nodes.map((node) => {
+  const eventTracksByOid = new Map<string, string[]>();
+  for (const event of facts.events) {
+    const trackId = refTrack.get(event.refName);
+    if (!trackId) continue;
+    for (const oid of [event.fromOid, event.toOid]) {
+      if (!oid) continue;
+      eventTracksByOid.set(oid, [...(eventTracksByOid.get(oid) ?? []), trackId]);
+    }
+  }
+  const trackForEventOid = (oid: string): string | undefined => eventTracksByOid.get(oid)
+    ?.slice()
+    .sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))[0];
+  const initialAssignments = facts.nodes.map((node) => {
     let trackId: string | undefined;
     if (node.oid && claims.has(node.oid)) trackId = claims.get(node.oid)!.slice().sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))[0];
+    if (!trackId && node.oid) trackId = trackForEventOid(node.oid);
     if (!trackId && node.kind === 'working-tree') {
       const branch = node.refIds[0];
       const ref = refs.find((item) => item.shortName === branch);
@@ -139,7 +152,24 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     }
     if (!trackId && node.event?.refName) trackId = refTrack.get(node.event.refName);
     const lane = trackId ? lanes.get(trackId) : 0;
-    return { ...node, trackId, lane: lane ?? 0 };
+    return { node, trackId, lane: lane ?? 0 };
+  });
+  const laneByOid = new Map<string, number>();
+  for (const assignment of initialAssignments) {
+    if (!assignment.node.oid) continue;
+    if (!laneByOid.has(assignment.node.oid) || assignment.node.kind === 'commit' || assignment.node.kind === 'reflog-commit') {
+      laneByOid.set(assignment.node.oid, assignment.lane);
+    }
+  }
+  const laidOut = initialAssignments.map(({ node, trackId, lane }) => {
+    if (!node.event) return { ...node, trackId, lane };
+    const fromLane = node.event.fromOid ? laneByOid.get(node.event.fromOid) : undefined;
+    const toLane = laneByOid.get(node.event.toOid);
+    // Ref events belong visually beside their destination. If both endpoints
+    // are on one lane, this keeps the event overlay vertical instead of
+    // creating a pair of needless lane-crossing curves.
+    const eventLane = toLane ?? fromLane ?? lane;
+    return { ...node, trackId, lane: eventLane };
   });
   return { nodes: laidOut, tracks, lanes };
 }

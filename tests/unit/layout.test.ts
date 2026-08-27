@@ -57,4 +57,50 @@ describe('graph layout', () => {
     expect(expanded.nodes.find((node) => node.id === a.id)?.row).toBe(first.nodes.find((node) => node.id === a.id)?.row);
     expect(expanded.nodes.find((node) => node.id === b.id)?.lane).toBe(first.nodes.find((node) => node.id === b.id)?.lane);
   });
+
+  it('co-locates ref events with their destination lane when both endpoints share it', () => {
+    const base = commitNode('a', 1);
+    const feature = { ...commitNode('b', 2), refIds: ['origin/feature'] };
+    const head = { ...commitNode('c', 3), refIds: ['main'] };
+    const event = {
+      id: 'event:feature-reset',
+      kind: 'history-event' as const,
+      refIds: ['origin/feature'],
+      timestamp: 4,
+      label: 'reset',
+      event: {
+        id: 'event:feature-reset',
+        type: 'reset' as const,
+        refName: 'refs/remotes/origin/feature',
+        fromOid: oid('b'),
+        toOid: oid('c'),
+        timestamp: 4,
+      },
+    };
+    const refs = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('c') },
+      { fullName: 'refs/remotes/origin/feature', shortName: 'origin/feature', type: 'remote' as const, oid: oid('b') },
+    ];
+    const commits = [
+      { oid: oid('c'), parentOids: [oid('b')], subject: 'c', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      { oid: oid('b'), parentOids: [oid('a')], subject: 'b', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: oid('a'), parentOids: [], subject: 'a', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+    const facts: GraphFactModel = {
+      nodes: [head, feature, base, event],
+      edges: [],
+      refs,
+      commits,
+      workingTrees: [],
+      operations: [],
+      events: [event.event],
+      primaryBranch: 'main',
+      shallowBoundaryOids: [],
+    };
+    const result = computeLaneLayout(facts);
+    expect(result.nodes.find((node) => node.id === event.id)?.trackId).toBe('family:feature');
+    expect(result.nodes.find((node) => node.id === event.id)?.lane).toBe(0);
+    expect(result.nodes.find((node) => node.id === head.id)?.lane).toBe(0);
+    expect(result.nodes.find((node) => node.id === feature.id)?.lane).toBe(0);
+  });
 });
