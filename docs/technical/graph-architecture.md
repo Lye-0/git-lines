@@ -52,7 +52,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 4. `createGraphLayout`がrow→laneの順に計算し、WebviewへpostMessageする。
 5. Webviewはcommit選択時だけdetail/files/statsをon-demand取得し、グラフ専用のスクロール領域を持つ。下端手前で次ページを自動取得し、手動refresh・focus・Git metadata watchでも再読込する。
 
-グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行はその右側から開始する。reflogのref移動イベントは接続先commitのレーンに寄せ、通常のparent edgeと重ならない細いオフセット破線として描画する。
+グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行はその右側から開始する。reflogのref移動イベントは接続先commitのレーンに寄せ、通常のparent edgeと重ならない細いオフセット破線として描画する。同一レーン内でparent edgeを重複するイベントの`from`線は省略し、レーンをまたぐ移動だけを残す。
 
 ## Security / Accessibility
 
