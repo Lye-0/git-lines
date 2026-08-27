@@ -10,13 +10,13 @@ function kindLabel(kind: GraphNode['kind']): string {
   return 'Commit';
 }
 
-export function CommitRow({ node, rowHeight, selected, onSelect }: { node: GraphNode; rowHeight: number; selected: boolean; onSelect: (oid: string) => void }) {
+export function CommitRow({ node, rowHeight, selected, hidden, onSelect }: { node: GraphNode; rowHeight: number; selected: boolean; hidden?: boolean; onSelect: (oid: string) => void }) {
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const content = <div className={`row-content ${selected ? 'selected' : ''}`}>
     <div className="row-primary"><span className="row-kind">{kindLabel(node.kind)}</span><span className="subject">{node.label ?? node.subject ?? ''}</span></div>
     <div className="row-meta">{node.oid && <code>{node.oid.slice(0, 8)}</code>}{node.refIds.map((ref) => <span className="ref-badge" key={ref}>{ref}</span>)}</div>
   </div>;
-  return <div className={`commit-row row-${node.kind}`} style={{ top: (node.row ?? 0) * rowHeight, minHeight: rowHeight }}>
+  return <div className={`commit-row row-${node.kind}${hidden ? ' filtered-out' : ''}`} style={{ top: (node.row ?? 0) * rowHeight, minHeight: rowHeight }}>
     {isSelectable ? <button type="button" className="row-button" aria-label={`${kindLabel(node.kind)} ${node.subject ?? node.label ?? node.oid}`} onClick={() => onSelect(node.oid!)}>{content}</button> : content}
   </div>;
 }

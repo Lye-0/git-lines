@@ -4,11 +4,12 @@ import { CommitRow } from './CommitRow';
 
 interface Props {
   layout: GraphLayout;
+  filter: string;
   selected?: string;
   onSelect: (oid: string) => void;
 }
 
-export function GraphViewport({ layout, selected, onSelect }: Props) {
+export function GraphViewport({ layout, filter, selected, onSelect }: Props) {
   const maxLane = Math.max(0, ...layout.nodes.map((node) => node.lane ?? 0));
   const graphWidth = Math.max(104, (maxLane + 1) * layout.laneWidth + 36);
   const rowCount = Math.max(1, layout.nodes.length);
@@ -17,7 +18,7 @@ export function GraphViewport({ layout, selected, onSelect }: Props) {
       <div className="graph-canvas" style={{ minWidth: `calc(${graphWidth}px + 100%)`, minHeight: rowCount * layout.rowHeight }}>
         <GraphSvg layout={layout} width={graphWidth} />
         <div className="rows" style={{ paddingLeft: graphWidth }}>
-          {layout.nodes.slice().sort((a, b) => (a.row ?? 0) - (b.row ?? 0)).map((node) => <CommitRow key={node.id} node={node} rowHeight={layout.rowHeight} selected={node.oid === selected} onSelect={onSelect} />)}
+          {layout.nodes.slice().sort((a, b) => (a.row ?? 0) - (b.row ?? 0)).map((node) => { const needle = filter.trim().toLocaleLowerCase(); const haystack = [node.subject, node.label, node.oid, ...node.refIds].filter(Boolean).join(' ').toLocaleLowerCase(); return <CommitRow key={node.id} node={node} rowHeight={layout.rowHeight} selected={node.oid === selected} hidden={Boolean(needle) && !haystack.includes(needle)} onSelect={onSelect} />; })}
         </div>
       </div>
     </div>

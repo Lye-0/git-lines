@@ -21,6 +21,8 @@ h1, h2, p { margin: 0; }
 .brand h1 { font-size: 14px; letter-spacing: .01em; }
 .repo-name { display: block; margin-top: 3px; color: var(--graph-muted); font-size: 11px; max-width: min(42vw, 520px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.filter-label input { width: min(270px, 35vw); min-height: 32px; color: var(--graph-text); background: var(--graph-surface); border: 1px solid var(--graph-border); border-radius: 5px; padding: 5px 9px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .toggle, .select-label { display: inline-flex; align-items: center; gap: 6px; color: var(--graph-muted); white-space: nowrap; }
 .toggle input { accent-color: var(--graph-accent); }
 .select-label select { color: var(--graph-text); background: var(--graph-surface); border: 1px solid var(--graph-border); border-radius: 5px; padding: 5px 8px; }
@@ -41,6 +43,7 @@ h1, h2, p { margin: 0; }
 .node-history-boundary { opacity: .55; }
 .rows { position: relative; min-height: 100%; }
 .commit-row { position: absolute; left: 0; right: 0; display: flex; align-items: center; padding-right: 16px; }
+.commit-row.filtered-out { opacity: .18; }
 .row-button { display: block; width: 100%; border: 0; background: transparent; color: inherit; text-align: left; padding: 0; cursor: pointer; }
 .row-content { min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 10px; border: 1px solid transparent; border-radius: 6px; }
 .row-button:hover .row-content { background: color-mix(in srgb, var(--graph-text) 6%, transparent); }

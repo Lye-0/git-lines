@@ -15,6 +15,7 @@ export function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ title: string; detail?: string }>();
   const [selected, setSelected] = useState<string>();
+  const [filter, setFilter] = useState('');
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       const message = event.data as ExtensionToWebviewMessage;
@@ -29,7 +30,7 @@ export function App() {
   }, []);
   const selectedNode = useMemo<GraphNode | undefined>(() => graph?.layout.nodes.find((node) => node.oid === selected), [graph, selected]);
   return <main className="app-shell">
-    <Toolbar graph={graph} loading={loading} onRefresh={() => vscode.postMessage({ type: 'refresh' })} onLoadMore={() => vscode.postMessage({ type: 'loadMore' })} onReflog={(enabled) => vscode.postMessage({ type: 'toggleReflog', enabled })} onDensity={(density) => vscode.postMessage({ type: 'setDensity', density })} />
-    {error ? <EmptyState title={error.title} detail={error.detail} /> : graph ? <div className="content-shell"><GraphViewport layout={graph.layout} selected={selected} onSelect={(oid) => { setSelected(oid); vscode.postMessage({ type: 'select', oid }); }} />{detail && <DetailPanel detail={detail} title={selectedNode?.subject} onClose={() => { setDetail(null); setSelected(undefined); }} />}</div> : <EmptyState title="Loading repository" detail="Reading Git refs, history, and working tree state…" />}
+    <Toolbar graph={graph} loading={loading} filter={filter} onFilter={setFilter} onRefresh={() => vscode.postMessage({ type: 'refresh' })} onLoadMore={() => vscode.postMessage({ type: 'loadMore' })} onReflog={(enabled) => vscode.postMessage({ type: 'toggleReflog', enabled })} onDensity={(density) => vscode.postMessage({ type: 'setDensity', density })} />
+    {error ? <EmptyState title={error.title} detail={error.detail} /> : graph ? <div className="content-shell"><GraphViewport layout={graph.layout} filter={filter} selected={selected} onSelect={(oid) => { setSelected(oid); vscode.postMessage({ type: 'select', oid }); }} />{detail && <DetailPanel detail={detail} title={selectedNode?.subject} onClose={() => { setDetail(null); setSelected(undefined); }} />}</div> : <EmptyState title="Loading repository" detail="Reading Git refs, history, and working tree state…" />}
   </main>;
 }
