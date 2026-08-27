@@ -79,6 +79,7 @@ export class GitClient {
   }
 
   public async readCommitDetail(root: string, oid: string): Promise<GitCommit & { files: string[]; additions?: number; deletions?: number }> {
+    if (!/^[0-9a-f]{7,64}$/i.test(oid)) throw new Error('Invalid commit object id');
     const output = await this.runner.runChecked(
       ['show', '-s', `--format=${gitLogFormat(true)}`, oid],
       { cwd: root, timeoutMs: this.timeoutMs },
@@ -89,7 +90,22 @@ export class GitClient {
       cwd: root,
       timeoutMs: this.timeoutMs,
     });
-    return { ...commit, files: filesOutput.split(/\r?\n/).filter(Boolean) };
+    let additions = 0;
+    let deletions = 0;
+    try {
+      const statsOutput = await this.runner.runChecked(['diff-tree', '--no-commit-id', '--numstat', '-r', oid], {
+        cwd: root,
+        timeoutMs: this.timeoutMs,
+      });
+      for (const line of statsOutput.split(/\r?\n/)) {
+        const [added, removed] = line.split('\t');
+        if (/^\d+$/.test(added ?? '')) additions += Number(added);
+        if (/^\d+$/.test(removed ?? '')) deletions += Number(removed);
+      }
+    } catch {
+      // Some object types (for example a root/merge with no diff) do not expose numstat.
+    }
+    return { ...commit, files: filesOutput.split(/\r?\n/).filter(Boolean), additions, deletions };
   }
 
   private async readCommits(root: string, limit: number): Promise<GitCommit[]> {

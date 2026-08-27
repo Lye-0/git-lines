@@ -42,6 +42,8 @@ describe('Git parsers', () => {
     ].join('');
     const [current] = parseReflogRecords(output, 'HEAD');
     expect(current.previousOid).toBe('b'.repeat(40));
+    const gap = `${'c'.repeat(40)}\x00HEAD@{0}\x00reset: gap\x001724000000\x00A\x00a@x\x00\x1e${'a'.repeat(40)}\x00HEAD@{2}\x00commit: base\x001723999900\x00A\x00a@x\x00\x1e`;
+    expect(parseReflogRecords(gap, 'HEAD')[0].previousOid).toBeUndefined();
   });
 
   it('parses linked worktree metadata', () => {

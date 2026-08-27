@@ -20,8 +20,13 @@ export function parseReflogRecords(output: string, refName: string): ReflogEntry
       actorEmail: fields[5] || undefined,
     });
   }
-  // Git prints newest first. A directly adjacent next entry is safe evidence for the old OID.
-  for (let i = 0; i < entries.length - 1; i += 1) entries[i].previousOid = entries[i + 1].newOid;
+  // Git prints newest first. Only derive an old OID when selectors prove that no
+  // reflog index was skipped (expiry/pruning can otherwise create a false edge).
+  for (let i = 0; i < entries.length - 1; i += 1) {
+    const current = /@\{(\d+)\}$/.exec(entries[i].selector);
+    const next = /@\{(\d+)\}$/.exec(entries[i + 1].selector);
+    if (current && next && Number(current[1]) + 1 === Number(next[1])) entries[i].previousOid = entries[i + 1].newOid;
+  }
   return entries;
 }
 
