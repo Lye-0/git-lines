@@ -2,7 +2,9 @@
 .git/
 .github/
 agent-knowledge/
-docs/
+.gitignore
+mise.toml
+pnpm-workspace.yaml
 tests/
 src/
 webview/src/

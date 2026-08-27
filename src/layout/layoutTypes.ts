@@ -8,6 +8,7 @@ export interface GraphLayout {
   hasMore: boolean;
   rowHeight: number;
   laneWidth: number;
+  edgePaths?: EdgePath[];
 }
 
 export interface EdgePath {

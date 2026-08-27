@@ -38,7 +38,7 @@ h1, h2, p { margin: 0; }
 .edge-working-tree, .edge-operation { stroke-dasharray: 2 5; stroke-width: 1.5; }
 .edge-history-event { stroke-dasharray: 5 4; stroke-width: 1.5; marker-end: none; }
 .node circle { fill: var(--graph-bg); stroke-width: 2; }
-.node text { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 13px; fill: currentColor; }
+.node text { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 13px; }
 .node-reflog-commit { opacity: .63; }
 .node-history-boundary { opacity: .55; }
 .rows { position: relative; min-height: 100%; }

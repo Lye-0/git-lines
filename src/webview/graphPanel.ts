@@ -77,11 +77,7 @@ export class GraphPanel {
       await this.load(false);
     } else if (message.type === 'setDensity') {
       this.density = message.density;
-      if (this.layoutState.layout && this.snapshot) {
-        const layout = { ...this.layoutState.layout, rowHeight: this.density === 'compact' ? 30 : 38 };
-        this.layoutState.set(layout);
-        await this.send({ type: 'graph', layout, repository: this.snapshot.repository, currentBranch: this.snapshot.workingTrees[0]?.branch, workingTrees: this.snapshot.workingTrees, reflogEnabled: this.showReflog, density: this.density });
-      }
+      await this.load(false);
     }
   }
 
