@@ -191,7 +191,7 @@ export class GitClient {
           timeoutMs: this.timeoutMs,
         });
         const state = toWorkingTreeState(worktree.path, parsePorcelainV2(output), `worktree-${index}`);
-        states.push({ ...state, headOid: state.headOid ?? worktree.headOid, branch: state.branch ?? worktree.branch });
+        states.push({ ...state, headOid: state.headOid ?? worktree.headOid, branch: state.branch ?? worktree.branch, mainWorktree: index === 0, locked: worktree.locked, prunable: worktree.prunable });
       } catch {
         states.push({
           worktreeId: `worktree-${index}`,
@@ -205,11 +205,14 @@ export class GitClient {
           conflicted: 0,
           clean: true,
           inaccessible: true,
+          mainWorktree: index === 0,
+          locked: worktree.locked,
+          prunable: worktree.prunable,
         });
       }
     }
     return states.length ? states : [{
-      worktreeId: 'worktree-0', path: repository.root, detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, clean: true,
+      worktreeId: 'worktree-0', path: repository.root, detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, clean: true, mainWorktree: true,
     }];
   }
 

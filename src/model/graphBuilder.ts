@@ -65,7 +65,9 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     }
   }
   for (const [index, tree] of snapshot.workingTrees.entries()) {
-    const status = tree.conflicted > 0
+    const status = tree.inaccessible
+      ? 'Status unavailable'
+      : tree.conflicted > 0
       ? `${tree.conflicted} conflict${tree.conflicted === 1 ? '' : 's'}`
       : tree.clean
         ? 'Clean'

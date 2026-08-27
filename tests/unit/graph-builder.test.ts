@@ -30,4 +30,27 @@ describe('graph fact builder', () => {
     expect(working).toBeDefined();
     expect(working?.label).toContain('Clean');
   });
+
+  it('materializes every octopus parent without collapsing unrelated roots', () => {
+    const mergeSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: oid('m'), parentOids: [oid('a'), oid('b'), oid('c')], subject: 'octopus', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        ...['a', 'b', 'c'].map((letter, index) => ({ oid: oid(letter), parentOids: [], subject: letter, authorName: 'A', authorDate: index, committerName: 'A', committerDate: index })),
+      ],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('m') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('m') }],
+      visibleCommitCount: 4,
+    };
+    const facts = buildGraphFacts(mergeSnapshot);
+    expect(facts.edges.filter((edge) => edge.type === 'parent' && edge.fromNodeId === `commit:${oid('m')}`)).toHaveLength(3);
+  });
+
+  it('keeps operation relationships separate from parent edges', () => {
+    const operationSnapshot = { ...snapshot, operations: [{ type: 'cherry-pick' as const, headOid: oid('b'), sourceOids: [oid('a')] }] };
+    const facts = buildGraphFacts(operationSnapshot);
+    expect(facts.nodes.some((node) => node.kind === 'operation')).toBe(true);
+    expect(facts.edges.some((edge) => edge.type === 'operation')).toBe(true);
+    expect(facts.edges.filter((edge) => edge.type === 'parent')).toHaveLength(1);
+  });
 });

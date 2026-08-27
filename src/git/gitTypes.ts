@@ -37,6 +37,9 @@ export interface WorkingTreeState {
   conflicted: number;
   clean: boolean;
   inaccessible?: boolean;
+  mainWorktree?: boolean;
+  locked?: string;
+  prunable?: string;
 }
 
 export type OperationType = 'merge' | 'rebase' | 'cherry-pick' | 'revert';
