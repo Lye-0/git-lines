@@ -17,10 +17,10 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 `GitCommit`の`oid`と`parentOids`が唯一のcommit identityである。複数refが同じoidを指す場合もcommit nodeは1つにまとめ、ref badgeを複数付ける。tagとsymbolic remote HEADはlaneを作らない。
 
-`GraphNode`の種類は次のとおり。
+`GraphNode`の種類は次のとおり。commit nodeには表示用に正規化したref badgeを持たせるが、full refは事実モデルに保持する。symbolic ref、`ORIG_HEAD`などのpseudo refは通常のbranch badgeやlaneに含めない。
 
 - `commit` — current refsから読み込んだ実在commit
-- `reflog-commit` — current refsのvisible set外だが、reflogから確認でき、objectが残っているcommit
+- `reflog-commit` — 現在のuser-facing refから到達できず、reflogから確認でき、objectが残っているcommit
 - `working-tree` / `operation` — commit objectではない現在状態
 - `fast-forward-event` / `history-event` — reflogから確認できるref移動の補助表現
 - `history-boundary` — paginationまたはshallow cloneで未読parentを示すstub
@@ -40,7 +40,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 
 ## Reflogとoperation
 
-拡張は独自履歴DBを持たない。`ReflogEntry.previousOid`は同一refのselector indexが連続している場合だけ導出する。`Fast-forward`はreflog subjectの明示情報とancestor関係の両方が成立した場合だけ`fast-forward`に分類し、それ以外はgeneric ref moveなど保守的な分類にする。
+拡張は独自履歴DBを持たない。`ReflogEntry.previousOid`は同一refのselector indexが連続している場合だけ導出する。`Fast-forward`はmerge/pullのreflog subjectに明示された情報とancestor関係の両方が成立した場合だけ`fast-forward`に分類し、通常commit・checkout・fetch更新などはイベント化しない。意味のあるイベントも種別とfrom/to OIDが一致するHEAD/local/remote更新を1つの論理イベントへまとめ、refごとの時刻差には依存しない。
 
 `MERGE_HEAD`、`REBASE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`などが現在存在する場合のみoperation nodeを生成する。operation edgeは点線で、commit parent edgeとは混同しない。objectがGC済みのreflog OIDは表示しない。
 
@@ -52,7 +52,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 4. `createGraphLayout`がrow→laneの順に計算し、WebviewへpostMessageする。
 5. Webviewはcommit選択時だけdetail/files/statsをon-demand取得し、グラフ専用のスクロール領域を持つ。下端手前で次ページを自動取得し、手動refresh・focus・Git metadata watchでも再読込する。
 
-グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行はその右側から開始する。reflogのref移動イベントは接続先commitのレーンに寄せ、通常のparent edgeと重ならない細いオフセット破線として描画する。同一レーン内でparent edgeを重複するイベントの`from`線は省略し、レーンをまたぐ移動だけを残す。
+グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行はその右側から開始する。reflogのref移動イベントは接続先commitのレーンに寄せ、通常のparent edgeと重ならない細いオフセット矢印破線として描画する。同一レーン内でparent edgeを重複するイベントの`from`線は省略し、レーンをまたぐ移動だけを残す。通常commitの行はcommit種別を繰り返さず、subjectとshort hash・author・相対時刻を主表示にする。凡例はtoolbarのpopoverから参照できる。
 
 ## Security / Accessibility
 

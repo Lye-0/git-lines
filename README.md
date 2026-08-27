@@ -13,9 +13,9 @@ Commitの親子関係を変更せず、`main`が停止してfeatureだけ進ん�
 | `●` | 現在のrefsから到達できる通常commit |
 | `○` | Working Tree、または進行中のGit operation |
 | `◌` | reflogから確認でき、objectも残っているreflog-only commit |
-| `◇ FF` | reflogとancestor関係の両方で確認できるFast-forward event |
+| `◇ FF` | merge/pullのreflog証拠とancestor関係の両方で確認できるFast-forward event |
 
-実在commitのparent edgeは実線、Working Tree/operationは点線、reflog由来のref移動はラベル付きの破線で区別します。色だけに依存せず、記号・ラベル・線種も併用します。
+実在commitのparent edgeは実線、Working Tree/operationは点線、意味のあるreflog由来のref移動だけをラベル付き矢印破線で区別します。通常commit・fetch更新・checkoutなどのルーチンreflogは表示せず、同一操作のHEAD/local/remote更新は1つのイベントへまとめます。画面上のref名は`main`、`origin/main`のように正規化し、色だけに依存せず記号・ラベル・線種も併用します。
 
 ## 使い方
 

@@ -1,5 +1,6 @@
 import type { GitCommit, GitRef } from '../git/gitTypes.js';
 import type { GraphFactModel, GraphNode, GraphTrack } from '../model/graphModel.js';
+import { normalizeRefName } from '../model/refDisplay.js';
 
 export interface LaneLayoutOptions {
   previousLanes?: Map<string, number>;
@@ -21,14 +22,19 @@ function hash(value: string): number {
 }
 
 function familyFor(ref: GitRef): string {
-  if (ref.type === 'local') return ref.shortName;
-  const match = /^([^/]+)\/(.*)$/.exec(ref.shortName);
-  return match?.[2] ?? ref.shortName;
+  const shortName = normalizeRefName(ref.shortName || ref.fullName);
+  if (ref.type === 'local') return shortName;
+  const match = /^([^/]+)\/(.*)$/.exec(shortName);
+  return match?.[2] ?? shortName;
 }
 
 function colorFor(family: string, used: Set<number>): string {
   let hue = hash(family) % 360;
-  while ([...used].some((usedHue) => Math.abs(usedHue - hue) < 24 || Math.abs(usedHue - hue) > 336)) hue = (hue + 37) % 360;
+  let attempts = 0;
+  while (attempts < 24 && [...used].some((usedHue) => Math.abs(usedHue - hue) < 24 || Math.abs(usedHue - hue) > 336)) {
+    hue = (hue + 37) % 360;
+    attempts += 1;
+  }
   used.add(hue);
   return `hsl(${hue} 76% 66%)`;
 }
@@ -46,7 +52,7 @@ function ancestorSet(tip: string, commits: Map<string, GitCommit>): Set<string> 
 }
 
 function branchRefs(refs: GitRef[]): GitRef[] {
-  return refs.filter((ref) => (ref.type === 'local' || ref.type === 'remote') && Boolean(ref.oid));
+  return refs.filter((ref) => (ref.type === 'local' || ref.type === 'remote') && !ref.fullName.endsWith('/HEAD') && Boolean(ref.oid));
 }
 
 function makeCandidates(refs: GitRef[]): { candidates: TrackCandidate[]; refTrack: Map<string, string> } {
@@ -58,7 +64,7 @@ function makeCandidates(refs: GitRef[]): { candidates: TrackCandidate[]; refTrac
     const byOid = new Map<string, GitRef[]>();
     for (const ref of familyRefs) byOid.set(ref.oid as string, [...(byOid.get(ref.oid as string) ?? []), ref]);
     if (byOid.size === 1) {
-      const refsInGroup = familyRefs.slice().sort((a, b) => a.shortName.localeCompare(b.shortName));
+      const refsInGroup = familyRefs.slice().sort((a, b) => refDisplay(a).localeCompare(refDisplay(b)) || a.fullName.localeCompare(b.fullName));
       const id = `family:${family}`;
       const candidate: TrackCandidate = { id, family, kind: refsInGroup.some((ref) => ref.type === 'local') ? 'local' : 'remote', refs: refsInGroup, oids: new Set([familyRefs[0].oid as string]) };
       candidates.push(candidate);
@@ -78,7 +84,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   const refs = branchRefs(facts.refs);
   const { candidates, refTrack } = makeCandidates(refs);
   const primary = options.primaryBranch ?? facts.primaryBranch;
-  const primaryCandidate = candidates.find((candidate) => candidate.refs.some((ref) => ref.shortName === primary));
+  const primaryCandidate = candidates.find((candidate) => candidate.refs.some((ref) => normalizeRefName(ref.shortName || ref.fullName) === primary));
   const previous = options.previousLanes ?? new Map<string, number>();
   const ordered = candidates.slice().sort((a, b) => {
     if (a.id === primaryCandidate?.id) return -1;
@@ -146,8 +152,8 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     if (node.oid && claims.has(node.oid)) trackId = claims.get(node.oid)!.slice().sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))[0];
     if (!trackId && node.oid) trackId = trackForEventOid(node.oid);
     if (!trackId && node.kind === 'working-tree') {
-      const branch = node.refIds[0];
-      const ref = refs.find((item) => item.shortName === branch);
+      const branch = node.workingTree?.branch ?? node.refIds[0];
+      const ref = refs.find((item) => item.shortName === branch || normalizeRefName(item.fullName) === branch);
       trackId = ref ? refTrack.get(ref.fullName) : undefined;
     }
     if (!trackId && node.event?.refName) trackId = refTrack.get(node.event.refName);
@@ -175,5 +181,5 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
 }
 
 function refDisplay(ref: GitRef): string {
-  return ref.shortName;
+  return normalizeRefName(ref.shortName || ref.fullName);
 }

@@ -28,7 +28,10 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
     if (!from || !to) return [];
     const a = pointForNode(from, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const b = pointForNode(to, { rowHeight, laneWidth, leftPadding: options.leftPadding });
-    const delta = Math.max(8, Math.abs(b.y - a.y) * 0.42);
+    // Keep long branch transitions close to the source/target rows. A
+    // distance-proportional control point creates a wide braid when a branch
+    // joins an older commit many rows below it.
+    const delta = Math.min(56, Math.max(8, Math.abs(b.y - a.y) * 0.28));
     const d = `M ${a.x} ${a.y} C ${a.x} ${a.y + delta}, ${b.x} ${b.y - delta}, ${b.x} ${b.y}`;
     return [{ id: edge.id, type: edge.type, d, label: edge.label }];
   });

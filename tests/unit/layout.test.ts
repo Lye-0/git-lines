@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { computeLaneLayout } from '../../src/layout/laneLayout.js';
 import { computeRowLayout, assertRowInvariants } from '../../src/layout/rowLayout.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
+import { filterRenderableEdgePaths } from '../../src/layout/edgeVisibility.js';
+import type { EdgePath } from '../../src/layout/layoutTypes.js';
 import type { GraphFactModel, GraphNode } from '../../src/model/graphModel.js';
 
 const oid = (letter: string) => letter.repeat(40);
@@ -102,5 +104,18 @@ describe('graph layout', () => {
     expect(result.nodes.find((node) => node.id === event.id)?.lane).toBe(0);
     expect(result.nodes.find((node) => node.id === head.id)?.lane).toBe(0);
     expect(result.nodes.find((node) => node.id === feature.id)?.lane).toBe(0);
+  });
+
+  it('hides redundant same-lane event source paths but keeps cross-lane moves', () => {
+    const source = { ...commitNode('a', 1), lane: 1, row: 3 };
+    const sameLaneEvent: GraphNode = { id: 'event:same', kind: 'history-event', lane: 1, row: 1, refIds: [] };
+    const crossLaneEvent: GraphNode = { id: 'event:cross', kind: 'history-event', lane: 0, row: 2, refIds: [] };
+    const edges = [
+      { id: 'event:same:from', type: 'history-event' as const, fromNodeId: source.id, toNodeId: sameLaneEvent.id },
+      { id: 'event:same:to', type: 'history-event' as const, fromNodeId: sameLaneEvent.id, toNodeId: source.id },
+      { id: 'event:cross:from', type: 'history-event' as const, fromNodeId: source.id, toNodeId: crossLaneEvent.id },
+    ];
+    const paths: EdgePath[] = edges.map((edge) => ({ ...edge, d: 'M 0 0' }));
+    expect(filterRenderableEdgePaths(paths, edges, [source, sameLaneEvent, crossLaneEvent]).map((path) => path.id)).toEqual(['event:same:to', 'event:cross:from']);
   });
 });
