@@ -1,0 +1,31 @@
+import { describe, expect, it } from 'vitest';
+import { buildGraphFacts } from '../../src/model/graphBuilder.js';
+import type { RepositorySnapshot } from '../../src/git/gitTypes.js';
+
+const oid = (letter: string) => letter.repeat(40);
+const snapshot: RepositorySnapshot = {
+  repository: { root: 'C:/repo', gitDir: 'C:/repo/.git', commonGitDir: 'C:/repo/.git', bare: false, shallow: false, linkedWorktree: false },
+  commits: [
+    { oid: oid('b'), parentOids: [oid('a')], subject: 'B', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+    { oid: oid('a'), parentOids: [], subject: 'A', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+  ],
+  refs: [
+    { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('b') },
+    { fullName: 'refs/tags/v1', shortName: 'v1', type: 'tag', oid: oid('b') },
+  ],
+  workingTrees: [{ worktreeId: 'worktree-0', path: 'C:/repo', headOid: oid('b'), branch: 'main', detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, clean: true }],
+  operations: [], reflogs: [], historyEvents: [], shallowBoundaryOids: [], hasMore: false, visibleCommitCount: 2,
+};
+
+describe('graph fact builder', () => {
+  it('deduplicates refs on one commit and keeps tag as metadata', () => {
+    const facts = buildGraphFacts(snapshot);
+    expect(facts.nodes.filter((node) => node.oid === oid('b') && node.kind === 'commit')).toHaveLength(1);
+    expect(facts.nodes.find((node) => node.oid === oid('b'))?.refIds).toEqual(['main', 'v1']);
+    expect(facts.edges.some((edge) => edge.type === 'parent')).toBe(true);
+  });
+
+  it('always adds a Working Tree node even for a clean repository', () => {
+    expect(buildGraphFacts(snapshot).nodes.some((node) => node.kind === 'working-tree')).toBe(true);
+  });
+});

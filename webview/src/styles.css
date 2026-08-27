@@ -1,0 +1,62 @@
+:root {
+  color-scheme: dark;
+  --graph-bg: var(--vscode-editor-background, #09090b);
+  --graph-surface: var(--vscode-sideBar-background, #0d0d10);
+  --graph-border: var(--vscode-panel-border, #24242a);
+  --graph-text: var(--vscode-foreground, #f4f4f5);
+  --graph-muted: var(--vscode-descriptionForeground, #8b8b95);
+  --graph-accent: var(--vscode-textLink-foreground, #8ab4ff);
+}
+
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; min-height: 100%; width: 100%; }
+body { background: var(--graph-bg); color: var(--graph-text); font-family: var(--vscode-font-family, system-ui, sans-serif); font-size: 13px; }
+button, select, input { font: inherit; }
+button:focus-visible, select:focus-visible, input:focus-visible, .graph-scroll:focus-visible { outline: 2px solid var(--graph-accent); outline-offset: 2px; }
+.app-shell { min-height: 100vh; background: radial-gradient(circle at 65% -20%, color-mix(in srgb, var(--graph-accent) 7%, transparent), transparent 45%), var(--graph-bg); }
+.toolbar { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 18px; border-bottom: 1px solid var(--graph-border); background: color-mix(in srgb, var(--graph-surface) 92%, transparent); position: sticky; top: 0; z-index: 5; }
+.brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.brand-mark { color: var(--graph-accent); font-size: 29px; line-height: 1; transform: rotate(18deg); display: inline-block; }
+h1, h2, p { margin: 0; }
+.brand h1 { font-size: 14px; letter-spacing: .01em; }
+.repo-name { display: block; margin-top: 3px; color: var(--graph-muted); font-size: 11px; max-width: min(42vw, 520px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.toolbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.toggle, .select-label { display: inline-flex; align-items: center; gap: 6px; color: var(--graph-muted); white-space: nowrap; }
+.toggle input { accent-color: var(--graph-accent); }
+.select-label select { color: var(--graph-text); background: var(--graph-surface); border: 1px solid var(--graph-border); border-radius: 5px; padding: 5px 8px; }
+.toolbar-button, .close-button { color: var(--graph-text); border: 1px solid var(--graph-border); background: transparent; border-radius: 5px; min-height: 32px; padding: 5px 10px; cursor: pointer; }
+.toolbar-button:hover, .close-button:hover { background: color-mix(in srgb, var(--graph-text) 8%, transparent); }
+.icon-button { width: 34px; padding: 0; font-size: 18px; }
+.content-shell { display: flex; min-height: calc(100vh - 58px); min-width: 0; }
+.graph-section { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.graph-scroll { min-height: 0; flex: 1; overflow: auto; overscroll-behavior: contain; }
+.graph-canvas { position: relative; min-height: 100%; }
+.graph-svg { position: absolute; top: 0; left: 0; overflow: visible; pointer-events: none; }
+.edge { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.edge-working-tree, .edge-operation { stroke-dasharray: 2 5; stroke-width: 1.5; }
+.edge-history-event { stroke-dasharray: 5 4; stroke-width: 1.5; marker-end: none; }
+.node circle { fill: var(--graph-bg); stroke-width: 2; }
+.node text { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 13px; fill: currentColor; }
+.node-reflog-commit { opacity: .63; }
+.node-history-boundary { opacity: .55; }
+.rows { position: relative; min-height: 100%; }
+.commit-row { position: absolute; left: 0; right: 0; display: flex; align-items: center; padding-right: 16px; }
+.row-button { display: block; width: 100%; border: 0; background: transparent; color: inherit; text-align: left; padding: 0; cursor: pointer; }
+.row-content { min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 10px; border: 1px solid transparent; border-radius: 6px; }
+.row-button:hover .row-content { background: color-mix(in srgb, var(--graph-text) 6%, transparent); }
+.row-content.selected { background: color-mix(in srgb, var(--graph-accent) 13%, transparent); border-color: color-mix(in srgb, var(--graph-accent) 30%, transparent); }
+.row-primary { min-width: 0; display: flex; align-items: baseline; gap: 9px; }
+.row-kind { color: var(--graph-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; flex: 0 0 auto; }
+.subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.row-meta { display: flex; gap: 7px; align-items: center; flex: 0 0 auto; color: var(--graph-muted); }
+code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 11px; }
+.ref-badge { border: 1px solid color-mix(in srgb, var(--graph-accent) 48%, var(--graph-border)); color: var(--graph-accent); border-radius: 4px; padding: 2px 5px; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; border-top: 1px solid var(--graph-border); color: var(--graph-muted); padding: 7px 18px; font-size: 11px; background: var(--graph-surface); }
+.legend-dot { font-style: normal; margin-right: 4px; font-size: 14px; }
+.commit-dot { color: var(--graph-text); }.work-dot { color: #e3a86b; }.reflog-dot { color: #9292a1; }.ff-dot { color: #81d3a4; }
+.detail-panel { width: min(360px, 42vw); flex: 0 0 min(360px, 42vw); border-left: 1px solid var(--graph-border); background: var(--graph-surface); padding: 16px; overflow: auto; }
+.detail-header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 18px; }.eyebrow { text-transform: uppercase; letter-spacing: .08em; color: var(--graph-muted); font-size: 10px; }.detail-header h2 { margin-top: 5px; font-size: 15px; line-height: 1.35; overflow-wrap: anywhere; }.close-button { min-width: 32px; font-size: 20px; padding: 0; align-self: flex-start; }
+dl { display: grid; grid-template-columns: 82px 1fr; gap: 9px 10px; margin: 0; }.detail-panel dt { color: var(--graph-muted); font-size: 11px; }.detail-panel dd { margin: 0; overflow-wrap: anywhere; }.detail-panel dd code { display: block; margin-bottom: 3px; }.detail-panel ul { margin: 0; padding-left: 16px; max-height: 150px; overflow: auto; }.commit-body { border-top: 1px solid var(--graph-border); margin-top: 18px; padding-top: 15px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--graph-muted); font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 12px; }
+.empty-state { display: grid; place-items: center; align-content: center; gap: 9px; min-height: 50vh; padding: 32px; text-align: center; color: var(--graph-muted); }.empty-state h2 { color: var(--graph-text); font-size: 16px; }.empty-state p { max-width: 520px; line-height: 1.6; }.empty-symbol { color: var(--graph-accent); font-size: 38px; }
+@media (max-width: 720px) { .toolbar { align-items: flex-start; flex-direction: column; }.toolbar-actions { width: 100%; justify-content: flex-start; }.repo-name { max-width: 80vw; }.content-shell { flex-direction: column; }.detail-panel { width: 100%; flex-basis: auto; max-height: 45vh; border-left: 0; border-top: 1px solid var(--graph-border); }.row-content { align-items: flex-start; flex-direction: column; gap: 2px; justify-content: center; }.row-meta { max-width: 100%; }.subject { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }.commit-row { padding-right: 8px; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }

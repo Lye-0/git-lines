@@ -1,0 +1,5 @@
+import type { DetailMessage } from '../types';
+
+export function DetailPanel({ detail, title, onClose }: { detail: Exclude<DetailMessage, null>; title?: string; onClose: () => void }) {
+  return <aside className="detail-panel" aria-label="Commit details"><div className="detail-header"><div><span className="eyebrow">Commit detail</span><h2>{title ?? detail.subject}</h2></div><button type="button" className="close-button" onClick={onClose} aria-label="Close commit details">×</button></div><dl><dt>Hash</dt><dd><code>{detail.oid}</code></dd><dt>Author</dt><dd>{detail.authorName}{detail.authorEmail ? ` <${detail.authorEmail}>` : ''}</dd><dt>Committed</dt><dd>{new Date(detail.committerDate).toLocaleString()}</dd><dt>Parents</dt><dd>{detail.parentOids.length ? detail.parentOids.map((parent) => <code key={parent}>{parent.slice(0, 12)}</code>) : 'None (root commit)'}</dd><dt>Files</dt><dd>{detail.files.length ? <ul>{detail.files.map((file) => <li key={file}><code>{file}</code></li>)}</ul> : 'No file changes'}</dd></dl><pre className="commit-body">{detail.body ?? detail.subject}</pre></aside>;
+}

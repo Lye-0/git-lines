@@ -1,0 +1,88 @@
+{
+  "name": "git-lines",
+  "displayName": "Git Lines",
+  "description": "Read-only Git branch graph with stable visual lanes.",
+  "version": "0.1.0",
+  "publisher": "git-lines",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:branchGraph.open",
+    "onCommand:branchGraph.refresh"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "branchGraph.open",
+        "title": "Branch Graph: Open"
+      },
+      {
+        "command": "branchGraph.refresh",
+        "title": "Branch Graph: Refresh"
+      }
+    ],
+    "configuration": {
+      "title": "Branch Graph",
+      "properties": {
+        "branchGraph.primaryBranch": {
+          "type": ["string", "null"],
+          "default": null,
+          "description": "Optional branch name to use as the primary visual lane."
+        },
+        "branchGraph.initialCommitCount": {
+          "type": "number",
+          "default": 30,
+          "minimum": 1,
+          "description": "Number of commits initially shown."
+        },
+        "branchGraph.loadMoreCount": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "description": "Number of commits loaded when the graph is extended."
+        },
+        "branchGraph.showReflog": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show reflog-only commits and ref movement events when Git still retains them."
+        },
+        "branchGraph.density": {
+          "type": "string",
+          "enum": ["comfortable", "compact"],
+          "default": "comfortable",
+          "description": "Default graph row density."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "pnpm build:webview && pnpm build:extension",
+    "build:extension": "node scripts/build-extension.mjs",
+    "build:webview": "vite build --config webview/vite.config.ts",
+    "dev:webview": "vite --config webview/vite.config.ts",
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package": "pnpm build && vsce package",
+    "check": "pnpm lint && pnpm test && pnpm build"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "@types/node": "^22.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}
