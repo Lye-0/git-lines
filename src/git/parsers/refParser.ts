@@ -26,9 +26,12 @@ export function parseRefRecords(output: string): GitRef[] {
     if (fields[index] === '') index += 1;
     if (!fullName || fullName.startsWith('%')) continue;
     const parsedTrack = parseTrack(track ?? '');
+    const parsedShortName = symref && fullName.startsWith('refs/remotes/') && fullName.endsWith('/HEAD')
+      ? fullName.slice('refs/remotes/'.length)
+      : shortName || fullName.replace(/^refs\//, '');
     refs.push({
       fullName,
-      shortName: shortName || fullName.replace(/^refs\//, ''),
+      shortName: parsedShortName,
       type: refType(fullName, symref ?? ''),
       oid: oid || undefined,
       targetRef: symref || undefined,

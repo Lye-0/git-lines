@@ -18,7 +18,7 @@ describe('GitClient integration fixture', () => {
     expect(snapshot.commits.some((commit) => commit.subject === 'feature')).toBe(true);
     expect(snapshot.refs.some((ref) => ref.shortName === 'feature/auth' && ref.type === 'local')).toBe(true);
     expect(snapshot.workingTrees[0]).toMatchObject({ branch: 'main', clean: true });
-    expect(snapshot.historyEvents.length).toBeGreaterThanOrEqual(1);
+    expect(snapshot.historyEvents).toHaveLength(0);
   });
 
   it('labels a reflog-proven fast-forward without inventing a merge commit', async () => {
@@ -31,7 +31,7 @@ describe('GitClient integration fixture', () => {
     const snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
     expect(snapshot.commits.filter((commit) => commit.subject === 'feature tip')).toHaveLength(1);
     expect(snapshot.commits.find((commit) => commit.subject === 'feature tip')?.parentOids).toHaveLength(1);
-    expect(snapshot.historyEvents.some((event) => event.type === 'fast-forward')).toBe(true);
+    expect(snapshot.historyEvents.filter((event) => event.type === 'fast-forward')).toHaveLength(1);
   });
 
   it('reads working-tree counts and an in-progress merge from Git metadata', async () => {

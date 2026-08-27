@@ -80,6 +80,8 @@ export interface HistoryEvent {
   timestamp: number;
   sourceLabel?: string;
   subject?: string;
+  /** All refs updated by the same logical Git operation, including HEAD. */
+  affectedRefs?: string[];
 }
 
 export interface RepositoryInfo {

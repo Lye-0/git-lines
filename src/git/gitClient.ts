@@ -217,7 +217,11 @@ export class GitClient {
   }
 
   private async readReflogs(root: string, refs: GitRef[]): Promise<ReflogEntry[]> {
-    const names = ['HEAD', ...refs.filter((ref) => ref.type === 'local' || ref.type === 'remote').map((ref) => ref.fullName)];
+    const names = [
+      'HEAD',
+      ...refs.filter((ref) => ref.type === 'local' || ref.type === 'remote').map((ref) => ref.fullName),
+      ...refs.filter((ref) => ref.fullName === 'ORIG_HEAD' || ref.fullName === 'AUTO_MERGE').map((ref) => ref.fullName),
+    ];
     const all: ReflogEntry[] = [];
     for (const refName of [...new Set(names)]) {
       try {

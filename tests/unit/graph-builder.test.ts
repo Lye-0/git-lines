@@ -28,7 +28,12 @@ describe('graph fact builder', () => {
   it('always adds a Working Tree node even for a clean repository', () => {
     const working = buildGraphFacts(snapshot).nodes.find((node) => node.kind === 'working-tree');
     expect(working).toBeDefined();
-    expect(working?.label).toContain('Clean');
+    expect(working?.workingTree?.clean).toBe(true);
+  });
+
+  it('keeps a reachable commit normal even when it was loaded beyond the visible page', () => {
+    const facts = buildGraphFacts({ ...snapshot, visibleCommitCount: 1 });
+    expect(facts.nodes.find((node) => node.oid === oid('a'))?.kind).toBe('commit');
   });
 
   it('materializes every octopus parent without collapsing unrelated roots', () => {
@@ -52,5 +57,17 @@ describe('graph fact builder', () => {
     expect(facts.nodes.some((node) => node.kind === 'operation')).toBe(true);
     expect(facts.edges.some((edge) => edge.type === 'operation')).toBe(true);
     expect(facts.edges.filter((edge) => edge.type === 'parent')).toHaveLength(1);
+  });
+
+  it('keeps symbolic and pseudo refs out of ordinary commit badges', () => {
+    const refs = [
+      ...snapshot.refs,
+      { fullName: 'refs/remotes/origin/HEAD', shortName: 'origin/HEAD', type: 'symbolic' as const, oid: oid('b'), targetRef: 'refs/remotes/origin/main' },
+      { fullName: 'refs/remotes/origin/main', shortName: 'origin/main', type: 'remote' as const, oid: oid('b') },
+      { fullName: 'ORIG_HEAD', shortName: 'ORIG_HEAD', type: 'symbolic' as const, oid: oid('b') },
+    ];
+    const facts = buildGraphFacts({ ...snapshot, refs });
+    expect(facts.nodes.find((node) => node.oid === oid('b'))?.refIds).toEqual(['main', 'origin/main', 'v1']);
+    expect(facts.nodes.find((node) => node.oid === oid('b'))?.refBadges?.map((badge) => badge.name)).toEqual(['main', 'origin/main', 'v1']);
   });
 });

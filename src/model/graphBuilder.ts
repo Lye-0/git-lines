@@ -1,31 +1,49 @@
-import type { RepositorySnapshot, GitCommit, GitRef } from '../git/gitTypes.js';
+import type { RepositorySnapshot } from '../git/gitTypes.js';
 import type { GraphEdge, GraphFactModel, GraphNode } from './graphModel.js';
+import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
 export interface GraphBuilderOptions {
   showReflog?: boolean;
   primaryBranch?: string | null;
 }
 
-function refDisplayName(ref: GitRef): string {
-  return ref.shortName || ref.fullName;
+function reachableFromRefs(snapshot: RepositorySnapshot, commits: Map<string, { parentOids: string[] }>): Set<string> {
+  const reachable = new Set<string>();
+  const queue = snapshot.refs.filter(isUserFacingRef).map((ref) => ref.oid).filter((oid): oid is string => Boolean(oid));
+  while (queue.length) {
+    const oid = queue.shift() as string;
+    if (reachable.has(oid)) continue;
+    reachable.add(oid);
+    for (const parent of commits.get(oid)?.parentOids ?? []) queue.push(parent);
+  }
+  return reachable;
+}
+
+function eventLabel(type: string, refName: string, sourceLabel?: string): string {
+  const ref = normalizeRefName(refName);
+  const source = sourceLabel ? normalizeRefName(sourceLabel) : undefined;
+  if (type === 'fast-forward') return source && source !== ref ? `Fast-forward · ${ref} ← ${source}` : `Fast-forward · ${ref}`;
+  if (type === 'force-update') return `Force update · ${ref}`;
+  if (type === 'branch-move') return `Branch move · ${ref}`;
+  return `${type[0].toUpperCase()}${type.slice(1)} · ${ref}`;
 }
 
 function primaryBranch(snapshot: RepositorySnapshot, configured?: string | null): string | undefined {
   if (configured) {
-    const configuredRef = snapshot.refs.find((ref) => ref.shortName === configured || ref.fullName === configured);
-    if (configuredRef?.type === 'local') return configuredRef.shortName;
+    const configuredRef = snapshot.refs.find((ref) => ref.shortName === configured || ref.fullName === configured || normalizeRefName(ref.fullName) === configured);
+    if (configuredRef?.type === 'local') return normalizeRefName(configuredRef.fullName);
   }
   const defaultRemote = snapshot.refs.find((ref) => ref.type === 'symbolic' && ref.targetRef?.startsWith('refs/remotes/'));
   if (defaultRemote?.targetRef) {
     const target = defaultRemote.targetRef.replace(/^refs\/remotes\/[^/]+\//, '');
-    if (snapshot.refs.some((ref) => ref.type === 'local' && ref.shortName === target)) return target;
+    if (snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === target)) return target;
   }
   for (const candidate of ['main', 'master']) {
-    if (snapshot.refs.some((ref) => ref.type === 'local' && ref.shortName === candidate)) return candidate;
+    if (snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === candidate)) return candidate;
   }
   const current = snapshot.workingTrees.find((tree) => !tree.inaccessible && tree.branch)?.branch;
-  if (current && snapshot.refs.some((ref) => ref.type === 'local' && ref.shortName === current)) return current;
-  return snapshot.refs.filter((ref) => ref.type === 'local').map((ref) => ref.shortName).sort()[0];
+  if (current && snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === current)) return current;
+  return snapshot.refs.filter((ref) => ref.type === 'local').map((ref) => normalizeRefName(ref.fullName)).sort()[0];
 }
 
 export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuilderOptions = {}): GraphFactModel {
@@ -35,21 +53,25 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   const commits = options.showReflog === false
     ? visibleCommits
     : [...visibleCommits, ...snapshot.commits.slice(visibleCount).filter((commit) => !visibleOids.has(commit.oid))];
-  const commitMap = new Map(commits.map((commit) => [commit.oid, commit]));
-  const refsByOid = new Map<string, string[]>();
+  const reachableOids = reachableFromRefs(snapshot, new Map(commits.map((commit) => [commit.oid, commit])));
+  const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
-    if (ref.oid) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), refDisplayName(ref)]);
+    if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
   }
-  const nodes: GraphNode[] = commits.map((commit) => ({
-    id: `commit:${commit.oid}`,
-    kind: visibleOids.has(commit.oid) ? 'commit' : 'reflog-commit',
-    oid: commit.oid,
-    refIds: refsByOid.get(commit.oid) ?? [],
-    timestamp: commit.committerDate,
-    subject: commit.subject,
-    label: commit.subject,
-    commit,
-  }));
+  const nodes: GraphNode[] = commits.map((commit) => {
+    const refBadges = uniqueGraphRefBadges(refsByOid.get(commit.oid) ?? []);
+    return {
+      id: `commit:${commit.oid}`,
+      kind: reachableOids.has(commit.oid) ? 'commit' : 'reflog-commit',
+      oid: commit.oid,
+      refIds: refBadges.map((badge) => badge.name),
+      refBadges,
+      timestamp: commit.committerDate,
+      subject: commit.subject,
+      label: commit.subject,
+      commit,
+    };
+  });
   const nodeByOid = new Map(nodes.filter((node) => node.oid).map((node) => [node.oid as string, node]));
   const edges: GraphEdge[] = [];
   const addNode = (node: GraphNode) => { if (!nodes.some((existing) => existing.id === node.id)) nodes.push(node); };
@@ -65,25 +87,15 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     }
   }
   for (const [index, tree] of snapshot.workingTrees.entries()) {
-    const status = tree.inaccessible
-      ? 'Status unavailable'
-      : tree.conflicted > 0
-      ? `${tree.conflicted} conflict${tree.conflicted === 1 ? '' : 's'}`
-      : tree.clean
-        ? 'Clean'
-        : [
-            tree.staged ? `${tree.staged} staged` : '',
-            tree.unstaged ? `${tree.unstaged} modified` : '',
-            tree.untracked ? `${tree.untracked} untracked` : '',
-          ].filter(Boolean).join(' · ');
-    const location = tree.branch ? `${tree.branch} ★` : tree.detached ? 'HEAD (detached)' : tree.path;
     const node: GraphNode = {
       id: `working:${tree.worktreeId}`,
       kind: 'working-tree',
-      label: `${index === 0 ? 'Working Tree' : `Worktree ${tree.path}`} · ${location} · ${status || 'Status unavailable'}`,
-      refIds: tree.branch ? [tree.branch] : [],
+      label: index === 0 ? 'Working Tree' : 'Worktree',
+      refIds: [],
+      refBadges: [],
       oid: tree.headOid,
       timestamp: Number.MAX_SAFE_INTEGER - index,
+      workingTree: tree,
     };
     addNode(node);
     const headNode = tree.headOid ? nodeByOid.get(tree.headOid) : undefined;
@@ -95,7 +107,10 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       kind: 'operation',
       label: `${operation.type[0].toUpperCase()}${operation.type.slice(1)} in progress`,
       refIds: [],
+      refBadges: [],
+      oid: operation.headOid,
       timestamp: Number.MAX_SAFE_INTEGER - 100 - index,
+      operation,
     };
     addNode(node);
     if (operation.headOid && nodeByOid.has(operation.headOid)) edges.push({ id: `${node.id}:head`, type: 'operation', fromNodeId: node.id, toNodeId: nodeByOid.get(operation.headOid)!.id, label: 'current HEAD' });
@@ -109,12 +124,19 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
     const isFastForward = event.type === 'fast-forward';
+    const affectedRefs = event.affectedRefs?.length ? event.affectedRefs : [event.refName];
+    const refBadges = uniqueGraphRefBadges(affectedRefs.map((refName) => {
+      const ref = snapshot.refs.find((candidate) => candidate.fullName === refName);
+      return ref ? toGraphRefBadge(ref) : specialRefBadge(refName);
+    }));
     const node: GraphNode = {
       id: event.id,
       kind: isFastForward ? 'fast-forward-event' : 'history-event',
-      label: isFastForward ? 'FF' : event.type.replace('-', ' '),
-      refIds: [event.refName],
+      label: eventLabel(event.type, event.refName, event.sourceLabel),
+      refIds: refBadges.map((badge) => badge.name),
+      refBadges,
       timestamp: event.timestamp,
+      subject: event.subject,
       event,
     };
     addNode(node);

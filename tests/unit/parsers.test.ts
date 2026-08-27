@@ -32,6 +32,7 @@ describe('Git parsers', () => {
     const refs = parseRefRecords(output);
     expect(refs.find((ref) => ref.fullName === 'refs/heads/main')?.type).toBe('local');
     expect(refs.find((ref) => ref.fullName === 'refs/remotes/origin/HEAD')?.type).toBe('symbolic');
+    expect(refs.find((ref) => ref.fullName === 'refs/remotes/origin/HEAD')?.shortName).toBe('origin/HEAD');
     expect(refs.find((ref) => ref.fullName === 'refs/tags/v1')?.type).toBe('tag');
   });
 
