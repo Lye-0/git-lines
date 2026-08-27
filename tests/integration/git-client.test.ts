@@ -59,4 +59,19 @@ describe('GitClient integration fixture', () => {
     expect(snapshot.operations.some((operation) => operation.type === 'merge')).toBe(true);
     expect(snapshot.workingTrees[0]?.conflicted).toBeGreaterThan(0);
   });
+
+  it('keeps an object-backed reset tip as a reflog-only commit with real parents', async () => {
+    fixture = createGitFixture();
+    commitFixture(fixture, 'base', '2026-08-27T09:00:00+09:00');
+    commitFixture(fixture, 'temporary tip', '2026-08-27T10:00:00+09:00');
+    const oldTip = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['reset', '--hard', 'HEAD~1']);
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 1, true);
+    expect(snapshot.commits.some((commit) => commit.oid === oldTip)).toBe(true);
+    const facts = (await import('../../src/model/graphBuilder.js')).buildGraphFacts(snapshot);
+    const oldNode = facts.nodes.find((node) => node.oid === oldTip);
+    expect(oldNode?.kind).toBe('reflog-commit');
+    expect(facts.edges.some((edge) => edge.type === 'parent' && edge.fromNodeId === oldNode?.id)).toBe(true);
+    expect(snapshot.historyEvents.some((event) => event.type === 'reset')).toBe(true);
+  });
 });

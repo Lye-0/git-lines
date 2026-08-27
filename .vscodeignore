@@ -1,0 +1,17 @@
+.vscode/
+.git/
+.github/
+agent-knowledge/
+docs/
+tests/
+src/
+webview/src/
+node_modules/
+.pnpm-store/
+webview/
+*.ts
+*.map
+pnpm-lock.yaml
+tsconfig*.json
+vitest.config.ts
+scripts/

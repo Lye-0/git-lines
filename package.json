@@ -67,7 +67,7 @@
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "pnpm build && vsce package",
+    "package": "pnpm build && vsce package --no-dependencies --no-rewrite-relative-links --allow-missing-repository",
     "check": "pnpm lint && pnpm test && pnpm build"
   },
   "devDependencies": {
@@ -77,6 +77,7 @@
     "@types/react-dom": "^18.3.1",
     "@types/vscode": "^1.90.0",
     "esbuild": "^0.24.0",
+    "@vscode/vsce": "^3.2.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
     "vitest": "^2.1.8"

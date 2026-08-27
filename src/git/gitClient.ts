@@ -61,7 +61,12 @@ export class GitClient {
       const reflogOids = [...new Set(reflogs.flatMap((entry) => [entry.newOid, entry.previousOid]).filter((oid): oid is string => Boolean(oid)))];
       const missing = reflogOids.filter((oid) => !known.has(oid));
       const extra = await this.readCommitObjects(repository.root, missing);
-      commits.push(...extra);
+      const added = new Set<string>();
+      for (const commit of extra) {
+        if (known.has(commit.oid) || added.has(commit.oid)) continue;
+        added.add(commit.oid);
+        commits.push(commit);
+      }
     }
     const historyEvents = includeReflog ? resolveHistoryEvents(reflogs, commits) : [];
     return {
@@ -123,14 +128,22 @@ export class GitClient {
 
   private async readCommitObjects(root: string, oids: string[]): Promise<GitCommit[]> {
     const commits: GitCommit[] = [];
-    for (const oid of oids) {
+    const pending = [...oids];
+    const seen = new Set<string>();
+    while (pending.length && commits.length < 500) {
+      const oid = pending.shift() as string;
+      if (seen.has(oid) || !/^[0-9a-f]{7,64}$/i.test(oid)) continue;
+      seen.add(oid);
       try {
         const output = await this.runner.runChecked(['show', '-s', `--format=${gitLogFormat(false)}`, oid], {
           cwd: root,
           timeoutMs: this.timeoutMs,
         });
         const commit = parseGitLogNul(output)[0];
-        if (commit) commits.push(commit);
+        if (commit) {
+          commits.push(commit);
+          for (const parent of commit.parentOids) if (!seen.has(parent)) pending.push(parent);
+        }
       } catch {
         // A reflog can outlive the object. Missing objects are intentionally not modelled.
       }
@@ -144,6 +157,14 @@ export class GitClient {
       timeoutMs: this.timeoutMs,
     });
     const refs = parseRefRecords(output);
+    for (const pseudo of ['ORIG_HEAD', 'AUTO_MERGE']) {
+      try {
+        const oid = (await this.runner.runChecked(['rev-parse', '--verify', pseudo], { cwd: root, timeoutMs: 5000 })).trim();
+        if (/^[0-9a-f]{7,64}$/i.test(oid)) refs.push({ fullName: pseudo, shortName: pseudo, type: 'symbolic', oid });
+      } catch {
+        // Pseudo refs only exist during or after particular Git operations.
+      }
+    }
     for (const symbolic of refs.filter((ref) => ref.type === 'symbolic' && ref.targetRef)) {
       const target = refs.find((ref) => ref.fullName === symbolic.targetRef || ref.shortName === symbolic.targetRef);
       if (target) target.isDefault = true;
