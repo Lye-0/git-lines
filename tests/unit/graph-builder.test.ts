@@ -26,6 +26,8 @@ describe('graph fact builder', () => {
   });
 
   it('always adds a Working Tree node even for a clean repository', () => {
-    expect(buildGraphFacts(snapshot).nodes.some((node) => node.kind === 'working-tree')).toBe(true);
+    const working = buildGraphFacts(snapshot).nodes.find((node) => node.kind === 'working-tree');
+    expect(working).toBeDefined();
+    expect(working?.label).toContain('Clean');
   });
 });

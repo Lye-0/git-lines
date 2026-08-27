@@ -65,10 +65,20 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     }
   }
   for (const [index, tree] of snapshot.workingTrees.entries()) {
+    const status = tree.conflicted > 0
+      ? `${tree.conflicted} conflict${tree.conflicted === 1 ? '' : 's'}`
+      : tree.clean
+        ? 'Clean'
+        : [
+            tree.staged ? `${tree.staged} staged` : '',
+            tree.unstaged ? `${tree.unstaged} modified` : '',
+            tree.untracked ? `${tree.untracked} untracked` : '',
+          ].filter(Boolean).join(' · ');
+    const location = tree.branch ? `${tree.branch} ★` : tree.detached ? 'HEAD (detached)' : tree.path;
     const node: GraphNode = {
       id: `working:${tree.worktreeId}`,
       kind: 'working-tree',
-      label: index === 0 ? 'Working Tree' : `Worktree ${tree.path}`,
+      label: `${index === 0 ? 'Working Tree' : `Worktree ${tree.path}`} · ${location} · ${status || 'Status unavailable'}`,
       refIds: tree.branch ? [tree.branch] : [],
       oid: tree.headOid,
       timestamp: Number.MAX_SAFE_INTEGER - index,

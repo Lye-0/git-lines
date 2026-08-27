@@ -18,4 +18,17 @@ describe('GitClient integration fixture', () => {
     expect(snapshot.workingTrees[0]).toMatchObject({ branch: 'main', clean: true });
     expect(snapshot.historyEvents.length).toBeGreaterThanOrEqual(1);
   });
+
+  it('labels a reflog-proven fast-forward without inventing a merge commit', async () => {
+    fixture = createGitFixture();
+    commitFixture(fixture, 'base', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'feature/ff']);
+    commitFixture(fixture, 'feature tip', '2026-08-27T10:00:00+09:00');
+    fixture.run(['switch', 'main']);
+    fixture.run(['merge', '--ff-only', 'feature/ff']);
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    expect(snapshot.commits.filter((commit) => commit.subject === 'feature tip')).toHaveLength(1);
+    expect(snapshot.commits.find((commit) => commit.subject === 'feature tip')?.parentOids).toHaveLength(1);
+    expect(snapshot.historyEvents.some((event) => event.type === 'fast-forward')).toBe(true);
+  });
 });

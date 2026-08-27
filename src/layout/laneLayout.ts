@@ -102,13 +102,18 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     }
   }
   const usedHues = new Set<number>();
+  const familyColors = new Map<string, string>();
   const tracks: GraphTrack[] = ordered.map((candidate) => ({
     id: candidate.id,
     label: candidate.refs.map((ref) => refDisplay(ref)).join(' · '),
     family: candidate.family,
     kind: candidate.kind,
     lane: lanes.get(candidate.id) as number,
-    color: colorFor(candidate.family, usedHues),
+    color: familyColors.get(candidate.family) ?? (() => {
+      const color = colorFor(candidate.family, usedHues);
+      familyColors.set(candidate.family, color);
+      return color;
+    })(),
     refNames: candidate.refs.map((ref) => ref.fullName),
   }));
   const commits = new Map(facts.commits.map((commit) => [commit.oid, commit]));
@@ -132,7 +137,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
       const ref = refs.find((item) => item.shortName === branch);
       trackId = ref ? refTrack.get(ref.fullName) : undefined;
     }
-    if (!trackId && node.kind === 'operation' && node.event?.refName) trackId = refTrack.get(node.event.refName);
+    if (!trackId && node.event?.refName) trackId = refTrack.get(node.event.refName);
     const lane = trackId ? lanes.get(trackId) : 0;
     return { ...node, trackId, lane: lane ?? 0 };
   });

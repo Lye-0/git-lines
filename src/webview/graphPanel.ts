@@ -48,8 +48,12 @@ export class GraphPanel {
 
   public static open(context: vscode.ExtensionContext, repositoryRoot: string): GraphPanel {
     if (GraphPanel.current) {
-      GraphPanel.current.panel.reveal(vscode.ViewColumn.Active);
-      return GraphPanel.current;
+      if (GraphPanel.current.repositoryRoot !== repositoryRoot) {
+        GraphPanel.current.panel.dispose();
+      } else {
+        GraphPanel.current.panel.reveal(vscode.ViewColumn.Active);
+        return GraphPanel.current;
+      }
     }
     return new GraphPanel(context, repositoryRoot);
   }
@@ -73,7 +77,11 @@ export class GraphPanel {
       await this.load(false);
     } else if (message.type === 'setDensity') {
       this.density = message.density;
-      await this.send({ type: 'graph', layout: this.layoutState.layout ?? { nodes: [], edges: [], tracks: [], visibleCommitCount: 0, hasMore: false, rowHeight: 38, laneWidth: 28 }, repository: this.snapshot?.repository ?? ({} as never), workingTrees: this.snapshot?.workingTrees ?? [], reflogEnabled: this.showReflog, density: this.density });
+      if (this.layoutState.layout && this.snapshot) {
+        const layout = { ...this.layoutState.layout, rowHeight: this.density === 'compact' ? 30 : 38 };
+        this.layoutState.set(layout);
+        await this.send({ type: 'graph', layout, repository: this.snapshot.repository, currentBranch: this.snapshot.workingTrees[0]?.branch, workingTrees: this.snapshot.workingTrees, reflogEnabled: this.showReflog, density: this.density });
+      }
     }
   }
 
