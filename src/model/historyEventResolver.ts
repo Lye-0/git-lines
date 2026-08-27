@@ -7,7 +7,7 @@ function classify(subject: string, fromOid: string | undefined, toOid: string, r
   if (/amend/.test(lower)) return 'amend';
   if (/rebase/.test(lower)) return 'rebase';
   if (/forced update|force-update|forced-update/.test(lower)) return 'force-update';
-  if (/branch|checkout/.test(lower) && refName.startsWith('refs/heads/')) return 'branch-move';
+  if (/branch|checkout|switch/.test(lower) && refName.startsWith('refs/heads/')) return 'branch-move';
   return 'generic-ref-move';
 }
 
@@ -38,16 +38,22 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
   const commitMap = new Map(commits.map((commit) => [commit.oid, commit]));
   return entries
     .filter((entry) => Boolean(entry.previousOid) && entry.previousOid !== entry.newOid)
-    .map((entry, index) => ({
-      id: `history:${entry.refName}:${entry.timestamp}:${entry.newOid}:${index}`,
-      type: classify(entry.subject, entry.previousOid, entry.newOid, entry.refName, commitMap),
-      refName: entry.refName,
-      fromOid: entry.previousOid,
-      toOid: entry.newOid,
-      timestamp: entry.timestamp,
-      sourceLabel: sourceLabel(entry.subject),
-      subject: entry.subject,
-    }));
+    .map((entry, index) => {
+      const type = classify(entry.subject, entry.previousOid, entry.newOid, entry.refName, commitMap);
+      return {
+        id: `history:${entry.refName}:${entry.timestamp}:${entry.newOid}:${index}`,
+        type,
+        refName: entry.refName,
+        fromOid: entry.previousOid,
+        toOid: entry.newOid,
+        timestamp: entry.timestamp,
+        sourceLabel: sourceLabel(entry.subject),
+        subject: entry.subject,
+      };
+    })
+    // Commit creation is already represented by a commit node; keep the overlay focused
+    // on ref moves and operation evidence instead of duplicating every commit row.
+    .filter((event) => event.type !== 'generic-ref-move' || !/^commit(?: \([^)]*\))?:/i.test(event.subject ?? ''));
 }
 
 export function isCommitAncestor(ancestor: string, descendant: string, commits: Iterable<GitCommit>): boolean {

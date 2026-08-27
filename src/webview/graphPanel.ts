@@ -125,7 +125,12 @@ export class GraphPanel {
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`error ${detail}`);
-      await this.send({ type: 'error', title: /not a git repository|repository/i.test(detail) ? 'No Git repository found' : 'Unable to read Git repository', detail });
+      const title = /spawn .*ENOENT|not recognized|cannot find.*git/i.test(detail)
+        ? 'Git executable not found'
+        : /not a git repository|repository/i.test(detail)
+          ? 'No Git repository found'
+          : 'Unable to read Git repository';
+      await this.send({ type: 'error', title, detail });
     } finally {
       await this.send({ type: 'loading', loading: false });
     }

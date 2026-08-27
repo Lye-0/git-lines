@@ -20,4 +20,8 @@ describe('history event resolver', () => {
     expect(resolveHistoryEvents([entry('commit (amend): fix', oid('a'), oid('b'))], commits)[0].type).toBe('amend');
     expect(resolveHistoryEvents([entry('rebase (finish): refs/heads/main', oid('b'), oid('a'))], commits)[0].type).toBe('rebase');
   });
+
+  it('does not duplicate ordinary commit creation in the reflog overlay', () => {
+    expect(resolveHistoryEvents([entry('commit: feature', oid('a'), oid('b'))], commits)).toEqual([]);
+  });
 });
