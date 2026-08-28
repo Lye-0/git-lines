@@ -94,9 +94,9 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .ref-badge-tag::before { content: '◆'; margin-right: 4px; font-size: 9px; }
 .ref-badge-special { color: var(--graph-muted); border-color: var(--graph-border); opacity: .7; }
 .row-history-event .row-content, .row-fast-forward-event .row-content { background: transparent; }
-.row-history-event .event-row-content, .row-fast-forward-event .event-row-content { position: relative; }
+.row-history-event .event-row-content, .row-fast-forward-event .event-row-content { position: relative; padding-top: 0; padding-bottom: 0; }
 .row-history-event .event-row-content::before, .row-fast-forward-event .event-row-content::before { content: ''; position: absolute; inset: 0 0 0 10px; border-radius: 6px; background: color-mix(in srgb, var(--graph-accent) 4%, transparent); pointer-events: none; }
-.row-history-event .event-row-content > .row-primary, .row-fast-forward-event .event-row-content > .row-primary { position: relative; z-index: 1; }
+.row-history-event .event-row-content > .row-primary, .row-fast-forward-event .event-row-content > .row-primary { position: relative; z-index: 1; padding: 6px 10px; }
 .row-history-event .row-content:hover, .row-fast-forward-event .row-content:hover { background: transparent; }
 .row-history-event .event-row-content:hover::before, .row-fast-forward-event .event-row-content:hover::before { background: color-mix(in srgb, var(--graph-text) 6%, transparent); }
 .row-history-event .row-kind, .row-fast-forward-event .row-kind { color: var(--graph-accent); }
