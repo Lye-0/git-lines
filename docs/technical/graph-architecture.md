@@ -22,7 +22,7 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 - `commit` — current refsから読み込んだ実在commit
 - `reflog-commit` — 現在のuser-facing refから到達できず、reflogから確認でき、objectが残っているcommit
 - `working-tree` / `operation` — commit objectではない現在状態
-- `fast-forward-event` / `history-event` — reflogから確認できるref移動の補助表現
+- `fast-forward-event` / `history-event` — reflogから確認できるref移動の時系列行。commitとは別モデルだが、`anchorCommitId`でdestinationを参照する
 - `history-boundary` — paginationまたはshallow cloneで未読parentを示すstub
 
 実在のparent関係は`GraphEdge.type = "parent"`で表し、`GitCommit.parentOids`の各要素から1本ずつ生成する。laneや表示都合でparent edgeを削除・統合しない。Working Tree、未完了operation、ref移動はそれぞれ`working-tree`、`operation`、`history-event`で分離する。Ref Eventのedgeには`annotation: "ref-event"`を付け、destination commitからイベントglyphへ向かう単一の補助接続として扱う。patchが似ているだけのsquash/cherry-pick/rebase前後をparent edgeへ変換しない。
@@ -53,7 +53,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 4. `createGraphLayout`がrow→laneの順に計算し、WebviewへpostMessageする。
 5. Webviewはcommit選択時だけdetail/files/statsをon-demand取得し、グラフ専用のスクロール領域を持つ。下端手前で次ページを自動取得し、手動refresh・focus・Git metadata watchでも再読込する。
 
-グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行は最大幅を持つまとまりとしてその右側から開始する。Ref Eventは`anchorCommitId`で接続先commitを明示し、row allocationから除外したうえでanchorと同じY座標へ置く。commit laneからイベントglyphへ短い横方向の破線annotationだけを描画し、縦セグメントやイベント専用laneは作らず、イベントの`from`側をcommit DAGの線として描画しない。同一commitに複数イベントがある場合はannotationのXオフセットを決定論的に積み、commit rowを増やさない。Working Tree / operationは細い点線、commit parentは実線で表示する。commit rowのref badgeはcheckout中local branch、その他local、対応remote、その他remote、tag/specialの順にcommit本文の近くへ配置し、tagは形状を変えてbranch laneを作らない。Ref Eventのrowには`REF EVENT`種別ラベルや同一refの重複badgeを表示せず、glyphとlabelをSVGグラフ領域内に描画する。凡例はtoolbarのpopoverから参照できる。
+グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行は最大幅を持つまとまりとしてその右側から開始する。Ref Eventは`anchorCommitId`でdestination commitを参照し、構造DAGのtopological計算からは除外したまま、destinationの直上へ独立したtimeline rowを割り当てる。同じイベントの`targetRef`を`targetLaneId`へ解決して対象branch/refと同じX座標に置き、イベントのためのGraphTrackや横方向の分岐は作らない。annotation edgeは同一lane内の縦コネクタとして描画し、イベントの`from`側をcommit DAGの線として描画しない。同一destinationに複数イベントがある場合は必要な数だけ独立rowを連続して割り当てる。Working Tree / operationは細い点線、commit parentは実線で表示する。commit rowのref badgeはcheckout中local branch、その他local、対応remote、その他remote、tag/specialの順にcommit本文の近くへ配置し、tagは形状を変えてbranch laneを作らない。Ref Eventのrowには`REF EVENT`種別ラベルや同一refの重複badgeを表示せず、diamond glyphと幅に応じたcompact labelをSVGグラフ領域内に描画する。graph areaの幅はbranch lane数だけで決まり、長いevent textでは広がらない。凡例はtoolbarのpopoverから参照できる。
 
 ## Security / Accessibility
 
@@ -62,7 +62,7 @@ Gitは`spawn`へ引数配列を渡し、shell文字列連結を行わない。We
 ## 検証アンカー
 
 - `tests/unit/parsers.test.ts` — NUL形式log/ref/reflog、porcelain status、worktree parser
-- `tests/unit/layout.test.ts` — row一意性、timestamp inversion、primary lane、distance-based feature lane、Ref Event annotation
+- `tests/unit/layout.test.ts` — row一意性、timestamp inversion、primary lane、distance-based feature lane、同一laneの独立Ref Event row、縦annotation
 - `tests/unit/history-events.test.ts` — FF/reset/amend/rebaseの保守的分類
-- `tests/unit/graph-builder.test.ts` — ref dedup、tag、常時Working Tree、2/3-parent edge、Ref Event annotation
+- `tests/unit/graph-builder.test.ts` — ref dedup、tag、常時Working Tree、2/3-parent edge、destination/targetRef付きRef Event
 - `tests/integration/git-client.test.ts` — 実Git repository fixtureからのbranch/ref/status読み取り、long feature merge、未commitbranch、first commit

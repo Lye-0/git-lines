@@ -92,6 +92,27 @@ function makeCandidates(refs: GitRef[]): { candidates: TrackCandidate[]; refTrac
 export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOptions = {}): { nodes: GraphNode[]; tracks: GraphTrack[]; lanes: Map<string, number> } {
   const refs = branchRefs(facts.refs);
   const { candidates, refTrack } = makeCandidates(refs);
+  const eventTrackForRef = (refName?: string): string | undefined => {
+    if (!refName) return undefined;
+    const direct = refTrack.get(refName);
+    if (direct) return direct;
+    const normalized = normalizeRefName(refName);
+    const matching = facts.refs.find((ref) => ref.fullName === refName || ref.shortName === refName || normalizeRefName(ref.fullName) === normalized);
+    if (matching) {
+      const matchingTrack = refTrack.get(matching.fullName);
+      if (matchingTrack) return matchingTrack;
+      if (matching.targetRef) {
+        const targetTrack = refTrack.get(matching.targetRef);
+        if (targetTrack) return targetTrack;
+      }
+    }
+    if (refName === 'HEAD') {
+      const checkedOutBranch = facts.workingTrees.find((tree) => !tree.inaccessible && tree.branch)?.branch;
+      const branchRef = facts.refs.find((ref) => ref.type === 'local' && (ref.shortName === checkedOutBranch || normalizeRefName(ref.fullName) === checkedOutBranch));
+      if (branchRef) return refTrack.get(branchRef.fullName);
+    }
+    return [...refTrack.entries()].find(([name]) => normalizeRefName(name) === normalized)?.[1];
+  };
   const primary = options.primaryBranch ?? facts.primaryBranch;
   const primaryCandidate = candidates.find((candidate) => candidate.refs.some((ref) => normalizeRefName(ref.shortName || ref.fullName) === primary));
   const previous = options.previousLanes ?? new Map<string, number>();
@@ -160,25 +181,21 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
       const ref = refs.find((item) => item.shortName === branch || normalizeRefName(item.fullName) === branch);
       trackId = ref ? refTrack.get(ref.fullName) : undefined;
     }
+    // Ref events must share the target ref's lane even when their destination
+    // commit is claimed by another branch (for example a feature reset to a
+    // main commit).  Resolve this before commit ancestry claims.
+    if (!trackId && node.event?.refName) trackId = eventTrackForRef(node.targetRef ?? node.event.refName);
     if (!trackId && node.oid) trackId = trackForClaim(node.oid);
-    if (!trackId && node.event?.refName) trackId = refTrack.get(node.event.refName);
     const lane = trackId ? lanes.get(trackId) : 0;
     return { node, trackId, lane: lane ?? 0 };
   });
-  const laneByOid = new Map<string, number>();
-  for (const assignment of initialAssignments) {
-    if (!assignment.node.oid) continue;
-    if (!laneByOid.has(assignment.node.oid) || assignment.node.kind === 'commit' || assignment.node.kind === 'reflog-commit') {
-      laneByOid.set(assignment.node.oid, assignment.lane);
-    }
-  }
   const laidOut = initialAssignments.map(({ node, trackId, lane }) => {
     if (!node.event) return { ...node, trackId, lane };
-    const toLane = laneByOid.get(node.event.toOid);
-    // Ref events are annotations anchored to the destination commit.  Their
-    // own lane never participates in commit lane assignment.
-    const eventLane = toLane ?? lane;
-    return { ...node, trackId, lane: eventLane };
+    const eventTrackId = eventTrackForRef(node.targetRef ?? node.event.refName) ?? trackId;
+    const eventLane = eventTrackId ? lanes.get(eventTrackId) ?? lane : lane;
+    // The event track is presentation metadata only.  It never contributes
+    // a commit claim or a new GraphTrack/lane.
+    return { ...node, trackId: eventTrackId, targetLaneId: eventTrackId ?? node.targetLaneId, lane: eventLane };
   });
   return { nodes: laidOut, tracks, lanes };
 }

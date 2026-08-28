@@ -77,10 +77,13 @@ describe('graph fact builder', () => {
     const eventEdges = facts.edges.filter((edge) => edge.type === 'history-event');
     expect(eventEdges).toHaveLength(1);
     expect(eventEdges[0]).toMatchObject({ annotation: 'ref-event', fromNodeId: `commit:${oid('b')}`, toNodeId: 'history:reset:3:b' });
-    expect(facts.nodes.find((node) => node.id === 'history:reset:3:b')).toMatchObject({ anchorCommitId: `commit:${oid('b')}`, annotationOffsetX: 0 });
+    expect(facts.nodes.find((node) => node.id === 'history:reset:3:b')).toMatchObject({
+      anchorCommitId: `commit:${oid('b')}`,
+      targetRef: 'refs/heads/main',
+    });
   });
 
-  it('stacks multiple ref events on the same anchor without creating extra rows', () => {
+  it('keeps multiple ref events as separate timeline facts on one destination', () => {
     const facts = buildGraphFacts({
       ...snapshot,
       historyEvents: [
@@ -91,8 +94,8 @@ describe('graph fact builder', () => {
     const eventNodes = facts.nodes.filter((node) => node.kind === 'history-event');
     expect(eventNodes).toHaveLength(2);
     expect(eventNodes.every((node) => node.anchorCommitId === `commit:${oid('b')}`)).toBe(true);
-    expect(eventNodes[0].annotationOffsetX).toBe(0);
-    expect(eventNodes[1].annotationOffsetX).toBeGreaterThan(eventNodes[0].annotationOffsetX ?? 0);
+    expect(eventNodes.every((node) => node.targetRef === 'refs/heads/main')).toBe(true);
+    expect(eventNodes.every((node) => node.oid === undefined)).toBe(true);
   });
 
   it('keeps operation relationships separate from parent edges', () => {

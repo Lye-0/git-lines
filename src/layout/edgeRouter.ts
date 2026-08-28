@@ -11,14 +11,11 @@ export function pointForNode(node: GraphNode, options: EdgeRouterOptions = {}): 
   const rowHeight = options.rowHeight ?? 38;
   const laneWidth = options.laneWidth ?? 34;
   const leftPadding = options.leftPadding ?? 24;
-  // Ref events sit beside the commit lane.  The offset is deliberately less
-  // than one full lane so an annotation never claims or creates a branch
-  // lane of its own.
-  const eventOffset = node.kind === 'history-event' || node.kind === 'fast-forward-event'
-    ? laneWidth * 0.8 + Math.max(0, node.annotationOffsetX ?? 0)
-    : 0;
   return {
-    x: leftPadding + (node.lane ?? 0) * laneWidth + eventOffset,
+    // Ref events receive the target ref's lane in laneLayout, so their X is
+    // exactly the same as the branch/commit lane.  No annotation offset or
+    // temporary lane is introduced here.
+    x: leftPadding + (node.lane ?? 0) * laneWidth,
     y: 18 + (node.row ?? 0) * rowHeight,
   };
 }
@@ -34,10 +31,11 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
     const a = pointForNode(from, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const b = pointForNode(to, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     if (edge.annotation === 'ref-event') {
-      // Ref events are horizontal annotations at the event's own time row.
-      // The commit lane supplies the x anchor; no vertical segment reaches
-      // the event glyph, so it cannot look like a small branch.
-      const d = `M ${a.x} ${b.y} H ${b.x}`;
+      // Keep the connector vertical on the target lane.  In the usual case
+      // the destination commit is on that lane too; when lane claiming puts a
+      // shared commit elsewhere, this still avoids a branch-like horizontal
+      // segment for the presentation-only annotation.
+      const d = `M ${b.x} ${a.y} L ${b.x} ${b.y}`;
       return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
     }
     // Keep long branch transitions close to the source/target rows. A

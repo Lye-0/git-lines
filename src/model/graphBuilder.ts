@@ -121,7 +121,6 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     }
   }
   const events = options.showReflog === false ? [] : snapshot.historyEvents;
-  const annotationOffsetByAnchor = new Map<string, number>();
   for (const event of events) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
@@ -132,7 +131,6 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       const ref = snapshot.refs.find((candidate) => candidate.fullName === refName);
       return ref ? toGraphRefBadge(ref) : specialRefBadge(refName);
     }), currentBranch);
-    const annotationOffsetX = annotationOffsetByAnchor.get(target.id) ?? 0;
     const node: GraphNode = {
       id: event.id,
       kind: isFastForward ? 'fast-forward-event' : 'history-event',
@@ -143,13 +141,11 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       subject: event.subject,
       event,
       anchorCommitId: target.id,
-      annotationOffsetX,
+      targetRef: event.refName,
     };
     addNode(node);
-    annotationOffsetByAnchor.set(target.id, annotationOffsetX + Math.max(72, label.length * 11 + 32));
-    // A ref move is a view annotation, not a commit relationship.  Anchor a
-    // single dashed connector at the destination commit so the event cannot
-    // visually introduce a branch or merge in the commit DAG.
+    // A ref move is a timeline fact, not a commit relationship.  Keep one
+    // visual connector to the destination while leaving parent edges intact.
     edges.push({ id: `${event.id}:annotation`, type: 'history-event', fromNodeId: target.id, toNodeId: node.id, label: event.sourceLabel, annotation: 'ref-event' });
   }
   const shallowNodes = snapshot.shallowBoundaryOids.map((oid) => nodeByOid.get(oid)).filter((node): node is GraphNode => Boolean(node));

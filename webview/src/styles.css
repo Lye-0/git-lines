@@ -38,7 +38,7 @@ h1, h2, p { margin: 0; }
 .legend-symbol { display: inline-block; width: 18px; text-align: center; margin-right: 4px; font-size: 14px; }
 .legend-line { display: inline-block; width: 18px; margin: 0 4px; vertical-align: middle; border-top: 2px solid currentColor; }
 .legend-line-operation { border-top-style: dotted; border-top-width: 2px; }
-.legend-line-event { border-top-style: dashed; border-top-width: 2px; }
+.legend-line-event { border-top-style: solid; border-top-width: 1.5px; opacity: .72; }
 
 .content-shell { display: flex; flex: 1 1 auto; min-height: 0; min-width: 0; height: auto; }
 .graph-section { min-width: 0; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
@@ -48,17 +48,17 @@ h1, h2, p { margin: 0; }
 .edge { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
 .edge-working-tree, .edge-operation { stroke-dasharray: 2 5; stroke-width: 1.5; }
 .edge-history-event { stroke-dasharray: 5 4; stroke-width: 1.5; }
-.edge-history-event.edge-ref-annotation { stroke-dasharray: 5 4; stroke-width: 1.5; }
+.edge-history-event.edge-ref-annotation { stroke-dasharray: none; stroke-width: 1.5; opacity: .72; }
 .edge-reflog { stroke-width: 1.5; }
 .node circle { fill: var(--graph-bg); stroke-width: 2; }
 .node text { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 13px; }
 .node-symbol { dominant-baseline: central; }
-.node-commit .node-symbol { font-size: 17px; }
+.node-commit .node-symbol { font-size: 18px; }
 .node-reflog-commit .node-symbol { font-size: 16px; }
 .node-fast-forward-event .node-symbol, .node-history-event .node-symbol { font-size: 14px; }
-.node-event-label { font-size: 11px !important; dominant-baseline: central; }
-.node-fast-forward-event, .node-history-event { pointer-events: auto; cursor: help; }
-.node-selected .node-symbol { font-size: 17px; }
+.node-event-label { font-size: 11px !important; dominant-baseline: central; pointer-events: none; }
+.node-fast-forward-event, .node-history-event { opacity: .84; pointer-events: auto; cursor: help; }
+.node-selected .node-symbol { font-size: 18px; }
 .node-ring { opacity: .95; }
 .node-reflog-commit { opacity: .63; }
 .node-history-boundary { opacity: .55; }
@@ -93,7 +93,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .row-working-tree .row-content, .row-operation .row-content { background: color-mix(in srgb, #e3a86b 4%, transparent); }
 .secondary-worktree { opacity: .78; }
 
-.commit-dot { color: var(--graph-text); font-size: 17px; }.work-dot { color: #e3a86b; }.reflog-dot { color: #9292a1; }.ff-dot { color: #81d3a4; }
+.commit-dot { color: var(--graph-text); font-size: 18px; }.work-dot { color: #e3a86b; }.reflog-dot { color: #9292a1; }.ff-dot { color: #81d3a4; }
 .detail-panel { width: min(360px, 42vw); flex: 0 0 min(360px, 42vw); border-left: 1px solid var(--graph-border); background: var(--graph-surface); padding: 16px; overflow: auto; }
 .detail-header { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 18px; }
 .eyebrow { text-transform: uppercase; letter-spacing: .08em; color: var(--graph-muted); font-size: 10px; }

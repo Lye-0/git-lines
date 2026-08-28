@@ -65,9 +65,9 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     result.set(node.id, nextRow++);
   }
 
-  // Ref events are annotations, not part of the structural topological sort.
-  // They receive the already-computed row of their anchor only for rendering;
-  // no row is consumed and no commit row can move when events are toggled.
+  // Ref events are not part of the structural topological sort, but they are
+  // real timeline rows.  Insert each event immediately before its destination
+  // anchor while preserving the structural order and parent constraints.
   const eventAnchorById = new Map(edges
     .filter((edge) => edge.annotation === 'ref-event' && structuralIds.has(edge.fromNodeId))
     .map((edge) => [edge.toNodeId, edge.fromNodeId]));
@@ -75,23 +75,78 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     .filter((node) => node.kind === 'commit' || node.kind === 'reflog-commit' || node.kind === 'history-boundary')
     .filter((node) => node.oid)
     .map((node) => [node.oid as string, node.id]));
-  for (const node of nodes.filter((candidate) => !structuralIds.has(candidate.id)).sort(compareNodes)) {
+  const eventNodes = nodes.filter((candidate) => !structuralIds.has(candidate.id)).sort(compareNodes);
+  const anchorForEvent = (node: GraphNode): string | undefined => {
     const explicitAnchor = node.anchorCommitId && structuralIds.has(node.anchorCommitId) ? node.anchorCommitId : undefined;
-    const anchorId = explicitAnchor ?? eventAnchorById.get(node.id) ?? (node.event?.toOid ? commitIdByOid.get(node.event.toOid) : undefined);
+    return explicitAnchor ?? eventAnchorById.get(node.id) ?? (node.event?.toOid ? commitIdByOid.get(node.event.toOid) : undefined);
+  };
+  const structuralRowSet = new Set(result.values());
+  const canReusePreviousTimeline = Boolean(previousRows && eventNodes.length > 0 && eventNodes.every((node) => {
+    const previousRow = previousRows.get(node.id);
+    if (previousRow === undefined || structuralRowSet.has(previousRow)) return false;
+    const anchorId = anchorForEvent(node);
+    const anchorRow = anchorId === undefined ? undefined : previousRows.get(anchorId);
+    return anchorRow === undefined || previousRow < anchorRow;
+  }));
+  if (canReusePreviousTimeline) {
+    // Appending an older commit page should not move the already visible
+    // timeline.  Reuse event rows that were assigned on the previous page.
+    for (const node of eventNodes) result.set(node.id, previousRows!.get(node.id) as number);
+  } else if (eventNodes.length > 0) {
+    const anchoredEvents = new Map<string, GraphNode[]>();
+    const fallbackEvents: GraphNode[] = [];
+    for (const node of eventNodes) {
+      const anchorId = anchorForEvent(node);
+      if (anchorId !== undefined && result.has(anchorId)) {
+        anchoredEvents.set(anchorId, [...(anchoredEvents.get(anchorId) ?? []), node]);
+      } else {
+        fallbackEvents.push(node);
+      }
+    }
+
+    const structuralSequence = structuralNodes.slice().sort((a, b) => {
+      const row = (result.get(a.id) ?? 0) - (result.get(b.id) ?? 0);
+      return row || compareNodes(a, b);
+    });
+    let cumulativeShift = 0;
+    for (const structuralNode of structuralSequence) {
+      const baseRow = result.get(structuralNode.id) ?? 0;
+      const eventsForAnchor = anchoredEvents.get(structuralNode.id) ?? [];
+      const shiftedRow = baseRow + cumulativeShift;
+      eventsForAnchor.forEach((event, index) => result.set(event.id, shiftedRow + index));
+      result.set(structuralNode.id, shiftedRow + eventsForAnchor.length);
+      cumulativeShift += eventsForAnchor.length;
+    }
+
+    const maxRow = Math.max(-1, ...result.values());
+    fallbackEvents.forEach((event, index) => result.set(event.id, maxRow + index + 1));
+  }
+  for (const node of eventNodes.filter((candidate) => !result.has(candidate.id))) {
+    const anchorId = anchorForEvent(node);
     const anchorRow = anchorId === undefined ? undefined : result.get(anchorId);
-    // GraphBuilder always supplies an anchor. The fallback keeps malformed or
-    // legacy fixtures renderable without extending the timeline.
-    result.set(node.id, anchorRow ?? previousRows?.get(node.id) ?? node.row ?? 0);
+    // Keep malformed or legacy fixtures renderable without joining an event to
+    // a commit row.  Normal GraphBuilder events are handled above.
+    result.set(node.id, anchorRow === undefined ? Math.max(-1, ...result.values()) + 1 : Math.max(0, anchorRow - 1));
+  }
+  const minimumRow = Math.min(...result.values());
+  if (Number.isFinite(minimumRow) && minimumRow < 0) {
+    const shift = Math.ceil(-minimumRow);
+    for (const [id, row] of result) result.set(id, row + shift);
   }
   const laidOut = nodes.map((node) => ({ ...node, row: result.get(node.id) ?? nextRow++ }));
   return { nodes: laidOut, rows: result };
 }
 
 export function assertRowInvariants(nodes: GraphNode[], edges: GraphEdge[]): void {
-  const rows = new Set<number>();
+  const allRows = new Set<number>();
+  const structuralRows = new Set<number>();
+  const eventRows = new Set<number>();
   for (const node of nodes) {
     if (node.row === undefined) throw new Error(`Node ${node.id} has no row`);
-    if (node.kind === 'fast-forward-event' || node.kind === 'history-event') continue;
+    const isEvent = node.kind === 'fast-forward-event' || node.kind === 'history-event';
+    const rows = isEvent ? eventRows : structuralRows;
+    if (allRows.has(node.row)) throw new Error(`Duplicate timeline row ${node.row}`);
+    allRows.add(node.row);
     if (rows.has(node.row)) throw new Error(`Duplicate row ${node.row}`);
     rows.add(node.row);
   }
@@ -100,9 +155,11 @@ export function assertRowInvariants(nodes: GraphNode[], edges: GraphEdge[]): voi
     .filter((edge) => edge.annotation === 'ref-event')
     .map((edge) => [edge.toNodeId, edge.fromNodeId]));
   for (const node of nodes.filter((candidate) => candidate.kind === 'fast-forward-event' || candidate.kind === 'history-event')) {
+    const row = node.row as number;
     const anchorId = node.anchorCommitId ?? eventAnchorById.get(node.id);
     const anchor = anchorId ? byId.get(anchorId) : undefined;
-    if (anchor && node.row !== anchor.row) throw new Error(`Ref event row invariant violated: ${node.id}`);
+    if (anchor && row >= (anchor.row as number)) throw new Error(`Ref event row invariant violated: ${node.id}`);
+    if (anchor && structuralRows.has(row)) throw new Error(`Ref event row collides with structural row: ${node.id}`);
   }
   for (const edge of edges.filter((candidate) => candidate.type === 'parent')) {
     const from = byId.get(edge.fromNodeId);
