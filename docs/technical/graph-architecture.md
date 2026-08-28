@@ -36,7 +36,7 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 3. ready queueのcommitter date、kind、stable idを用いて同じ入力から同じ順序を得る。
 4. primary branchはlane 0に固定し、feature-only ancestryは別laneへ置く。各ref tipからの最短parent距離を比較し、merge後もfeature tipに近いcommitをfeature laneへ残す。
 5. 非primary laneはbranch identityごとに永久予約せず、parent / Working Tree / operation / Ref Eventの表示線を含む連続したY区間をbranch segmentとして割り当てる。segmentのY範囲が重ならない場合は同じlaneを再利用し、重なる場合はlane 1から左側の空きlaneを選ぶ。同一segment内のnodeは同じlaneを維持する。
-6. local/remoteの同一familyは同系色、同一oidなら同一track、divergedなら隣接する別trackとする。laneを再利用しても色はtrack（branch identity）から解決する。
+6. local/remoteの同一familyは同系色とし、同一oidまたはtip同士がDAG上で祖先/子孫関係にある場合はref badgeだけを複数持つ一つのtrackへ統合する。tip同士が比較可能でないdivergedな場合だけ別trackとし、laneを再利用しても色はtrack（branch identity）から解決する。
 7. Working Treeはcheckout中branchのtrackを優先する。同じoidを指す新規branch作成直後でも、commit nodeは増やさずWorking Treeだけをbranch専用segmentへ置き、最初のcommitが作られたら同じsegment laneを引き継ぐ。
 8. paginationでは最初から取得した先行commitのrow / laneを可能な限り維持し、追加parentを下へappendする。既存nodeのlaneを優先しつつ、新しく現れたsegmentには空いている左端laneを割り当てる。current Git stateの更新時だけ再レイアウトを許可する。
 

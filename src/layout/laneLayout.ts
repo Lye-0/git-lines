@@ -125,30 +125,52 @@ function ancestorDistances(tip: string, commits: Map<string, GitCommit>): Map<st
   return result;
 }
 
+function isAncestorOid(ancestorOid: string, descendantOid: string, commits: Map<string, GitCommit>): boolean {
+  if (ancestorOid === descendantOid) return true;
+  return ancestorDistances(descendantOid, commits).has(ancestorOid);
+}
+
+function refsShareLineage(first: GitRef, second: GitRef, commits: Map<string, GitCommit>): boolean {
+  if (!first.oid || !second.oid) return false;
+  return isAncestorOid(first.oid, second.oid, commits) || isAncestorOid(second.oid, first.oid, commits);
+}
+
 function branchRefs(refs: GitRef[]): GitRef[] {
   return refs.filter((ref) => (ref.type === 'local' || ref.type === 'remote') && !ref.fullName.endsWith('/HEAD') && Boolean(ref.oid));
 }
 
-function makeCandidates(refs: GitRef[]): { candidates: TrackCandidate[]; refTrack: Map<string, string> } {
+function makeCandidates(refs: GitRef[], commits: Map<string, GitCommit>): { candidates: TrackCandidate[]; refTrack: Map<string, string> } {
   const grouped = new Map<string, GitRef[]>();
   for (const ref of refs) grouped.set(familyFor(ref), [...(grouped.get(familyFor(ref)) ?? []), ref]);
   const candidates: TrackCandidate[] = [];
   const refTrack = new Map<string, string>();
   for (const [family, familyRefs] of grouped) {
-    const byOid = new Map<string, GitRef[]>();
-    for (const ref of familyRefs) byOid.set(ref.oid as string, [...(byOid.get(ref.oid as string) ?? []), ref]);
-    if (byOid.size === 1) {
-      const refsInGroup = familyRefs.slice().sort((a, b) => refDisplay(a).localeCompare(refDisplay(b)) || a.fullName.localeCompare(b.fullName));
-      const id = `family:${family}`;
-      const candidate: TrackCandidate = { id, family, kind: refsInGroup.some((ref) => ref.type === 'local') ? 'local' : 'remote', refs: refsInGroup, oids: new Set([familyRefs[0].oid as string]) };
+    // A local ref and its remote-tracking counterpart are one visual track
+    // when their tips are comparable in the commit DAG.  Grouping by ref tip
+    // alone would make a mid-chain remote badge create a second lane.  Keep
+    // genuinely diverged tips separate, even when they share a ref family.
+    const lineageGroups: GitRef[][] = [];
+    for (const ref of familyRefs) {
+      const compatibleGroup = lineageGroups.find((group) => group.every((member) => refsShareLineage(member, ref, commits)));
+      if (compatibleGroup) compatibleGroup.push(ref);
+      else lineageGroups.push([ref]);
+    }
+    for (const [groupIndex, group] of lineageGroups.entries()) {
+      const refsInGroup = group.slice().sort((a, b) => refDisplay(a).localeCompare(refDisplay(b)) || a.fullName.localeCompare(b.fullName));
+      const id = lineageGroups.length === 1
+        ? `family:${family}`
+        : refsInGroup.length > 1
+          ? `family:${family}:${groupIndex}`
+          : `${refsInGroup[0].type}:${refsInGroup[0].fullName}`;
+      const candidate: TrackCandidate = {
+        id,
+        family,
+        kind: refsInGroup.some((ref) => ref.type === 'local') ? 'local' : 'remote',
+        refs: refsInGroup,
+        oids: new Set(refsInGroup.map((ref) => ref.oid as string)),
+      };
       candidates.push(candidate);
       for (const ref of refsInGroup) refTrack.set(ref.fullName, id);
-    } else {
-      for (const ref of familyRefs) {
-        const id = `${ref.type}:${ref.fullName}`;
-        candidates.push({ id, family, kind: ref.type as 'local' | 'remote', refs: [ref], oids: new Set([ref.oid as string]) });
-        refTrack.set(ref.fullName, id);
-      }
     }
   }
   return { candidates, refTrack };
@@ -226,7 +248,8 @@ function buildBranchSegments(assignments: NodeAssignment[], edges: GraphFactMode
 
 export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOptions = {}): { nodes: GraphNode[]; tracks: GraphTrack[]; lanes: Map<string, number> } {
   const refs = branchRefs(facts.refs);
-  const { candidates, refTrack } = makeCandidates(refs);
+  const commits = new Map(facts.commits.map((commit) => [commit.oid, commit]));
+  const { candidates, refTrack } = makeCandidates(refs, commits);
   const eventTrackForRef = (refName?: string): string | undefined => {
     if (!refName) return undefined;
     const direct = refTrack.get(refName);
@@ -264,12 +287,20 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     if (a.kind !== b.kind) return a.kind === 'local' ? -1 : 1;
     return a.id.localeCompare(b.id);
   });
-  const commits = new Map(facts.commits.map((commit) => [commit.oid, commit]));
   const claims = new Map<string, Array<{ trackId: string; distance: number }>>();
   for (const candidate of candidates) {
-    const ref = candidate.refs.find((item) => item.type === 'local') ?? candidate.refs[0];
-    if (!ref?.oid) continue;
-    for (const [oid, distance] of ancestorDistances(ref.oid, commits)) {
+    // A unified local/remote track may have one tip ahead of the other.  Use
+    // the union of all grouped ref ancestries so commits reachable only from
+    // the remote-ahead ref are still assigned to the same track.
+    const candidateDistances = new Map<string, number>();
+    for (const ref of candidate.refs) {
+      if (!ref.oid) continue;
+      for (const [oid, distance] of ancestorDistances(ref.oid, commits)) {
+        const knownDistance = candidateDistances.get(oid);
+        if (knownDistance === undefined || distance < knownDistance) candidateDistances.set(oid, distance);
+      }
+    }
+    for (const [oid, distance] of candidateDistances) {
       claims.set(oid, [...(claims.get(oid) ?? []), { trackId: candidate.id, distance }]);
     }
   }

@@ -10,6 +10,38 @@ import type { GraphFactModel, GraphNode } from '../../src/model/graphModel.js';
 const oid = (letter: string) => letter.repeat(40);
 function commitNode(letter: string, date: number): GraphNode { return { id: `commit:${oid(letter)}`, kind: 'commit', oid: oid(letter), refIds: [], timestamp: date, subject: letter }; }
 
+function refFor(shortName: string, type: 'local' | 'remote', commitOid: string) {
+  return {
+    fullName: type === 'local' ? `refs/heads/${shortName}` : `refs/remotes/origin/${shortName}`,
+    shortName: type === 'local' ? shortName : `origin/${shortName}`,
+    type,
+    oid: commitOid,
+  } as const;
+}
+
+function linearRefFacts(localOid: string, remoteOid: string): GraphFactModel {
+  const a = { ...commitNode('a', 1), row: 2 };
+  const b = { ...commitNode('b', 2), row: 1 };
+  const c = { ...commitNode('c', 3), row: 0 };
+  return {
+    nodes: [c, b, a],
+    edges: [
+      { id: 'parent:c:b', type: 'parent', fromNodeId: c.id, toNodeId: b.id },
+      { id: 'parent:b:a', type: 'parent', fromNodeId: b.id, toNodeId: a.id },
+    ],
+    refs: [refFor('feature', 'local', localOid), refFor('feature', 'remote', remoteOid)],
+    commits: [
+      { oid: c.oid!, parentOids: [b.oid!], subject: 'c', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      { oid: b.oid!, parentOids: [a.oid!], subject: 'b', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: a.oid!, parentOids: [], subject: 'a', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ],
+    workingTrees: [],
+    operations: [],
+    events: [],
+    shallowBoundaryOids: [],
+  };
+}
+
 describe('graph layout', () => {
   it('reuses a lane for non-overlapping branch segments', () => {
     const lanes = assignBranchSegmentLanes([
@@ -167,6 +199,62 @@ describe('graph layout', () => {
     const result = computeLaneLayout(facts);
     expect(result.tracks).toHaveLength(1);
     expect(result.tracks[0].refNames).toEqual(refs.map((ref) => ref.fullName));
+  });
+
+  it('keeps a local-ahead and remote mid-chain ref on one lane', () => {
+    const facts = linearRefFacts(oid('c'), oid('b'));
+    const result = computeLaneLayout(facts);
+    expect(result.tracks).toHaveLength(1);
+    expect(new Set(result.nodes.map((node) => node.lane))).toEqual(new Set([1]));
+    expect(result.tracks[0]?.refNames).toEqual(facts.refs.map((ref) => ref.fullName));
+  });
+
+  it('keeps a remote-ahead and local mid-chain ref on one lane', () => {
+    const facts = linearRefFacts(oid('b'), oid('c'));
+    const result = computeLaneLayout(facts);
+    expect(result.tracks).toHaveLength(1);
+    // The remote tip is beyond the local tip; all three commits must still be
+    // claimed by the unified family track rather than falling back to lane 0.
+    expect(new Set(result.nodes.map((node) => node.lane))).toEqual(new Set([1]));
+    expect(result.nodes.every((node) => node.trackId === 'family:feature')).toBe(true);
+  });
+
+  it('keeps genuinely diverged local and remote tips on different lanes', () => {
+    const base = { ...commitNode('a', 1), row: 2 };
+    const local = { ...commitNode('b', 2), row: 0 };
+    const remote = { ...commitNode('c', 2), row: 1 };
+    const facts: GraphFactModel = {
+      nodes: [local, remote, base],
+      edges: [
+        { id: 'parent:b:a', type: 'parent', fromNodeId: local.id, toNodeId: base.id },
+        { id: 'parent:c:a', type: 'parent', fromNodeId: remote.id, toNodeId: base.id },
+      ],
+      refs: [refFor('feature', 'local', local.oid!), refFor('feature', 'remote', remote.oid!)],
+      commits: [
+        { oid: local.oid!, parentOids: [base.oid!], subject: 'local', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+        { oid: remote.oid!, parentOids: [base.oid!], subject: 'remote', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+        { oid: base.oid!, parentOids: [], subject: 'base', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+      ],
+      workingTrees: [],
+      operations: [],
+      events: [],
+      shallowBoundaryOids: [],
+    };
+    const result = computeLaneLayout(facts);
+    const localNode = result.nodes.find((node) => node.oid === local.oid)!;
+    const remoteNode = result.nodes.find((node) => node.oid === remote.oid)!;
+    expect(result.tracks).toHaveLength(2);
+    expect(localNode.trackId).not.toBe(remoteNode.trackId);
+    expect(localNode.lane).not.toBe(remoteNode.lane);
+  });
+
+  it('does not move a branch lane when a remote badge appears mid-chain', () => {
+    const facts = linearRefFacts(oid('c'), oid('b'));
+    const result = computeLaneLayout(facts);
+    const lanesByOid = new Map(result.nodes.map((node) => [node.oid, node.lane]));
+    expect(lanesByOid.get(oid('c'))).toBe(lanesByOid.get(oid('b')));
+    expect(lanesByOid.get(oid('b'))).toBe(lanesByOid.get(oid('a')));
+    expect(result.tracks[0]?.refNames).toContain('refs/remotes/origin/feature');
   });
 
   it('keeps existing row and lane assignments when older page nodes are appended', () => {
