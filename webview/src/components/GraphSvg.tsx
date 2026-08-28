@@ -1,7 +1,7 @@
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { pointForNode } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
-import { eventLabelForWidth, eventTooltip, isRefEvent } from './eventPresentation';
+import { eventTooltip, isRefEvent } from './eventPresentation';
 
 function pathFor(fromX: number, fromY: number, toX: number, toY: number): string {
   const delta = Math.min(56, Math.max(8, Math.abs(toY - fromY) * 0.28));
@@ -12,7 +12,7 @@ function annotationPath(_fromX: number, fromY: number, toX: number, toY: number)
   return `M ${toX} ${fromY} L ${toX} ${toY}`;
 }
 
-export function GraphSvg({ layout, width, labelWidth = width, height, selected }: { layout: GraphLayout; width: number; labelWidth?: number; height?: number; selected?: string }) {
+export function GraphSvg({ layout, width, height, selected }: { layout: GraphLayout; width: number; height?: number; selected?: string }) {
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
   const edgeById = new Map(layout.edges.map((edge) => [edge.id, edge]));
   const colorByTrack = new Map(layout.tracks.map((track) => [track.id, track.color]));
@@ -48,7 +48,6 @@ export function GraphSvg({ layout, width, labelWidth = width, height, selected }
       <circle className="node-mask" r={nodeRadius} aria-hidden="true" />
       {isSelected && <circle className="node-ring" r="10" fill="none" stroke={track} />}
       <text className="node-symbol" x="0" y="1" textAnchor="middle" fill={track}>{symbol}</text>
-      {refEvent && <text className="node-event-label" x="12" y="4" textAnchor="start" fill={track}>{eventLabelForWidth(node, labelWidth, p.x)}</text>}
     </g>;
   };
   const canvasHeight = height ?? Math.max(50, layout.nodes.reduce((max, node) => Math.max(max, (node.row ?? 0) + 1), 0) * layout.rowHeight);

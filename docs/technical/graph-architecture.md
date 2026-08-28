@@ -53,7 +53,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 4. `createGraphLayout`がrow→laneの順に計算し、WebviewへpostMessageする。
 5. Webviewはcommit選択時だけdetail/files/statsをon-demand取得し、グラフ専用のスクロール領域を持つ。下端手前で次ページを自動取得し、手動refresh・focus・Git metadata watchでも再読込する。
 
-グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行は最大幅を持つまとまりとしてその右側から開始する。Ref Eventは`anchorCommitId`でdestination commitを参照し、構造DAGのtopological計算からは除外したまま、destinationの直上へ独立したtimeline rowを割り当てる。同じイベントの`targetRef`を`targetLaneId`へ解決して対象branch/refと同じX座標に置き、イベントのためのGraphTrackや横方向の分岐は作らない。annotation edgeは同一lane内の縦コネクタとして描画し、イベントの`from`側をcommit DAGの線として描画しない。同一destinationに複数イベントがある場合は必要な数だけ独立rowを連続して割り当てる。Working Tree / operationは細い点線、commit parentとRef Event annotationは実線で表示する。commit rowのref badgeはcheckout中local branch、その他local、対応remote、その他remote、tag/specialの順にcommit本文の近くへ配置し、tagは形状を変えてbranch laneを作らない。Ref Eventのrowには`REF EVENT`種別ラベルや同一refの重複badgeを表示せず、diamond glyphと`FF · +N commits · operation`形式の幅に応じたcompact labelをSVGグラフ領域内に描画する。raw reflog、OID、影響ref、日時などの詳細はSVG tooltipへ分離する。edge layerを先に、node layerを後に描画し、nodeの背景マスクで線が記号を横切らないようにする。commitとWorking Treeの`●`/`○`は20pxで揃え、graph areaの幅はbranch lane数だけで決まり、長いevent textでは広がらない。凡例はtoolbarのpopoverから参照できる。
+グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行は最大幅を持つまとまりとしてその右側から開始する。Ref Eventは`anchorCommitId`でdestination commitを参照し、構造DAGのtopological計算からは除外したまま、destinationの直上へ独立したtimeline rowを割り当てる。同じイベントの`targetRef`を`targetLaneId`へ解決して対象branch/refと同じX座標に置き、イベントのためのGraphTrackや横方向の分岐は作らない。annotation edgeは同一lane内の縦コネクタとして描画し、イベントの`from`側をcommit DAGの線として描画しない。同一destinationに複数イベントがある場合は必要な数だけ独立rowを連続して割り当てる。Working Tree / operationは細い点線、commit parentとRef Event annotationは実線で表示する。commit rowのref badgeはcheckout中local branch、その他local、対応remote、その他remote、tag/specialの順にcommit本文の近くへ配置し、tagは形状を変えてbranch laneを作らない。Ref Eventのrowには`REF EVENT`種別ラベルや同一refの重複badgeを表示せず、diamond glyphだけをSVGのbranch lane上へ描画し、`FF · +N commits · operation`形式のイベント文字列は通常commitと同じHTML content columnから開始する。raw reflog、OID、影響ref、日時などの詳細はSVG glyphと行文字列のtooltipへ分離する。edge layerを先に、node layerを後に描画し、nodeの背景マスクで線が記号を横切らないようにする。commitとWorking Treeの`●`/`○`は20pxで揃え、graph areaの幅はbranch lane数だけで決まり、長いevent textでは広がらない。凡例はtoolbarのpopoverから参照できる。
 
 ## Security / Accessibility
 
@@ -64,6 +64,6 @@ Gitは`spawn`へ引数配列を渡し、shell文字列連結を行わない。We
 - `tests/unit/parsers.test.ts` — NUL形式log/ref/reflog、porcelain status、worktree parser
 - `tests/unit/layout.test.ts` — row一意性、timestamp inversion、primary lane、distance-based feature lane、同一laneの独立Ref Event row、縦annotation
 - `tests/unit/history-events.test.ts` — FF/reset/amend/rebaseの保守的分類、`old..new`件数、操作名
-- `tests/unit/event-presentation.test.ts` — FFラベルの単数/複数、幅別compact表示、tooltip情報
+- `tests/unit/event-presentation.test.ts` — FFラベルの単数/複数、幅別compact表示、content column配置、tooltip情報
 - `tests/unit/graph-builder.test.ts` — ref dedup、tag、常時Working Tree、2/3-parent edge、destination/targetRef付きRef Event
 - `tests/integration/git-client.test.ts` — 実Git repository fixtureからのbranch/ref/status読み取り、long feature merge、未commitbranch、first commit

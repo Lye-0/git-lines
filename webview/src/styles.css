@@ -60,7 +60,6 @@ h1, h2, p { margin: 0; }
 .node-working-tree .node-symbol, .node-operation .node-symbol { font-size: 20px; }
 .node-reflog-commit .node-symbol { font-size: 16px; }
 .node-fast-forward-event .node-symbol, .node-history-event .node-symbol { font-size: 14px; }
-.node-event-label { font-size: 11px !important; dominant-baseline: central; pointer-events: none; }
 .node-fast-forward-event, .node-history-event { opacity: .84; pointer-events: auto; cursor: help; }
 .node-selected .node-symbol { font-size: 20px; }
 .node-ring { opacity: .95; }
@@ -93,6 +92,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .ref-badge-special { color: var(--graph-muted); border-color: var(--graph-border); opacity: .7; }
 .row-history-event .row-content, .row-fast-forward-event .row-content { background: color-mix(in srgb, var(--graph-accent) 4%, transparent); }
 .row-history-event .row-kind, .row-fast-forward-event .row-kind { color: var(--graph-accent); }
+.row-history-event .event-subject, .row-fast-forward-event .event-subject { color: var(--row-track-color, var(--graph-accent)); font-weight: 500; }
 .row-working-tree .subject, .row-operation .subject { color: #e3a86b; font-weight: 600; }
 .row-working-tree .row-content, .row-operation .row-content { background: color-mix(in srgb, #e3a86b 4%, transparent); }
 .secondary-worktree { opacity: .78; }

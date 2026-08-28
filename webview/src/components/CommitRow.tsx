@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
-import { eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
+import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
 
 function kindLabel(kind: GraphNode['kind']): string | undefined {
   if (kind === 'reflog-commit') return 'Reflog-only';
@@ -45,7 +45,7 @@ function operationSummary(node: GraphNode): string | undefined {
   return node.operation.detail || (node.operation.sourceOids.length ? `${node.operation.sourceOids.length} source commit${node.operation.sourceOids.length === 1 ? '' : 's'}` : 'Waiting for Git to finish');
 }
 
-export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks = [] }: { node: GraphNode; rowHeight: number; selected: boolean; hidden?: boolean; onSelect: (oid: string) => void; tracks?: GraphTrack[] }) {
+export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks = [], eventLabelWidth, eventLabelX = 0 }: { node: GraphNode; rowHeight: number; selected: boolean; hidden?: boolean; onSelect: (oid: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number }) {
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const working = workingSummary(node);
   const operation = operationSummary(node);
@@ -55,9 +55,9 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   const kind = refEvent || node.kind === 'working-tree' || node.kind === 'operation' ? undefined : kindLabel(node.kind);
   const title = working?.title ?? node.label ?? node.subject ?? '';
   const subtitle = working?.detail ?? operation;
-  // The event label already contains its affected ref.  Repeating the same
-  // branch badge beside it makes the annotation look like a second ref row;
-  // detailed affected-ref data remains available through the event model.
+  // Ref Event text is rendered in the shared content column.  Repeating the
+  // affected refs as badges would make the annotation look like a second ref
+  // row; detailed affected-ref data remains available in its tooltip.
   const badges = refEvent ? [] : node.refBadges ?? node.refIds.map((name) => specialRefBadge(name));
   const commitMeta = node.commit
     ? [node.commit.oid.slice(0, 8), node.commit.authorName, relativeTime(node.commit.committerDate)].filter(Boolean).join(' · ')
@@ -65,8 +65,18 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   const primaryTrack = node.trackId ? tracks.find((track) => track.id === node.trackId) : undefined;
   const rowStyle = { top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px`, '--row-track-color': primaryTrack?.color } as CSSProperties;
   if (refEvent) {
+    const fullEventLabel = eventMainLabel(node);
+    const eventLabel = eventLabelForWidth(node, eventLabelWidth ?? Number.POSITIVE_INFINITY, eventLabelX);
+    const tooltip = eventTooltip(node);
     return <div className={`commit-row row-${node.kind}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
-      <span className="sr-only">{eventMainLabel(node)}. {eventTooltip(node)}</span>
+      <div className="row-content event-row-content">
+        <div className="row-primary">
+          <div className="row-text">
+            <span className="subject event-subject" title={tooltip}>{eventLabel}</span>
+            <span className="sr-only">{fullEventLabel}. {tooltip}</span>
+          </div>
+        </div>
+      </div>
     </div>;
   }
   const content = <div className={`row-content ${selected ? 'selected' : ''}`}>
