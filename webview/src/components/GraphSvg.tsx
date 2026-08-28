@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { pointForNode } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
+import { gradientForEdge } from './edgePresentation';
 import { eventTooltip, isRefEvent } from './eventPresentation';
 
 function pathFor(fromX: number, fromY: number, toX: number, toY: number): string {
@@ -36,6 +37,30 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     return [{ ...edge, d: edge.annotation === 'ref-event' ? annotationPath(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) : pathFor(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) }];
   });
   const visiblePaths = filterRenderableEdgePaths(paths, layout.edges, layout.nodes);
+  const gradients = visiblePaths.flatMap((edge, index) => {
+    const definition = edgeById.get(edge.id);
+    const source = definition ? byId.get(definition.fromNodeId) : undefined;
+    const target = definition ? byId.get(definition.toNodeId) : undefined;
+    if (!definition || !source || !target) return [];
+    const sourceColor = source.trackId ? colorByTrack.get(source.trackId) : undefined;
+    const targetColor = target.trackId ? colorByTrack.get(target.trackId) : undefined;
+    const gradient = gradientForEdge({
+      edge: definition,
+      source,
+      target,
+      sourceColor,
+      targetColor,
+      id: `edge-gradient-${index}-${edge.id.replace(/[^A-Za-z0-9_-]/g, '-')}`,
+    });
+    if (!gradient) return [];
+    return [{
+      edgeId: edge.id,
+      ...gradient,
+      sourcePoint: point(definition.fromNodeId),
+      targetPoint: point(definition.toNodeId),
+    }];
+  });
+  const gradientByEdgeId = new Map(gradients.map((gradient) => [gradient.edgeId, gradient]));
   const renderEdge = (edge: (typeof visiblePaths)[number]) => {
     const definition = edgeById.get(edge.id);
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
@@ -44,7 +69,9 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     const track = annotation ? target?.trackId ?? source?.trackId : source?.trackId;
     const baseOpacity = opacityByTrack.get(track ?? '') ?? 1;
     const muted = source?.kind === 'reflog-commit' || target?.kind === 'reflog-commit';
-    return <path key={edge.id} d={edge.d} className={`edge edge-${edge.type}${annotation ? ' edge-ref-annotation' : ''}${muted ? ' edge-reflog' : ''}`} stroke={colorByTrack.get(track ?? '') ?? 'var(--graph-muted)'} opacity={muted ? baseOpacity * 0.68 : baseOpacity} />;
+    const gradient = gradientByEdgeId.get(edge.id);
+    const stroke = gradient ? `url(#${gradient.id})` : colorByTrack.get(track ?? '') ?? 'var(--graph-muted)';
+    return <path key={edge.id} d={edge.d} className={`edge edge-${edge.type}${annotation ? ' edge-ref-annotation' : ''}${muted ? ' edge-reflog' : ''}`} stroke={stroke} opacity={muted ? baseOpacity * 0.68 : baseOpacity} />;
   };
   const renderNode = (node: (typeof layout.nodes)[number]) => {
     const p = point(node.id);
@@ -63,6 +90,10 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
   };
   const canvasHeight = height ?? Math.max(50, layout.nodes.reduce((max, node) => Math.max(max, (node.row ?? 0) + 1), 0) * layout.rowHeight);
   return <svg className="graph-svg" width={width} height={canvasHeight} aria-hidden="true">
+    {gradients.length > 0 && <defs>{gradients.map((gradient) => <linearGradient key={gradient.id} id={gradient.id} gradientUnits="userSpaceOnUse" x1={gradient.sourcePoint.x} y1={gradient.sourcePoint.y} x2={gradient.targetPoint.x} y2={gradient.targetPoint.y}>
+      <stop offset="0%" stopColor={gradient.sourceColor} />
+      <stop offset="100%" stopColor={gradient.targetColor} />
+    </linearGradient>)}</defs>}
     <g className="graph-edges">{visiblePaths.map(renderEdge)}</g>
     <g className="graph-nodes">{layout.nodes.map(renderNode)}</g>
   </svg>;
