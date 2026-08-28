@@ -32,16 +32,18 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
     const a = pointForNode(from, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const b = pointForNode(to, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     if (edge.annotation === 'ref-event') {
-      // Ref events are horizontal annotations from the destination commit to
-      // the event glyph.  They are intentionally not routed as a pair of
-      // parent-like curves, which could imply a branch split and rejoin.
-      const d = `M ${a.x} ${a.y} H ${b.x} V ${b.y}`;
+      // Ref events are horizontal annotations at the event's own time row.
+      // The commit lane supplies the x anchor; no vertical segment reaches
+      // the event glyph, so it cannot look like a small branch.
+      const d = `M ${a.x} ${b.y} H ${b.x}`;
       return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
     }
     // Keep long branch transitions close to the source/target rows. A
     // distance-proportional control point creates a wide braid when a branch
     // joins an older commit many rows below it.
-    const delta = Math.min(56, Math.max(8, Math.abs(b.y - a.y) * 0.28));
+    const delta = edge.type === 'working-tree' || edge.type === 'operation'
+      ? Math.min(32, Math.max(8, Math.abs(b.y - a.y) * 0.16))
+      : Math.min(56, Math.max(8, Math.abs(b.y - a.y) * 0.28));
     const d = `M ${a.x} ${a.y} C ${a.x} ${a.y + delta}, ${b.x} ${b.y - delta}, ${b.x} ${b.y}`;
     return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
   });

@@ -47,6 +47,7 @@ function primaryBranch(snapshot: RepositorySnapshot, configured?: string | null)
 }
 
 export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuilderOptions = {}): GraphFactModel {
+  const currentBranch = snapshot.workingTrees.find((tree) => !tree.inaccessible && tree.branch)?.branch;
   const visibleCount = Math.min(snapshot.visibleCommitCount, snapshot.commits.length);
   const visibleCommits = snapshot.commits.slice(0, visibleCount);
   const visibleOids = new Set(visibleCommits.map((commit) => commit.oid));
@@ -59,7 +60,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
   }
   const nodes: GraphNode[] = commits.map((commit) => {
-    const refBadges = uniqueGraphRefBadges(refsByOid.get(commit.oid) ?? []);
+    const refBadges = uniqueGraphRefBadges(refsByOid.get(commit.oid) ?? [], currentBranch);
     return {
       id: `commit:${commit.oid}`,
       kind: reachableOids.has(commit.oid) ? 'commit' : 'reflog-commit',
@@ -128,7 +129,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     const refBadges = uniqueGraphRefBadges(affectedRefs.map((refName) => {
       const ref = snapshot.refs.find((candidate) => candidate.fullName === refName);
       return ref ? toGraphRefBadge(ref) : specialRefBadge(refName);
-    }));
+    }), currentBranch);
     const node: GraphNode = {
       id: event.id,
       kind: isFastForward ? 'fast-forward-event' : 'history-event',

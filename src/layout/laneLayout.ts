@@ -146,18 +146,6 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     if (trackId === primaryCandidate?.id) return -10;
     return candidate.kind === 'local' ? 0 : 1;
   };
-  const eventTracksByOid = new Map<string, string[]>();
-  for (const event of facts.events) {
-    const trackId = refTrack.get(event.refName);
-    if (!trackId) continue;
-    for (const oid of [event.fromOid, event.toOid]) {
-      if (!oid) continue;
-      eventTracksByOid.set(oid, [...(eventTracksByOid.get(oid) ?? []), trackId]);
-    }
-  }
-  const trackForEventOid = (oid: string): string | undefined => eventTracksByOid.get(oid)
-    ?.slice()
-    .sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))[0];
   const trackForClaim = (oid: string): string | undefined => claims.get(oid)
     ?.slice()
     .sort((a, b) => a.distance - b.distance || priority(a.trackId) - priority(b.trackId) || a.trackId.localeCompare(b.trackId))[0]
@@ -173,7 +161,6 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
       trackId = ref ? refTrack.get(ref.fullName) : undefined;
     }
     if (!trackId && node.oid) trackId = trackForClaim(node.oid);
-    if (!trackId && node.oid) trackId = trackForEventOid(node.oid);
     if (!trackId && node.event?.refName) trackId = refTrack.get(node.event.refName);
     const lane = trackId ? lanes.get(trackId) : 0;
     return { node, trackId, lane: lane ?? 0 };

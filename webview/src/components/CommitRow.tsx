@@ -6,8 +6,6 @@ function kindLabel(kind: GraphNode['kind']): string | undefined {
   if (kind === 'reflog-commit') return 'Reflog-only';
   if (kind === 'working-tree') return 'Working Tree';
   if (kind === 'operation') return 'Operation';
-  if (kind === 'fast-forward-event') return 'Ref event';
-  if (kind === 'history-event') return 'Ref event';
   if (kind === 'history-boundary') return 'History boundary';
   return undefined;
 }
@@ -50,17 +48,21 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const working = workingSummary(node);
   const operation = operationSummary(node);
+  const refEvent = node.kind === 'fast-forward-event' || node.kind === 'history-event';
   // The title already identifies these state rows ("Working Tree" or
   // "Merge in progress"); repeating a second kind label only adds noise.
-  const kind = node.kind === 'working-tree' || node.kind === 'operation' ? undefined : kindLabel(node.kind);
+  const kind = refEvent || node.kind === 'working-tree' || node.kind === 'operation' ? undefined : kindLabel(node.kind);
   const title = working?.title ?? node.label ?? node.subject ?? '';
   const subtitle = working?.detail ?? operation;
-  const badges = node.refBadges ?? node.refIds.map((name) => specialRefBadge(name));
+  // The event label already contains its affected ref.  Repeating the same
+  // branch badge beside it makes the annotation look like a second ref row;
+  // detailed affected-ref data remains available through the event model.
+  const badges = refEvent ? [] : node.refBadges ?? node.refIds.map((name) => specialRefBadge(name));
   const commitMeta = node.commit
     ? [node.commit.oid.slice(0, 8), node.commit.authorName, relativeTime(node.commit.committerDate)].filter(Boolean).join(' · ')
     : undefined;
   const primaryTrack = node.trackId ? tracks.find((track) => track.id === node.trackId) : undefined;
-  const rowStyle = { top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-track-color': primaryTrack?.color } as CSSProperties;
+  const rowStyle = { top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px`, '--row-track-color': primaryTrack?.color } as CSSProperties;
   const content = <div className={`row-content ${selected ? 'selected' : ''}`}>
     <div className="row-primary">
       {kind && <span className="row-kind">{kind}</span>}

@@ -7,8 +7,8 @@ function pathFor(fromX: number, fromY: number, toX: number, toY: number): string
   return `M ${fromX} ${fromY} C ${fromX} ${fromY + delta}, ${toX} ${toY - delta}, ${toX} ${toY}`;
 }
 
-function annotationPath(fromX: number, fromY: number, toX: number, toY: number): string {
-  return `M ${fromX} ${fromY} H ${toX} V ${toY}`;
+function annotationPath(fromX: number, y: number, toX: number): string {
+  return `M ${fromX} ${y} H ${toX}`;
 }
 
 export function GraphSvg({ layout, width, height, selected }: { layout: GraphLayout; width: number; height?: number; selected?: string }) {
@@ -21,7 +21,7 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     if (!byId.has(edge.fromNodeId) || !byId.has(edge.toNodeId)) return [];
     const fromPoint = point(edge.fromNodeId);
     const toPoint = point(edge.toNodeId);
-    return [{ ...edge, d: edge.annotation === 'ref-event' ? annotationPath(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) : pathFor(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) }];
+    return [{ ...edge, d: edge.annotation === 'ref-event' ? annotationPath(fromPoint.x, toPoint.y, toPoint.x) : pathFor(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) }];
   });
   const visiblePaths = filterRenderableEdgePaths(paths, layout.edges, layout.nodes);
   const renderEdge = (edge: (typeof visiblePaths)[number]) => {

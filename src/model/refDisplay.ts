@@ -50,8 +50,26 @@ export function isUserFacingRef(ref: GitRef): boolean {
   return !pseudo && !symbolicRemoteHead && (ref.type === 'local' || ref.type === 'remote' || ref.type === 'tag');
 }
 
-export function uniqueGraphRefBadges(badges: GraphRefBadge[]): GraphRefBadge[] {
+/**
+ * Sorts badges by their relationship to the currently checked-out branch so
+ * the most useful ref is adjacent to the commit text.  The optional branch
+ * argument is a short local branch name (for example `feature/login`).
+ */
+export function uniqueGraphRefBadges(badges: GraphRefBadge[], currentBranch?: string): GraphRefBadge[] {
   const byFullName = new Map<string, GraphRefBadge>();
   for (const badge of badges) byFullName.set(badge.fullName, badge);
-  return [...byFullName.values()].sort((a, b) => a.name.localeCompare(b.name) || a.fullName.localeCompare(b.fullName));
+  const normalizedCurrent = currentBranch ? normalizeRefName(currentBranch) : undefined;
+  const priority = (badge: GraphRefBadge): number => {
+    if (badge.kind === 'local') return normalizedCurrent && badge.name === normalizedCurrent ? 0 : 1;
+    if (badge.kind === 'remote') {
+      const corresponding = normalizedCurrent && badge.name.endsWith(`/${normalizedCurrent}`);
+      return corresponding ? 2 : 3;
+    }
+    if (badge.kind === 'tag') return 4;
+    return 5;
+  };
+  return [...byFullName.values()].sort((a, b) => priority(a) - priority(b)
+    || Number(Boolean(b.isDefault)) - Number(Boolean(a.isDefault))
+    || a.name.localeCompare(b.name)
+    || a.fullName.localeCompare(b.fullName));
 }

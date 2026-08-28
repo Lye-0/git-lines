@@ -147,11 +147,48 @@ describe('graph layout', () => {
     const withoutEvent = createGraphLayout(baseFacts, { visibleCommitCount: 2, hasMore: false });
     const withEvent = createGraphLayout(eventFacts, { visibleCommitCount: 2, hasMore: false });
     const commitLanes = (layout: ReturnType<typeof createGraphLayout>) => new Map(layout.nodes.filter((node) => node.kind === 'commit').map((node) => [node.id, node.lane]));
+    const commitRows = (layout: ReturnType<typeof createGraphLayout>) => new Map(layout.nodes.filter((node) => node.kind === 'commit').map((node) => [node.id, node.row]));
     expect(commitLanes(withEvent)).toEqual(commitLanes(withoutEvent));
+    expect(commitRows(withEvent)).toEqual(commitRows(withoutEvent));
     expect(withEvent.edges.filter((edge) => edge.type === 'parent').map((edge) => edge.id)).toEqual([parentEdge.id]);
+    expect(withEvent.edgePaths?.find((path) => path.id === parentEdge.id)?.d).toBe(withoutEvent.edgePaths?.find((path) => path.id === parentEdge.id)?.d);
+    expect(withEvent.tracks.some((track) => track.id === event.id)).toBe(false);
     const annotation = withEvent.edgePaths?.find((path) => path.annotation === 'ref-event');
     expect(annotation?.d).toContain(' H ');
+    expect(annotation?.d).not.toContain(' V ');
     expect(withEvent.edgePaths?.some((path) => path.id.endsWith(':from'))).toBe(false);
     expect(routeEdges(withEvent.nodes, withEvent.edges).filter((path) => path.annotation === 'ref-event')).toHaveLength(1);
+  });
+
+  it('does not let an event assign an otherwise unclaimed commit to a branch lane', () => {
+    const head = { ...commitNode('a', 2), refIds: ['main'] };
+    const orphan = commitNode('b', 1);
+    const event: GraphNode = {
+      id: 'event:feature-reset',
+      kind: 'history-event',
+      refIds: ['feature'],
+      timestamp: 3,
+      label: 'Reset · feature',
+      event: { id: 'event:feature-reset', type: 'reset', refName: 'refs/heads/feature', fromOid: orphan.oid!, toOid: head.oid!, timestamp: 3 },
+    };
+    const refs = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: head.oid! },
+      { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local' as const, oid: head.oid! },
+    ];
+    const commits = [
+      { oid: head.oid!, parentOids: [], subject: 'head', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: orphan.oid!, parentOids: [], subject: 'orphan', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+    const baseFacts: GraphFactModel = { nodes: [head, orphan], edges: [], refs, commits, workingTrees: [], operations: [], events: [], primaryBranch: 'main', shallowBoundaryOids: [] };
+    const eventFacts: GraphFactModel = {
+      ...baseFacts,
+      nodes: [head, orphan, event],
+      edges: [{ id: 'event:feature-reset:annotation', type: 'history-event', fromNodeId: head.id, toNodeId: event.id, annotation: 'ref-event' }],
+      events: [event.event!],
+    };
+    const withoutEvent = createGraphLayout(baseFacts, { visibleCommitCount: 2, hasMore: false });
+    const withEvent = createGraphLayout(eventFacts, { visibleCommitCount: 2, hasMore: false });
+    expect(withEvent.nodes.find((node) => node.id === orphan.id)?.lane).toBe(withoutEvent.nodes.find((node) => node.id === orphan.id)?.lane);
+    expect(withEvent.nodes.find((node) => node.id === orphan.id)?.row).toBe(withoutEvent.nodes.find((node) => node.id === orphan.id)?.row);
   });
 });

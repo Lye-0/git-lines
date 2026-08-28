@@ -130,6 +130,11 @@ describe('GitClient integration fixture', () => {
     const baseOid = fixture.run(['rev-parse', 'HEAD']).trim();
     fixture.run(['update-ref', 'refs/remotes/origin/main', baseOid]);
     fixture.run(['switch', '-c', 'feat/test']);
+    const beforeSnapshot = await new GitClient().readSnapshot(fixture.root, 30, false);
+    const beforeFacts = buildGraphFacts(beforeSnapshot, { showReflog: false });
+    const beforeLayout = createGraphLayout(beforeFacts, { visibleCommitCount: beforeSnapshot.visibleCommitCount, hasMore: beforeSnapshot.hasMore, primaryBranch: beforeFacts.primaryBranch });
+    const beforeWorking = beforeLayout.nodes.find((node) => node.kind === 'working-tree');
+    const beforeTrack = beforeLayout.tracks.find((track) => track.id === beforeWorking?.trackId);
     commitFixture(fixture, 'first feature commit', '2026-08-27T10:00:00+09:00');
     const featureOid = fixture.run(['rev-parse', 'HEAD']).trim();
     const snapshot = await new GitClient().readSnapshot(fixture.root, 30, false);
@@ -138,6 +143,9 @@ describe('GitClient integration fixture', () => {
     const featureNode = layout.nodes.find((node) => node.oid === featureOid && node.kind === 'commit');
     const baseNode = layout.nodes.find((node) => node.oid === baseOid && node.kind === 'commit');
     const working = layout.nodes.find((node) => node.kind === 'working-tree');
+    expect(beforeWorking?.lane).toBeGreaterThan(0);
+    expect(featureNode?.lane).toBe(beforeWorking?.lane);
+    expect(layout.tracks.find((track) => track.id === beforeTrack?.id)?.color).toBe(beforeTrack?.color);
     expect(featureNode?.lane).toBeGreaterThan(baseNode?.lane ?? -1);
     expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'parent', fromNodeId: featureNode?.id, toNodeId: baseNode?.id }));
     expect(working?.oid).toBe(featureOid);
