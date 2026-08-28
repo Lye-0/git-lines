@@ -11,7 +11,10 @@ export function pointForNode(node: GraphNode, options: EdgeRouterOptions = {}): 
   const rowHeight = options.rowHeight ?? 38;
   const laneWidth = options.laneWidth ?? 34;
   const leftPadding = options.leftPadding ?? 24;
-  const eventOffset = node.kind === 'history-event' || node.kind === 'fast-forward-event' ? laneWidth * 0.3 : 0;
+  // Ref events sit beside the commit lane.  The offset is deliberately less
+  // than one full lane so an annotation never claims or creates a branch
+  // lane of its own.
+  const eventOffset = node.kind === 'history-event' || node.kind === 'fast-forward-event' ? laneWidth * 0.8 : 0;
   return {
     x: leftPadding + (node.lane ?? 0) * laneWidth + eventOffset,
     y: 18 + (node.row ?? 0) * rowHeight,
@@ -22,17 +25,24 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
   const rowHeight = options.rowHeight ?? 38;
   const laneWidth = options.laneWidth ?? 34;
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  return edges.flatMap((edge) => {
+  return edges.flatMap<EdgePath>((edge) => {
     const from = byId.get(edge.fromNodeId);
     const to = byId.get(edge.toNodeId);
     if (!from || !to) return [];
     const a = pointForNode(from, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const b = pointForNode(to, { rowHeight, laneWidth, leftPadding: options.leftPadding });
+    if (edge.annotation === 'ref-event') {
+      // Ref events are horizontal annotations from the destination commit to
+      // the event glyph.  They are intentionally not routed as a pair of
+      // parent-like curves, which could imply a branch split and rejoin.
+      const d = `M ${a.x} ${a.y} H ${b.x} V ${b.y}`;
+      return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
+    }
     // Keep long branch transitions close to the source/target rows. A
     // distance-proportional control point creates a wide braid when a branch
     // joins an older commit many rows below it.
     const delta = Math.min(56, Math.max(8, Math.abs(b.y - a.y) * 0.28));
     const d = `M ${a.x} ${a.y} C ${a.x} ${a.y + delta}, ${b.x} ${b.y - delta}, ${b.x} ${b.y}`;
-    return [{ id: edge.id, type: edge.type, d, label: edge.label }];
+    return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
   });
 }

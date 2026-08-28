@@ -7,6 +7,10 @@ function pathFor(fromX: number, fromY: number, toX: number, toY: number): string
   return `M ${fromX} ${fromY} C ${fromX} ${fromY + delta}, ${toX} ${toY - delta}, ${toX} ${toY}`;
 }
 
+function annotationPath(fromX: number, fromY: number, toX: number, toY: number): string {
+  return `M ${fromX} ${fromY} H ${toX} V ${toY}`;
+}
+
 export function GraphSvg({ layout, width, height, selected }: { layout: GraphLayout; width: number; height?: number; selected?: string }) {
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
   const edgeById = new Map(layout.edges.map((edge) => [edge.id, edge]));
@@ -14,10 +18,10 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
   const opacityByTrack = new Map(layout.tracks.map((track) => [track.id, track.kind === 'remote' ? 0.64 : 1]));
   const point = (id: string) => pointForNode(byId.get(id)!, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth });
   const paths = layout.edgePaths ?? layout.edges.flatMap((edge) => {
-    const from = byId.get(edge.fromNodeId);
-    const to = byId.get(edge.toNodeId);
-    if (!from || !to) return [];
-    return [{ ...edge, d: pathFor(point(edge.fromNodeId).x, point(edge.fromNodeId).y, point(edge.toNodeId).x, point(edge.toNodeId).y) }];
+    if (!byId.has(edge.fromNodeId) || !byId.has(edge.toNodeId)) return [];
+    const fromPoint = point(edge.fromNodeId);
+    const toPoint = point(edge.toNodeId);
+    return [{ ...edge, d: edge.annotation === 'ref-event' ? annotationPath(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) : pathFor(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) }];
   });
   const visiblePaths = filterRenderableEdgePaths(paths, layout.edges, layout.nodes);
   const renderEdge = (edge: (typeof visiblePaths)[number]) => {
@@ -27,8 +31,8 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     const track = source?.trackId;
     const baseOpacity = opacityByTrack.get(track ?? '') ?? 1;
     const muted = source?.kind === 'reflog-commit' || target?.kind === 'reflog-commit';
-    const eventTarget = edge.type === 'history-event' && edge.id.endsWith(':to');
-    return <path key={edge.id} d={edge.d} className={`edge edge-${edge.type}${eventTarget ? ' edge-event-target' : ''}${muted ? ' edge-reflog' : ''}`} stroke={colorByTrack.get(track ?? '') ?? 'var(--graph-muted)'} opacity={muted ? baseOpacity * 0.68 : baseOpacity} />;
+    const annotation = definition?.annotation === 'ref-event' || edge.annotation === 'ref-event';
+    return <path key={edge.id} d={edge.d} className={`edge edge-${edge.type}${annotation ? ' edge-ref-annotation' : ''}${muted ? ' edge-reflog' : ''}`} stroke={colorByTrack.get(track ?? '') ?? 'var(--graph-muted)'} opacity={muted ? baseOpacity * 0.68 : baseOpacity} />;
   };
   const renderNode = (node: (typeof layout.nodes)[number]) => {
     const p = point(node.id);
@@ -39,7 +43,6 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
   };
   const canvasHeight = height ?? Math.max(50, layout.nodes.reduce((max, node) => Math.max(max, (node.row ?? 0) + 1), 0) * layout.rowHeight);
   return <svg className="graph-svg" width={width} height={canvasHeight} aria-hidden="true">
-    <defs><marker id="history-event-arrow" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 0 L 6 3 L 0 6 z" fill="var(--graph-muted)" /></marker></defs>
     {visiblePaths.map(renderEdge)}
     {layout.nodes.map(renderNode)}
   </svg>;

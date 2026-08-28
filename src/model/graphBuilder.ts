@@ -140,15 +140,16 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       event,
     };
     addNode(node);
-    edges.push({ id: `${event.id}:to`, type: 'history-event', fromNodeId: node.id, toNodeId: target.id, label: event.sourceLabel });
-    const from = event.fromOid ? nodeByOid.get(event.fromOid) : undefined;
-    if (from) edges.push({ id: `${event.id}:from`, type: 'history-event', fromNodeId: from.id, toNodeId: node.id, label: event.type });
+    // A ref move is a view annotation, not a commit relationship.  Anchor a
+    // single dashed connector at the destination commit so the event cannot
+    // visually introduce a branch or merge in the commit DAG.
+    edges.push({ id: `${event.id}:annotation`, type: 'history-event', fromNodeId: target.id, toNodeId: node.id, label: event.sourceLabel, annotation: 'ref-event' });
   }
   const shallowNodes = snapshot.shallowBoundaryOids.map((oid) => nodeByOid.get(oid)).filter((node): node is GraphNode => Boolean(node));
   for (const node of shallowNodes) {
     const boundary: GraphNode = { id: `shallow:${node.id}`, kind: 'history-boundary', label: 'Shallow history boundary', refIds: [], timestamp: (node.timestamp ?? 0) - 1 };
     addNode(boundary);
-    edges.push({ id: `${boundary.id}:edge`, type: 'history-event', fromNodeId: node.id, toNodeId: boundary.id, label: 'shallow' });
+    edges.push({ id: `${boundary.id}:edge`, type: 'history-event', fromNodeId: node.id, toNodeId: boundary.id, label: 'shallow', annotation: 'shallow-boundary' });
   }
   return {
     nodes,

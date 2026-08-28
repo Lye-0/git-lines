@@ -51,6 +51,34 @@ describe('graph fact builder', () => {
     expect(facts.edges.filter((edge) => edge.type === 'parent' && edge.fromNodeId === `commit:${oid('m')}`)).toHaveLength(3);
   });
 
+  it('preserves both parent edges of a real two-parent merge', () => {
+    const mergeSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: oid('m'), parentOids: [oid('b'), oid('c')], subject: 'merge', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oid('b'), parentOids: [oid('a')], subject: 'main', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        { oid: oid('c'), parentOids: [oid('a')], subject: 'feature', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+        { oid: oid('a'), parentOids: [], subject: 'base', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+      ],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('m') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('m'), branch: 'main' }],
+      visibleCommitCount: 4,
+    };
+    const facts = buildGraphFacts(mergeSnapshot);
+    expect(facts.edges.filter((edge) => edge.type === 'parent' && edge.fromNodeId === `commit:${oid('m')}`).map((edge) => edge.toNodeId)).toEqual([`commit:${oid('b')}`, `commit:${oid('c')}`]);
+  });
+
+  it('represents a ref move with one annotation edge instead of synthetic DAG edges', () => {
+    const eventSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      historyEvents: [{ id: 'history:reset:3:b', type: 'reset', refName: 'refs/heads/main', fromOid: oid('a'), toOid: oid('b'), timestamp: 3, subject: 'reset: moving to b' }],
+    };
+    const facts = buildGraphFacts(eventSnapshot);
+    const eventEdges = facts.edges.filter((edge) => edge.type === 'history-event');
+    expect(eventEdges).toHaveLength(1);
+    expect(eventEdges[0]).toMatchObject({ annotation: 'ref-event', fromNodeId: `commit:${oid('b')}`, toNodeId: 'history:reset:3:b' });
+  });
+
   it('keeps operation relationships separate from parent edges', () => {
     const operationSnapshot = { ...snapshot, operations: [{ type: 'cherry-pick' as const, headOid: oid('b'), sourceOids: [oid('a')] }] };
     const facts = buildGraphFacts(operationSnapshot);

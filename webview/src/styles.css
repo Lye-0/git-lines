@@ -48,7 +48,7 @@ h1, h2, p { margin: 0; }
 .edge { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
 .edge-working-tree, .edge-operation { stroke-dasharray: 2 5; stroke-width: 1.5; }
 .edge-history-event { stroke-dasharray: 5 4; stroke-width: 1.5; }
-.edge-history-event.edge-event-target { marker-end: url(#history-event-arrow); }
+.edge-history-event.edge-ref-annotation { stroke-dasharray: 5 4; stroke-width: 1.5; }
 .edge-reflog { stroke-width: 1.5; }
 .node circle { fill: var(--graph-bg); stroke-width: 2; }
 .node text { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 13px; }

@@ -21,6 +21,11 @@ describe('history event resolver', () => {
     expect(resolveHistoryEvents([entry('commit: branch -f docs', oid('a'), oid('b'))], commits)).toEqual([]);
   });
 
+  it('never labels a multi-parent merge commit itself as fast-forward', () => {
+    const mergeCommit: GitCommit = { oid: oid('m'), parentOids: [oid('a'), oid('b')], subject: 'merge', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 };
+    expect(resolveHistoryEvents([entry('merge feature: Fast-forward', oid('a'), oid('m'))], [...commits, mergeCommit])).toEqual([]);
+  });
+
   it('coalesces HEAD and branch reflogs from one pull into one logical event', () => {
     const events = resolveHistoryEvents([
       entry('pull --tags origin main: Fast-forward', oid('a'), oid('b'), 'HEAD', 'HEAD@{0}'),

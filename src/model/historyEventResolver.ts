@@ -45,7 +45,10 @@ function isExplicitBranchMove(subject: string): boolean {
 }
 
 function classify(subject: string, fromOid: string | undefined, toOid: string, refName: string, commits: Map<string, GitCommit>): HistoryEventType | undefined {
-  if (isExplicitFastForward(subject) && fromOid && isAncestor(fromOid, toOid, commits)) return 'fast-forward';
+  // A fast-forward updates a ref to an existing single-parent descendant; a
+  // two-parent merge commit is never itself a fast-forward event even if its
+  // first-parent ancestry happens to contain the previous ref tip.
+  if (isExplicitFastForward(subject) && fromOid && commits.get(toOid)?.parentOids.length === 1 && isAncestor(fromOid, toOid, commits)) return 'fast-forward';
   if (isExplicitReset(subject)) return 'reset';
   if (isExplicitAmend(subject)) return 'amend';
   if (isExplicitRebase(subject)) return 'rebase';

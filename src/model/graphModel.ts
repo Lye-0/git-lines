@@ -38,6 +38,8 @@ export interface GraphEdge {
   toNodeId: string;
   trackId?: string;
   label?: string;
+  /** A visual-only connector that annotates a fact without changing the DAG. */
+  annotation?: 'ref-event' | 'shallow-boundary';
 }
 
 export interface GraphTrack {

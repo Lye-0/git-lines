@@ -39,14 +39,23 @@ function colorFor(family: string, used: Set<number>): string {
   return `hsl(${hue} 76% 66%)`;
 }
 
-function ancestorSet(tip: string, commits: Map<string, GitCommit>): Set<string> {
-  const result = new Set<string>();
-  const queue = [tip];
+/**
+ * Returns the shortest parent distance from a ref tip to each reachable
+ * commit.  A merged feature commit is one edge farther away from the main
+ * tip than from the feature tip, so this keeps it on the feature lane while
+ * still assigning shared ancestors to the primary lane.
+ */
+function ancestorDistances(tip: string, commits: Map<string, GitCommit>): Map<string, number> {
+  const result = new Map<string, number>();
+  const queue: Array<{ oid: string; distance: number }> = [{ oid: tip, distance: 0 }];
   while (queue.length) {
-    const oid = queue.shift() as string;
-    if (result.has(oid)) continue;
-    result.add(oid);
-    for (const parent of commits.get(oid)?.parentOids ?? []) queue.push(parent);
+    const current = queue.shift() as { oid: string; distance: number };
+    const known = result.get(current.oid);
+    if (known !== undefined && known <= current.distance) continue;
+    result.set(current.oid, current.distance);
+    for (const parent of commits.get(current.oid)?.parentOids ?? []) {
+      queue.push({ oid: parent, distance: current.distance + 1 });
+    }
   }
   return result;
 }
@@ -123,11 +132,13 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     refNames: candidate.refs.map((ref) => ref.fullName),
   }));
   const commits = new Map(facts.commits.map((commit) => [commit.oid, commit]));
-  const claims = new Map<string, string[]>();
+  const claims = new Map<string, Array<{ trackId: string; distance: number }>>();
   for (const candidate of candidates) {
     const ref = candidate.refs.find((item) => item.type === 'local') ?? candidate.refs[0];
     if (!ref?.oid) continue;
-    for (const oid of ancestorSet(ref.oid, commits)) claims.set(oid, [...(claims.get(oid) ?? []), candidate.id]);
+    for (const [oid, distance] of ancestorDistances(ref.oid, commits)) {
+      claims.set(oid, [...(claims.get(oid) ?? []), { trackId: candidate.id, distance }]);
+    }
   }
   const priority = (trackId: string): number => {
     const candidate = candidates.find((item) => item.id === trackId);
@@ -147,15 +158,22 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   const trackForEventOid = (oid: string): string | undefined => eventTracksByOid.get(oid)
     ?.slice()
     .sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))[0];
+  const trackForClaim = (oid: string): string | undefined => claims.get(oid)
+    ?.slice()
+    .sort((a, b) => a.distance - b.distance || priority(a.trackId) - priority(b.trackId) || a.trackId.localeCompare(b.trackId))[0]
+    ?.trackId;
   const initialAssignments = facts.nodes.map((node) => {
     let trackId: string | undefined;
-    if (node.oid && claims.has(node.oid)) trackId = claims.get(node.oid)!.slice().sort((a, b) => priority(a) - priority(b) || a.localeCompare(b))[0];
-    if (!trackId && node.oid) trackId = trackForEventOid(node.oid);
-    if (!trackId && node.kind === 'working-tree') {
+    // A clean working tree on a newly-created branch has the same OID as the
+    // parent commit.  It must follow the checked-out branch track before the
+    // commit claim is considered, otherwise it is incorrectly drawn on main.
+    if (node.kind === 'working-tree') {
       const branch = node.workingTree?.branch ?? node.refIds[0];
       const ref = refs.find((item) => item.shortName === branch || normalizeRefName(item.fullName) === branch);
       trackId = ref ? refTrack.get(ref.fullName) : undefined;
     }
+    if (!trackId && node.oid) trackId = trackForClaim(node.oid);
+    if (!trackId && node.oid) trackId = trackForEventOid(node.oid);
     if (!trackId && node.event?.refName) trackId = refTrack.get(node.event.refName);
     const lane = trackId ? lanes.get(trackId) : 0;
     return { node, trackId, lane: lane ?? 0 };
@@ -169,12 +187,10 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   }
   const laidOut = initialAssignments.map(({ node, trackId, lane }) => {
     if (!node.event) return { ...node, trackId, lane };
-    const fromLane = node.event.fromOid ? laneByOid.get(node.event.fromOid) : undefined;
     const toLane = laneByOid.get(node.event.toOid);
-    // Ref events belong visually beside their destination. If both endpoints
-    // are on one lane, this keeps the event overlay vertical instead of
-    // creating a pair of needless lane-crossing curves.
-    const eventLane = toLane ?? fromLane ?? lane;
+    // Ref events are annotations anchored to the destination commit.  Their
+    // own lane never participates in commit lane assignment.
+    const eventLane = toLane ?? lane;
     return { ...node, trackId, lane: eventLane };
   });
   return { nodes: laidOut, tracks, lanes };

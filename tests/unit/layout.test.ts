@@ -3,6 +3,7 @@ import { computeLaneLayout } from '../../src/layout/laneLayout.js';
 import { computeRowLayout, assertRowInvariants } from '../../src/layout/rowLayout.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { filterRenderableEdgePaths } from '../../src/layout/edgeVisibility.js';
+import { routeEdges } from '../../src/layout/edgeRouter.js';
 import type { EdgePath } from '../../src/layout/layoutTypes.js';
 import type { GraphFactModel, GraphNode } from '../../src/model/graphModel.js';
 
@@ -60,7 +61,7 @@ describe('graph layout', () => {
     expect(expanded.nodes.find((node) => node.id === b.id)?.lane).toBe(first.nodes.find((node) => node.id === b.id)?.lane);
   });
 
-  it('co-locates ref events with their destination lane when both endpoints share it', () => {
+  it('keeps feature history on its own lane while anchoring ref events to the destination', () => {
     const base = commitNode('a', 1);
     const feature = { ...commitNode('b', 2), refIds: ['origin/feature'] };
     const head = { ...commitNode('c', 3), refIds: ['main'] };
@@ -103,10 +104,10 @@ describe('graph layout', () => {
     expect(result.nodes.find((node) => node.id === event.id)?.trackId).toBe('family:feature');
     expect(result.nodes.find((node) => node.id === event.id)?.lane).toBe(0);
     expect(result.nodes.find((node) => node.id === head.id)?.lane).toBe(0);
-    expect(result.nodes.find((node) => node.id === feature.id)?.lane).toBe(0);
+    expect(result.nodes.find((node) => node.id === feature.id)?.lane).toBe(1);
   });
 
-  it('hides redundant same-lane event source paths but keeps cross-lane moves', () => {
+  it('hides legacy event source paths so ref moves cannot look like branch edges', () => {
     const source = { ...commitNode('a', 1), lane: 1, row: 3 };
     const sameLaneEvent: GraphNode = { id: 'event:same', kind: 'history-event', lane: 1, row: 1, refIds: [] };
     const crossLaneEvent: GraphNode = { id: 'event:cross', kind: 'history-event', lane: 0, row: 2, refIds: [] };
@@ -116,6 +117,41 @@ describe('graph layout', () => {
       { id: 'event:cross:from', type: 'history-event' as const, fromNodeId: source.id, toNodeId: crossLaneEvent.id },
     ];
     const paths: EdgePath[] = edges.map((edge) => ({ ...edge, d: 'M 0 0' }));
-    expect(filterRenderableEdgePaths(paths, edges, [source, sameLaneEvent, crossLaneEvent]).map((path) => path.id)).toEqual(['event:same:to', 'event:cross:from']);
+    expect(filterRenderableEdgePaths(paths, edges, [source, sameLaneEvent, crossLaneEvent]).map((path) => path.id)).toEqual(['event:same:to']);
+  });
+
+  it('renders a ref event as one horizontal annotation without changing commit lanes or parent edges', () => {
+    const base = commitNode('a', 1);
+    const head = { ...commitNode('b', 2), refIds: ['main'] };
+    const event: GraphNode = {
+      id: 'event:ff',
+      kind: 'fast-forward-event',
+      refIds: ['main'],
+      timestamp: 3,
+      label: 'Fast-forward · main',
+      event: { id: 'event:ff', type: 'fast-forward', refName: 'refs/heads/main', fromOid: oid('a'), toOid: oid('b'), timestamp: 3 },
+    };
+    const refs = [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('b') }];
+    const commits = [
+      { oid: oid('b'), parentOids: [oid('a')], subject: 'b', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: oid('a'), parentOids: [], subject: 'a', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+    const parentEdge = { id: 'parent:b:a', type: 'parent' as const, fromNodeId: head.id, toNodeId: base.id };
+    const baseFacts: GraphFactModel = { nodes: [head, base], edges: [parentEdge], refs, commits, workingTrees: [], operations: [], events: [], primaryBranch: 'main', shallowBoundaryOids: [] };
+    const eventFacts: GraphFactModel = {
+      ...baseFacts,
+      nodes: [head, base, event],
+      edges: [parentEdge, { id: 'event:ff:annotation', type: 'history-event', fromNodeId: head.id, toNodeId: event.id, annotation: 'ref-event' }],
+      events: [event.event!],
+    };
+    const withoutEvent = createGraphLayout(baseFacts, { visibleCommitCount: 2, hasMore: false });
+    const withEvent = createGraphLayout(eventFacts, { visibleCommitCount: 2, hasMore: false });
+    const commitLanes = (layout: ReturnType<typeof createGraphLayout>) => new Map(layout.nodes.filter((node) => node.kind === 'commit').map((node) => [node.id, node.lane]));
+    expect(commitLanes(withEvent)).toEqual(commitLanes(withoutEvent));
+    expect(withEvent.edges.filter((edge) => edge.type === 'parent').map((edge) => edge.id)).toEqual([parentEdge.id]);
+    const annotation = withEvent.edgePaths?.find((path) => path.annotation === 'ref-event');
+    expect(annotation?.d).toContain(' H ');
+    expect(withEvent.edgePaths?.some((path) => path.id.endsWith(':from'))).toBe(false);
+    expect(routeEdges(withEvent.nodes, withEvent.edges).filter((path) => path.annotation === 'ref-event')).toHaveLength(1);
   });
 });

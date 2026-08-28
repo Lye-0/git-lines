@@ -16,4 +16,5 @@ export interface EdgePath {
   type: GraphEdge['type'];
   d: string;
   label?: string;
+  annotation?: GraphEdge['annotation'];
 }
