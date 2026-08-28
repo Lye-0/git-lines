@@ -174,6 +174,24 @@ describe('graph layout', () => {
     expect(routeEdges(withEvent.nodes, withEvent.edges).filter((path) => path.annotation === 'ref-event')).toHaveLength(1);
   });
 
+  it('keeps adjacent parent paths joined at the same-lane node center', () => {
+    const child = { ...commitNode('a', 3), lane: 0, row: 0 };
+    const middle = { ...commitNode('b', 2), lane: 0, row: 1 };
+    const parent = { ...commitNode('c', 1), lane: 0, row: 2 };
+    const edges = [
+      { id: 'parent:a:b', type: 'parent' as const, fromNodeId: child.id, toNodeId: middle.id },
+      { id: 'parent:b:c', type: 'parent' as const, fromNodeId: middle.id, toNodeId: parent.id },
+    ];
+    const paths = routeEdges([child, middle, parent], edges);
+    const childPoint = pointForNode(child);
+    const middlePoint = pointForNode(middle);
+    expect(paths).toHaveLength(2);
+    expect(paths[0]?.d.startsWith(`M ${childPoint.x} ${childPoint.y}`)).toBe(true);
+    expect(paths[0]?.d.endsWith(`${middlePoint.x} ${middlePoint.y}`)).toBe(true);
+    expect(paths[1]?.d.startsWith(`M ${middlePoint.x} ${middlePoint.y}`)).toBe(true);
+    expect(paths[1]?.d.endsWith(`${pointForNode(parent).x} ${pointForNode(parent).y}`)).toBe(true);
+  });
+
   it('gives multiple events independent rows while keeping one target lane', () => {
     const head = { ...commitNode('a', 2), refIds: ['main'] };
     const firstEvent: GraphNode = {

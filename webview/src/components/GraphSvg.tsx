@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { pointForNode } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
@@ -10,6 +11,16 @@ function pathFor(fromX: number, fromY: number, toX: number, toY: number): string
 
 function annotationPath(_fromX: number, fromY: number, toX: number, toY: number): string {
   return `M ${toX} ${fromY} L ${toX} ${toY}`;
+}
+
+function renderNodeSymbol(node: GraphLayout['nodes'][number]): ReactNode {
+  if (node.kind === 'commit') return <circle className="node-symbol node-dot" r="7.5" />;
+  if (node.kind === 'working-tree' || node.kind === 'operation') return <circle className="node-symbol node-hollow" r="7.5" />;
+  if (node.kind === 'fast-forward-event' || node.kind === 'history-event') {
+    return <path className="node-symbol node-diamond" d="M 0 -6.5 L 6.5 0 L 0 6.5 L -6.5 0 Z" />;
+  }
+  const symbol = node.kind === 'reflog-commit' ? '◌' : '⋯';
+  return <text className="node-symbol node-symbol-text" x="0" y="1" textAnchor="middle" fill="currentColor">{symbol}</text>;
 }
 
 export function GraphSvg({ layout, width, height, selected }: { layout: GraphLayout; width: number; height?: number; selected?: string }) {
@@ -39,15 +50,15 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     const p = point(node.id);
     const track = colorByTrack.get(node.trackId ?? '') ?? 'var(--graph-muted)';
     const refEvent = isRefEvent(node);
-    const symbol = node.kind === 'fast-forward-event' ? '◇' : node.kind === 'reflog-commit' ? '◌' : node.kind === 'history-boundary' ? '⋯' : node.kind === 'working-tree' || node.kind === 'operation' ? '○' : node.kind === 'history-event' ? '◇' : '●';
     const title = refEvent ? eventTooltip(node) : node.label ?? node.subject;
     const isSelected = Boolean(selected && (node.kind === 'commit' || node.kind === 'reflog-commit') && (node.id === `commit:${selected}` || node.oid === selected));
-    const nodeRadius = refEvent ? 8 : 10;
-    return <g key={node.id} transform={`translate(${p.x},${p.y})`} className={`node node-${node.kind}${isSelected ? ' node-selected' : ''}`} opacity={opacityByTrack.get(node.trackId ?? '') ?? 1}>
+    const usesVectorSymbol = node.kind === 'commit' || node.kind === 'working-tree' || node.kind === 'operation' || refEvent;
+    const nodeMaskRadius = node.kind === 'reflog-commit' ? 8 : 6;
+    return <g key={node.id} transform={`translate(${p.x},${p.y})`} className={`node node-${node.kind}${isSelected ? ' node-selected' : ''}`} color={track} opacity={opacityByTrack.get(node.trackId ?? '') ?? 1}>
       {title && <title>{title}</title>}
-      <circle className="node-mask" r={nodeRadius} aria-hidden="true" />
+      {!usesVectorSymbol && <circle className="node-mask" r={nodeMaskRadius} aria-hidden="true" />}
       {isSelected && <circle className="node-ring" r="10" fill="none" stroke={track} />}
-      <text className="node-symbol" x="0" y="1" textAnchor="middle" fill={track}>{symbol}</text>
+      {renderNodeSymbol(node)}
     </g>;
   };
   const canvasHeight = height ?? Math.max(50, layout.nodes.reduce((max, node) => Math.max(max, (node.row ?? 0) + 1), 0) * layout.rowHeight);

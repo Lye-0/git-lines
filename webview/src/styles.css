@@ -56,13 +56,16 @@ h1, h2, p { margin: 0; }
 .node-mask { fill: var(--graph-bg); stroke: none; }
 .node text { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 13px; }
 .node-symbol { dominant-baseline: central; }
+.node .node-dot { fill: currentColor; stroke: none; }
+.node .node-hollow { fill: var(--graph-bg); stroke: currentColor; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.node .node-diamond { fill: var(--graph-bg); stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 .node-commit .node-symbol { font-size: 20px; }
 .node-working-tree .node-symbol, .node-operation .node-symbol { font-size: 20px; }
 .node-reflog-commit .node-symbol { font-size: 16px; }
 .node-fast-forward-event .node-symbol, .node-history-event .node-symbol { font-size: 14px; }
 .node-fast-forward-event, .node-history-event { opacity: .84; pointer-events: auto; cursor: help; }
 .node-selected .node-symbol { font-size: 20px; }
-.node-ring { opacity: .95; }
+.node-ring { opacity: .95; fill: none; }
 .node-reflog-commit { opacity: .63; }
 .node-history-boundary { opacity: .55; }
 
