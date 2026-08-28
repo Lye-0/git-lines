@@ -121,26 +121,32 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     }
   }
   const events = options.showReflog === false ? [] : snapshot.historyEvents;
+  const annotationOffsetByAnchor = new Map<string, number>();
   for (const event of events) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
     const isFastForward = event.type === 'fast-forward';
+    const label = eventLabel(event.type, event.refName, event.sourceLabel);
     const affectedRefs = event.affectedRefs?.length ? event.affectedRefs : [event.refName];
     const refBadges = uniqueGraphRefBadges(affectedRefs.map((refName) => {
       const ref = snapshot.refs.find((candidate) => candidate.fullName === refName);
       return ref ? toGraphRefBadge(ref) : specialRefBadge(refName);
     }), currentBranch);
+    const annotationOffsetX = annotationOffsetByAnchor.get(target.id) ?? 0;
     const node: GraphNode = {
       id: event.id,
       kind: isFastForward ? 'fast-forward-event' : 'history-event',
-      label: eventLabel(event.type, event.refName, event.sourceLabel),
+      label,
       refIds: refBadges.map((badge) => badge.name),
       refBadges,
       timestamp: event.timestamp,
       subject: event.subject,
       event,
+      anchorCommitId: target.id,
+      annotationOffsetX,
     };
     addNode(node);
+    annotationOffsetByAnchor.set(target.id, annotationOffsetX + Math.max(72, label.length * 11 + 32));
     // A ref move is a view annotation, not a commit relationship.  Anchor a
     // single dashed connector at the destination commit so the event cannot
     // visually introduce a branch or merge in the commit DAG.

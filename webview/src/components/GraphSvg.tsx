@@ -28,18 +28,24 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     const definition = edgeById.get(edge.id);
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
     const target = definition ? byId.get(definition.toNodeId) : undefined;
-    const track = source?.trackId;
+    const annotation = definition?.annotation === 'ref-event' || edge.annotation === 'ref-event';
+    const track = annotation ? target?.trackId ?? source?.trackId : source?.trackId;
     const baseOpacity = opacityByTrack.get(track ?? '') ?? 1;
     const muted = source?.kind === 'reflog-commit' || target?.kind === 'reflog-commit';
-    const annotation = definition?.annotation === 'ref-event' || edge.annotation === 'ref-event';
     return <path key={edge.id} d={edge.d} className={`edge edge-${edge.type}${annotation ? ' edge-ref-annotation' : ''}${muted ? ' edge-reflog' : ''}`} stroke={colorByTrack.get(track ?? '') ?? 'var(--graph-muted)'} opacity={muted ? baseOpacity * 0.68 : baseOpacity} />;
   };
   const renderNode = (node: (typeof layout.nodes)[number]) => {
     const p = point(node.id);
     const track = colorByTrack.get(node.trackId ?? '') ?? 'var(--graph-muted)';
+    const refEvent = node.kind === 'fast-forward-event' || node.kind === 'history-event';
     const symbol = node.kind === 'fast-forward-event' ? '◇' : node.kind === 'reflog-commit' ? '◌' : node.kind === 'history-boundary' ? '⋯' : node.kind === 'working-tree' || node.kind === 'operation' ? '○' : node.kind === 'history-event' ? '◇' : '●';
     const isSelected = Boolean(selected && (node.kind === 'commit' || node.kind === 'reflog-commit') && (node.id === `commit:${selected}` || node.oid === selected));
-    return <g key={node.id} transform={`translate(${p.x},${p.y})`} className={`node node-${node.kind}${isSelected ? ' node-selected' : ''}`} opacity={opacityByTrack.get(node.trackId ?? '') ?? 1}>{isSelected && <circle className="node-ring" r="9" fill="none" stroke={track} />}<text x="0" y="1" textAnchor="middle" fill={track}>{symbol}</text></g>;
+    return <g key={node.id} transform={`translate(${p.x},${p.y})`} className={`node node-${node.kind}${isSelected ? ' node-selected' : ''}`} opacity={opacityByTrack.get(node.trackId ?? '') ?? 1}>
+      {(node.label || node.subject) && <title>{node.label ?? node.subject}{node.subject && node.label && node.subject !== node.label ? `\n${node.subject}` : ''}</title>}
+      {isSelected && <circle className="node-ring" r="10" fill="none" stroke={track} />}
+      <text className="node-symbol" x="0" y="1" textAnchor="middle" fill={track}>{symbol}</text>
+      {refEvent && <text className="node-event-label" x="12" y="4" textAnchor="start" fill={track}>{node.label ?? node.subject}</text>}
+    </g>;
   };
   const canvasHeight = height ?? Math.max(50, layout.nodes.reduce((max, node) => Math.max(max, (node.row ?? 0) + 1), 0) * layout.rowHeight);
   return <svg className="graph-svg" width={width} height={canvasHeight} aria-hidden="true">

@@ -66,30 +66,22 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
   }
 
   // Ref events are annotations, not part of the structural topological sort.
-  // Assign them afterwards so adding/toggling reflog data never changes a
-  // commit's row.  Fractional slots keep each event near its destination row
-  // while avoiding a vertical event edge or a duplicate row.
-  const occupiedRows = new Set(result.values());
-  const eventAnchorById = new Map(edges.filter((edge) => edge.annotation === 'ref-event').map((edge) => [edge.toNodeId, edge.fromNodeId]));
-  let eventFallbackRow = Math.max(-1, ...result.values()) + 1;
+  // They receive the already-computed row of their anchor only for rendering;
+  // no row is consumed and no commit row can move when events are toggled.
+  const eventAnchorById = new Map(edges
+    .filter((edge) => edge.annotation === 'ref-event' && structuralIds.has(edge.fromNodeId))
+    .map((edge) => [edge.toNodeId, edge.fromNodeId]));
+  const commitIdByOid = new Map(structuralNodes
+    .filter((node) => node.kind === 'commit' || node.kind === 'reflog-commit' || node.kind === 'history-boundary')
+    .filter((node) => node.oid)
+    .map((node) => [node.oid as string, node.id]));
   for (const node of nodes.filter((candidate) => !structuralIds.has(candidate.id)).sort(compareNodes)) {
-    const prior = previousRows?.get(node.id) ?? node.row;
-    if (prior !== undefined && !occupiedRows.has(prior)) {
-      result.set(node.id, prior);
-      occupiedRows.add(prior);
-      continue;
-    }
-    const anchorId = eventAnchorById.get(node.id) ?? (node.event ? nodes.find((candidate) => candidate.oid === node.event?.toOid)?.id : undefined);
-    const anchorRow = anchorId ? result.get(anchorId) : undefined;
-    let candidateRow = anchorRow === undefined ? eventFallbackRow : anchorRow + 0.5;
-    if (anchorRow !== undefined) {
-      while (occupiedRows.has(candidateRow) && candidateRow < anchorRow + 0.95) candidateRow += 0.05;
-      if (candidateRow >= anchorRow + 0.95 || occupiedRows.has(candidateRow)) candidateRow = eventFallbackRow;
-    }
-    while (occupiedRows.has(candidateRow)) candidateRow += 1;
-    result.set(node.id, candidateRow);
-    occupiedRows.add(candidateRow);
-    eventFallbackRow = Math.max(eventFallbackRow, candidateRow + 1);
+    const explicitAnchor = node.anchorCommitId && structuralIds.has(node.anchorCommitId) ? node.anchorCommitId : undefined;
+    const anchorId = explicitAnchor ?? eventAnchorById.get(node.id) ?? (node.event?.toOid ? commitIdByOid.get(node.event.toOid) : undefined);
+    const anchorRow = anchorId === undefined ? undefined : result.get(anchorId);
+    // GraphBuilder always supplies an anchor. The fallback keeps malformed or
+    // legacy fixtures renderable without extending the timeline.
+    result.set(node.id, anchorRow ?? previousRows?.get(node.id) ?? node.row ?? 0);
   }
   const laidOut = nodes.map((node) => ({ ...node, row: result.get(node.id) ?? nextRow++ }));
   return { nodes: laidOut, rows: result };
@@ -99,10 +91,19 @@ export function assertRowInvariants(nodes: GraphNode[], edges: GraphEdge[]): voi
   const rows = new Set<number>();
   for (const node of nodes) {
     if (node.row === undefined) throw new Error(`Node ${node.id} has no row`);
+    if (node.kind === 'fast-forward-event' || node.kind === 'history-event') continue;
     if (rows.has(node.row)) throw new Error(`Duplicate row ${node.row}`);
     rows.add(node.row);
   }
   const byId = new Map(nodes.map((node) => [node.id, node]));
+  const eventAnchorById = new Map(edges
+    .filter((edge) => edge.annotation === 'ref-event')
+    .map((edge) => [edge.toNodeId, edge.fromNodeId]));
+  for (const node of nodes.filter((candidate) => candidate.kind === 'fast-forward-event' || candidate.kind === 'history-event')) {
+    const anchorId = node.anchorCommitId ?? eventAnchorById.get(node.id);
+    const anchor = anchorId ? byId.get(anchorId) : undefined;
+    if (anchor && node.row !== anchor.row) throw new Error(`Ref event row invariant violated: ${node.id}`);
+  }
   for (const edge of edges.filter((candidate) => candidate.type === 'parent')) {
     const from = byId.get(edge.fromNodeId);
     const to = byId.get(edge.toNodeId);

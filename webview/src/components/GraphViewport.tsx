@@ -17,7 +17,11 @@ export function GraphViewport({ layout, filter, selected, onSelect, loading, onL
   const loadGate = useRef(true);
   const lastLayoutKey = useRef<string>();
   const maxLane = Math.max(0, ...layout.nodes.map((node) => node.lane ?? 0));
-  const graphWidth = Math.max(136, (maxLane + 1) * layout.laneWidth + 48);
+  const laneWidth = (maxLane + 1) * layout.laneWidth + 48;
+  const annotationWidth = Math.max(0, ...layout.nodes
+    .filter((node) => node.kind === 'fast-forward-event' || node.kind === 'history-event')
+    .map((node) => (node.annotationOffsetX ?? 0) + Math.max(40, (node.label ?? node.subject ?? '').length * 11) + layout.laneWidth * 0.8 + 48));
+  const graphWidth = Math.max(136, laneWidth, annotationWidth);
   const canvasMinWidth = graphWidth + 240;
   const rowCount = Math.max(1, ...layout.nodes.map((node) => (node.row ?? 0) + 1));
   const canvasHeight = rowCount * layout.rowHeight;

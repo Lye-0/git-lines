@@ -53,7 +53,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 4. `createGraphLayout`がrow→laneの順に計算し、WebviewへpostMessageする。
 5. Webviewはcommit選択時だけdetail/files/statsをon-demand取得し、グラフ専用のスクロール領域を持つ。下端手前で次ページを自動取得し、手動refresh・focus・Git metadata watchでも再読込する。
 
-グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行は最大幅を持つまとまりとしてその右側から開始する。Ref Eventは接続先commitのレーンを変えず、イベント自身の時系列rowに置いたglyphへ、commit laneの同じY位置から横方向に伸びる単一の破線annotationとして描画する。縦セグメントやイベント専用laneは作らず、イベントの`from`側をcommit DAGの線として描画しない。Working Tree / operationは細い点線、commit parentは実線で表示する。commit rowのref badgeはcheckout中local branch、その他local、対応remote、その他remote、tag/specialの順にcommit本文の近くへ配置し、tagは形状を変えてbranch laneを作らない。Ref Eventのrowは`REF EVENT`種別ラベルや同一refの重複badgeを表示せず、labelとglyphで簡潔に示す。凡例はtoolbarのpopoverから参照できる。
+グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行は最大幅を持つまとまりとしてその右側から開始する。Ref Eventは`anchorCommitId`で接続先commitを明示し、row allocationから除外したうえでanchorと同じY座標へ置く。commit laneからイベントglyphへ短い横方向の破線annotationだけを描画し、縦セグメントやイベント専用laneは作らず、イベントの`from`側をcommit DAGの線として描画しない。同一commitに複数イベントがある場合はannotationのXオフセットを決定論的に積み、commit rowを増やさない。Working Tree / operationは細い点線、commit parentは実線で表示する。commit rowのref badgeはcheckout中local branch、その他local、対応remote、その他remote、tag/specialの順にcommit本文の近くへ配置し、tagは形状を変えてbranch laneを作らない。Ref Eventのrowには`REF EVENT`種別ラベルや同一refの重複badgeを表示せず、glyphとlabelをSVGグラフ領域内に描画する。凡例はtoolbarのpopoverから参照できる。
 
 ## Security / Accessibility
 

@@ -14,7 +14,9 @@ export function pointForNode(node: GraphNode, options: EdgeRouterOptions = {}): 
   // Ref events sit beside the commit lane.  The offset is deliberately less
   // than one full lane so an annotation never claims or creates a branch
   // lane of its own.
-  const eventOffset = node.kind === 'history-event' || node.kind === 'fast-forward-event' ? laneWidth * 0.8 : 0;
+  const eventOffset = node.kind === 'history-event' || node.kind === 'fast-forward-event'
+    ? laneWidth * 0.8 + Math.max(0, node.annotationOffsetX ?? 0)
+    : 0;
   return {
     x: leftPadding + (node.lane ?? 0) * laneWidth + eventOffset,
     y: 18 + (node.row ?? 0) * rowHeight,

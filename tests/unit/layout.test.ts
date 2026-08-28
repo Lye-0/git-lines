@@ -3,7 +3,7 @@ import { computeLaneLayout } from '../../src/layout/laneLayout.js';
 import { computeRowLayout, assertRowInvariants } from '../../src/layout/rowLayout.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { filterRenderableEdgePaths } from '../../src/layout/edgeVisibility.js';
-import { routeEdges } from '../../src/layout/edgeRouter.js';
+import { pointForNode, routeEdges } from '../../src/layout/edgeRouter.js';
 import type { EdgePath } from '../../src/layout/layoutTypes.js';
 import type { GraphFactModel, GraphNode } from '../../src/model/graphModel.js';
 
@@ -129,6 +129,7 @@ describe('graph layout', () => {
       refIds: ['main'],
       timestamp: 3,
       label: 'Fast-forward · main',
+      anchorCommitId: head.id,
       event: { id: 'event:ff', type: 'fast-forward', refName: 'refs/heads/main', fromOid: oid('a'), toOid: oid('b'), timestamp: 3 },
     };
     const refs = [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('b') }];
@@ -148,8 +149,14 @@ describe('graph layout', () => {
     const withEvent = createGraphLayout(eventFacts, { visibleCommitCount: 2, hasMore: false });
     const commitLanes = (layout: ReturnType<typeof createGraphLayout>) => new Map(layout.nodes.filter((node) => node.kind === 'commit').map((node) => [node.id, node.lane]));
     const commitRows = (layout: ReturnType<typeof createGraphLayout>) => new Map(layout.nodes.filter((node) => node.kind === 'commit').map((node) => [node.id, node.row]));
+    const eventNode = withEvent.nodes.find((node) => node.id === event.id)!;
+    const headNode = withEvent.nodes.find((node) => node.id === head.id)!;
     expect(commitLanes(withEvent)).toEqual(commitLanes(withoutEvent));
     expect(commitRows(withEvent)).toEqual(commitRows(withoutEvent));
+    expect(eventNode.anchorCommitId).toBe(head.id);
+    expect(eventNode.row).toBe(headNode.row);
+    expect(pointForNode(eventNode).y).toBe(pointForNode(headNode).y);
+    assertRowInvariants(withEvent.nodes, withEvent.edges);
     expect(withEvent.edges.filter((edge) => edge.type === 'parent').map((edge) => edge.id)).toEqual([parentEdge.id]);
     expect(withEvent.edgePaths?.find((path) => path.id === parentEdge.id)?.d).toBe(withoutEvent.edgePaths?.find((path) => path.id === parentEdge.id)?.d);
     expect(withEvent.tracks.some((track) => track.id === event.id)).toBe(false);
@@ -158,6 +165,54 @@ describe('graph layout', () => {
     expect(annotation?.d).not.toContain(' V ');
     expect(withEvent.edgePaths?.some((path) => path.id.endsWith(':from'))).toBe(false);
     expect(routeEdges(withEvent.nodes, withEvent.edges).filter((path) => path.annotation === 'ref-event')).toHaveLength(1);
+  });
+
+  it('keeps multiple events on one anchor row and separates their annotation labels horizontally', () => {
+    const head = { ...commitNode('a', 2), refIds: ['main'] };
+    const firstEvent: GraphNode = {
+      id: 'event:first',
+      kind: 'history-event',
+      refIds: ['main'],
+      timestamp: 3,
+      label: 'Fast-forward · main',
+      anchorCommitId: head.id,
+      annotationOffsetX: 0,
+      event: { id: 'event:first', type: 'fast-forward', refName: 'refs/heads/main', fromOid: oid('b'), toOid: head.oid!, timestamp: 3 },
+    };
+    const secondEvent: GraphNode = {
+      id: 'event:second',
+      kind: 'history-event',
+      refIds: ['main'],
+      timestamp: 4,
+      label: 'Reset · main',
+      anchorCommitId: head.id,
+      annotationOffsetX: 220,
+      event: { id: 'event:second', type: 'reset', refName: 'refs/heads/main', fromOid: oid('c'), toOid: head.oid!, timestamp: 4 },
+    };
+    const refs = [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: head.oid! }];
+    const commits = [{ oid: head.oid!, parentOids: [], subject: 'head', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 }];
+    const facts: GraphFactModel = {
+      nodes: [head, firstEvent, secondEvent],
+      edges: [
+        { id: 'event:first:annotation', type: 'history-event', fromNodeId: head.id, toNodeId: firstEvent.id, annotation: 'ref-event' },
+        { id: 'event:second:annotation', type: 'history-event', fromNodeId: head.id, toNodeId: secondEvent.id, annotation: 'ref-event' },
+      ],
+      refs,
+      commits,
+      workingTrees: [],
+      operations: [],
+      events: [firstEvent.event!, secondEvent.event!],
+      primaryBranch: 'main',
+      shallowBoundaryOids: [],
+    };
+    const layout = createGraphLayout(facts, { visibleCommitCount: 1, hasMore: false });
+    const first = layout.nodes.find((node) => node.id === firstEvent.id)!;
+    const second = layout.nodes.find((node) => node.id === secondEvent.id)!;
+    const anchor = layout.nodes.find((node) => node.id === head.id)!;
+    expect(first.row).toBe(anchor.row);
+    expect(second.row).toBe(anchor.row);
+    expect(pointForNode(first).x).toBeLessThan(pointForNode(second).x);
+    expect(routeEdges(layout.nodes, layout.edges).filter((path) => path.annotation === 'ref-event')).toHaveLength(2);
   });
 
   it('does not let an event assign an otherwise unclaimed commit to a branch lane', () => {

@@ -24,6 +24,10 @@ export interface GraphNode {
   subject?: string;
   commit?: GitCommit;
   event?: HistoryEvent;
+  /** Commit node that owns a ref-event annotation. Ref events never allocate a row or lane. */
+  anchorCommitId?: string;
+  /** Horizontal offset used to stack multiple annotations on one commit row. */
+  annotationOffsetX?: number;
   workingTree?: WorkingTreeState;
   operation?: OperationState;
   refBadges?: GraphRefBadge[];

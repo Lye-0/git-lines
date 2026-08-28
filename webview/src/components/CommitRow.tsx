@@ -63,6 +63,11 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
     : undefined;
   const primaryTrack = node.trackId ? tracks.find((track) => track.id === node.trackId) : undefined;
   const rowStyle = { top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px`, '--row-track-color': primaryTrack?.color } as CSSProperties;
+  if (refEvent) {
+    return <div className={`commit-row row-${node.kind}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
+      <span className="sr-only">{node.label ?? node.subject ?? 'Ref event'}</span>
+    </div>;
+  }
   const content = <div className={`row-content ${selected ? 'selected' : ''}`}>
     <div className="row-primary">
       {kind && <span className="row-kind">{kind}</span>}
