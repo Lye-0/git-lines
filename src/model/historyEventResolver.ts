@@ -17,7 +17,17 @@ function isExplicitFastForward(subject: string): boolean {
   // Git uses these subjects for merge/pull operations. A fetch also commonly
   // says "fast-forward", but that is a routine remote-tracking update and is
   // intentionally not promoted to a user-facing merge event.
-  return /^(?:merge|pull)\b[^\n]*:\s*fast-forward\b/i.test(subject.trim());
+  const trimmed = subject.trim();
+  return /^(?:merge|pull)\b[^\n]*:\s*fast-forward\b/i.test(trimmed)
+    // Some Git integrations emit an explicit, operation-less
+    // "Fast-forward" reflog subject.  It is still safe to classify because
+    // ancestry and the destination's single-parent shape are checked below.
+    || /^fast-forward(?:\b|:)/i.test(trimmed);
+}
+
+function operationName(subject: string): string | undefined {
+  const match = /^(pull|merge)\b/i.exec(subject.trim());
+  return match?.[1]?.toLowerCase();
 }
 
 function isExplicitReset(subject: string): boolean {
@@ -73,6 +83,44 @@ function isAncestor(ancestor: string, descendant: string, commits: Map<string, G
     }
   }
   return false;
+}
+
+/**
+ * Counts the commits in the equivalent of `git rev-list old..new`.
+ *
+ * Both reachable sets are walked explicitly.  Stopping only at the old tip
+ * is not sufficient for a merge-shaped history: a side parent can point into
+ * an ancestor of the old tip without visiting the old OID itself.  An
+ * incomplete object graph returns undefined instead of presenting a guess.
+ */
+export function countCommitsBetween(fromOid: string | undefined, toOid: string, commits: Iterable<GitCommit>): number | undefined {
+  if (!fromOid) return undefined;
+  if (fromOid === toOid) return 0;
+  const commitMap = new Map([...commits].map((commit) => [commit.oid, commit]));
+  if (!commitMap.has(toOid) || !commitMap.has(fromOid)) return undefined;
+  let complete = true;
+  const collectReachable = (start: string): Set<string> => {
+    const reachable = new Set<string>();
+    const queue = [start];
+    let index = 0;
+    while (index < queue.length) {
+      const oid = queue[index++];
+      if (reachable.has(oid)) continue;
+      reachable.add(oid);
+      const commit = commitMap.get(oid);
+      if (!commit) {
+        complete = false;
+        continue;
+      }
+      queue.push(...commit.parentOids);
+    }
+    return reachable;
+  };
+  const oldReachable = collectReachable(fromOid);
+  const newReachable = collectReachable(toOid);
+  let count = 0;
+  for (const oid of newReachable) if (!oldReachable.has(oid)) count += 1;
+  return complete ? count : undefined;
 }
 
 function sourceLabel(subject: string): string | undefined {
@@ -151,6 +199,8 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
         fromOid: group.fromOid,
         toOid: group.toOid,
         timestamp: group.timestamp,
+        ...(group.type === 'fast-forward' ? { commitCount: countCommitsBetween(group.fromOid, group.toOid, commitMap.values()), operation: operationName(representative.subject) } : {}),
+        rawReflogMessage: representative.subject,
         sourceLabel: sourceLabel(representative.subject),
         subject: representative.subject,
         affectedRefs,

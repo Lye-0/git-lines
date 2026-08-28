@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
+import { eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
 
 function kindLabel(kind: GraphNode['kind']): string | undefined {
   if (kind === 'reflog-commit') return 'Reflog-only';
@@ -48,7 +49,7 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const working = workingSummary(node);
   const operation = operationSummary(node);
-  const refEvent = node.kind === 'fast-forward-event' || node.kind === 'history-event';
+  const refEvent = isRefEvent(node);
   // The title already identifies these state rows ("Working Tree" or
   // "Merge in progress"); repeating a second kind label only adds noise.
   const kind = refEvent || node.kind === 'working-tree' || node.kind === 'operation' ? undefined : kindLabel(node.kind);
@@ -64,11 +65,8 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   const primaryTrack = node.trackId ? tracks.find((track) => track.id === node.trackId) : undefined;
   const rowStyle = { top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px`, '--row-track-color': primaryTrack?.color } as CSSProperties;
   if (refEvent) {
-    const eventTime = node.event?.timestamp !== undefined && Number.isFinite(node.event.timestamp)
-      ? ` · ${new Date(node.event.timestamp).toLocaleString()}`
-      : '';
     return <div className={`commit-row row-${node.kind}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
-      <span className="sr-only">{node.label ?? node.subject ?? 'Ref event'}{eventTime}</span>
+      <span className="sr-only">{eventMainLabel(node)}. {eventTooltip(node)}</span>
     </div>;
   }
   const content = <div className={`row-content ${selected ? 'selected' : ''}`}>

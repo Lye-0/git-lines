@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveHistoryEvents } from '../../src/model/historyEventResolver.js';
+import { countCommitsBetween, resolveHistoryEvents } from '../../src/model/historyEventResolver.js';
 import type { GitCommit, ReflogEntry } from '../../src/git/gitTypes.js';
 
 const oid = (letter: string) => letter.repeat(40);
@@ -9,9 +9,18 @@ const commits: GitCommit[] = [
 ];
 const entry = (subject: string, from: string, to: string, refName = 'refs/heads/main', selector = 'main@{0}', timestamp = 3): ReflogEntry => ({ refName, newOid: to, previousOid: from, selector, timestamp, subject });
 
+function commit(oidValue: string, parentOids: string[], date: number): GitCommit {
+  return { oid: oid(oidValue), parentOids, subject: oidValue, authorName: 'A', authorDate: date, committerName: 'A', committerDate: date };
+}
+
 describe('history event resolver', () => {
   it('only calls a ref move fast-forward when the reflog says so and ancestry proves it', () => {
-    expect(resolveHistoryEvents([entry('merge feature: Fast-forward', oid('a'), oid('b'))], commits)[0].type).toBe('fast-forward');
+    expect(resolveHistoryEvents([entry('merge feature: Fast-forward', oid('a'), oid('b'))], commits)[0]).toMatchObject({
+      type: 'fast-forward',
+      commitCount: 1,
+      operation: 'merge',
+      rawReflogMessage: 'merge feature: Fast-forward',
+    });
     expect(resolveHistoryEvents([entry('update', oid('b'), oid('a'))], commits)).toEqual([]);
     expect(resolveHistoryEvents([entry('fetch: fast-forward', oid('a'), oid('b'), 'refs/remotes/origin/main')], commits)).toEqual([]);
     expect(resolveHistoryEvents([entry('commit: fast-forward docs', oid('a'), oid('b'))], commits)).toEqual([]);
@@ -19,6 +28,25 @@ describe('history event resolver', () => {
     expect(resolveHistoryEvents([entry('commit: force update notes', oid('a'), oid('b'))], commits)).toEqual([]);
     expect(resolveHistoryEvents([entry('commit: document commit --amend behavior', oid('a'), oid('b'))], commits)).toEqual([]);
     expect(resolveHistoryEvents([entry('commit: branch -f docs', oid('a'), oid('b'))], commits)).toEqual([]);
+  });
+
+  it('counts every commit in old..new, including side parents of a merge ancestor', () => {
+    const side = commit('s', [oid('a')], 2);
+    const merge = commit('m', [oid('b'), side.oid], 3);
+    const tip = commit('c', [merge.oid], 4);
+    expect(countCommitsBetween(oid('a'), tip.oid, [...commits, side, merge, tip])).toBe(4);
+    expect(countCommitsBetween(oid('b'), tip.oid, [...commits, side, merge, tip])).toBe(3);
+    expect(countCommitsBetween(oid('a'), oid('a'), commits)).toBe(0);
+    expect(countCommitsBetween(oid('missing'), oid('b'), commits)).toBeUndefined();
+  });
+
+  it('formats pull and operation-less fast-forward events without guessing an operation', () => {
+    const pull = resolveHistoryEvents([entry('pull origin/main: Fast-forward', oid('a'), oid('b'))], commits)[0];
+    expect(pull).toMatchObject({ type: 'fast-forward', commitCount: 1, operation: 'pull' });
+
+    const explicit = resolveHistoryEvents([entry('Fast-forward', oid('a'), oid('b'))], commits)[0];
+    expect(explicit).toMatchObject({ type: 'fast-forward', commitCount: 1, rawReflogMessage: 'Fast-forward' });
+    expect(explicit?.operation).toBeUndefined();
   });
 
   it('never labels a multi-parent merge commit itself as fast-forward', () => {

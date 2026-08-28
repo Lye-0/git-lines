@@ -78,6 +78,12 @@ export interface HistoryEvent {
   fromOid?: string;
   toOid: string;
   timestamp: number;
+  /** Number of commits reachable from toOid but not from fromOid for FF events. */
+  commitCount?: number;
+  /** Short, explicit operation name such as pull or merge. */
+  operation?: string;
+  /** Original reflog subject retained for tooltip/detail views. */
+  rawReflogMessage?: string;
   sourceLabel?: string;
   subject?: string;
   /** All refs updated by the same logical Git operation, including HEAD. */

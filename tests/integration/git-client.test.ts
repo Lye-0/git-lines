@@ -34,6 +34,7 @@ describe('GitClient integration fixture', () => {
     expect(snapshot.commits.filter((commit) => commit.subject === 'feature tip')).toHaveLength(1);
     expect(snapshot.commits.find((commit) => commit.subject === 'feature tip')?.parentOids).toHaveLength(1);
     expect(snapshot.historyEvents.filter((event) => event.type === 'fast-forward')).toHaveLength(1);
+    expect(snapshot.historyEvents.find((event) => event.type === 'fast-forward')).toMatchObject({ commitCount: 1, operation: 'merge' });
   });
 
   it('reads working-tree counts and an in-progress merge from Git metadata', async () => {
