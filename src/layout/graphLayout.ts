@@ -9,6 +9,7 @@ export interface GraphLayoutOptions {
   primaryBranch?: string;
   previousRows?: Map<string, number>;
   previousLanes?: Map<string, number>;
+  previousNodeLanes?: Map<string, number>;
   rowHeight?: number;
   laneWidth?: number;
 }
@@ -17,6 +18,7 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   const rows = computeRowLayout(facts.nodes, facts.edges, options.previousRows);
   const lanes = computeLaneLayout({ ...facts, nodes: rows.nodes }, {
     previousLanes: options.previousLanes,
+    previousNodeLanes: options.previousNodeLanes,
     primaryBranch: options.primaryBranch,
   });
   const laidOutNodes = lanes.nodes.map((node) => ({ ...node, row: rows.rows.get(node.id) ?? node.row }));

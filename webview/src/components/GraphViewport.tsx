@@ -17,7 +17,11 @@ export function GraphViewport({ layout, filter, selected, onSelect, loading, onL
   const [viewportWidth, setViewportWidth] = useState(0);
   const loadGate = useRef(true);
   const lastLayoutKey = useRef<string>();
-  const maxLane = Math.max(0, ...layout.tracks.map((track) => track.lane));
+  // A branch identity can occupy more than one reusable lane over time.  The
+  // rendered nodes are the source of truth for the width that the SVG needs;
+  // using only a track's representative lane could either clip a later
+  // segment or reserve width for a track with no visible segment.
+  const maxLane = Math.max(0, ...layout.nodes.map((node) => node.lane ?? 0));
   const laneWidth = (maxLane + 1) * layout.laneWidth + 48;
   // The graph/content boundary is determined by branch lanes only.  Ref event
   // labels are compacted inside the SVG and must never widen this column.

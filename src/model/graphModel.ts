@@ -54,6 +54,8 @@ export interface GraphTrack {
   family: string;
   kind: 'local' | 'remote';
   lane: number;
+  /** Visible Y intervals occupied by this branch identity and their lanes. */
+  segments?: Array<{ startRow: number; endRow: number; lane: number }>;
   color: string;
   refNames: string[];
 }

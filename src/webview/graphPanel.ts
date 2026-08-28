@@ -107,6 +107,7 @@ export class GraphPanel {
         primaryBranch: facts.primaryBranch,
         previousRows: isAppend ? this.layoutState.rows : undefined,
         previousLanes: isAppend ? this.layoutState.lanes : undefined,
+        previousNodeLanes: isAppend ? this.layoutState.nodeLanes : undefined,
         rowHeight: this.density === 'compact' ? 30 : 38,
       });
       this.layoutState.set(layout);

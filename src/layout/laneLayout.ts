@@ -4,7 +4,22 @@ import { normalizeRefName } from '../model/refDisplay.js';
 
 export interface LaneLayoutOptions {
   previousLanes?: Map<string, number>;
+  previousNodeLanes?: Map<string, number>;
   primaryBranch?: string;
+}
+
+export interface BranchSegment {
+  id: string;
+  trackId: string;
+  startRow: number;
+  endRow: number;
+  nodeIds?: string[];
+}
+
+export interface SegmentLaneOptions {
+  primaryTrackId?: string;
+  previousLanes?: Map<string, number>;
+  previousNodeLanes?: Map<string, number>;
 }
 
 interface TrackCandidate {
@@ -13,6 +28,56 @@ interface TrackCandidate {
   kind: 'local' | 'remote';
   refs: GitRef[];
   oids: Set<string>;
+}
+
+function interval(segment: Pick<BranchSegment, 'startRow' | 'endRow'>): { startRow: number; endRow: number } {
+  return segment.startRow <= segment.endRow
+    ? { startRow: segment.startRow, endRow: segment.endRow }
+    : { startRow: segment.endRow, endRow: segment.startRow };
+}
+
+function overlaps(a: Pick<BranchSegment, 'startRow' | 'endRow'>, b: Pick<BranchSegment, 'startRow' | 'endRow'>): boolean {
+  const left = interval(a);
+  const right = interval(b);
+  return left.startRow <= right.endRow && right.startRow <= left.endRow;
+}
+
+/**
+ * Assigns the smallest available non-primary lane to each visible branch
+ * segment.  A lane is occupied only for that segment's Y interval, so a
+ * later, non-overlapping segment can reuse it.  The returned map is keyed by
+ * the stable segment id and never mutates the input segments.
+ */
+export function assignBranchSegmentLanes(segments: BranchSegment[], options: SegmentLaneOptions = {}): Map<string, number> {
+  const previous = options.previousLanes ?? new Map<string, number>();
+  const previousNodeLanes = options.previousNodeLanes;
+  const laneSegments = new Map<number, BranchSegment[]>();
+  const result = new Map<string, number>();
+  const ordered = segments.slice().sort((a, b) => {
+    const first = interval(a);
+    const second = interval(b);
+    const previousFirst = a.nodeIds?.some((nodeId) => previousNodeLanes?.has(nodeId)) || (!previousNodeLanes && previous.has(a.trackId)) ? 0 : 1;
+    const previousSecond = b.nodeIds?.some((nodeId) => previousNodeLanes?.has(nodeId)) || (!previousNodeLanes && previous.has(b.trackId)) ? 0 : 1;
+    return previousFirst - previousSecond
+      || first.startRow - second.startRow
+      || first.endRow - second.endRow
+      || a.trackId.localeCompare(b.trackId)
+      || a.id.localeCompare(b.id);
+  });
+  const isAvailable = (lane: number, segment: BranchSegment): boolean => !(laneSegments.get(lane) ?? []).some((other) => overlaps(other, segment));
+  for (const segment of ordered) {
+    if (segment.trackId === options.primaryTrackId) {
+      result.set(segment.id, 0);
+      continue;
+    }
+    const previousNodeLane = segment.nodeIds?.map((nodeId) => previousNodeLanes?.get(nodeId)).find((lane): lane is number => lane !== undefined && lane >= 1);
+    const previousLane = previousNodeLane ?? (!previousNodeLanes ? previous.get(segment.trackId) : undefined);
+    let lane = previousLane !== undefined && previousLane >= 1 && isAvailable(previousLane, segment) ? previousLane : 1;
+    while (!isAvailable(lane, segment)) lane += 1;
+    result.set(segment.id, lane);
+    laneSegments.set(lane, [...(laneSegments.get(lane) ?? []), segment]);
+  }
+  return result;
 }
 
 function hash(value: string): number {
@@ -89,6 +154,76 @@ function makeCandidates(refs: GitRef[]): { candidates: TrackCandidate[]; refTrac
   return { candidates, refTrack };
 }
 
+interface NodeAssignment {
+  node: GraphNode;
+  trackId?: string;
+  row: number;
+}
+
+interface SegmentInterval {
+  startRow: number;
+  endRow: number;
+  nodeIds: Set<string>;
+}
+
+function addInterval(intervalsByTrack: Map<string, SegmentInterval[]>, trackId: string | undefined, firstRow: number, secondRow: number, nodeIds: string[]): void {
+  if (!trackId) return;
+  const startRow = Math.min(firstRow, secondRow);
+  const endRow = Math.max(firstRow, secondRow);
+  const intervals = intervalsByTrack.get(trackId) ?? [];
+  intervals.push({ startRow, endRow, nodeIds: new Set(nodeIds) });
+  intervalsByTrack.set(trackId, intervals);
+}
+
+function buildBranchSegments(assignments: NodeAssignment[], edges: GraphFactModel['edges']): BranchSegment[] {
+  const assignmentByNodeId = new Map(assignments.map((assignment) => [assignment.node.id, assignment]));
+  const intervalsByTrack = new Map<string, SegmentInterval[]>();
+  for (const assignment of assignments) {
+    addInterval(intervalsByTrack, assignment.trackId, assignment.row, assignment.row, [assignment.node.id]);
+  }
+  for (const edge of edges) {
+    const source = assignmentByNodeId.get(edge.fromNodeId);
+    const target = assignmentByNodeId.get(edge.toNodeId);
+    if (!source || !target) continue;
+    if (edge.annotation === 'ref-event') {
+      // Ref events are presentation annotations.  Their vertical connector
+      // occupies the target ref's lane, not the anchor commit's lane.
+      const eventTrack = target.trackId ?? source.trackId;
+      addInterval(intervalsByTrack, eventTrack, source.row, target.row, [target.node.id, source.trackId === eventTrack ? source.node.id : '']);
+      continue;
+    }
+    // A parent/working/operation edge keeps every lane it touches occupied
+    // across the full Y interval.  This prevents a reused lane from crossing
+    // a branch transition at a merge point.
+    for (const trackId of new Set([source.trackId, target.trackId])) {
+      if (!trackId) continue;
+      addInterval(intervalsByTrack, trackId, source.row, target.row, [
+        source.trackId === trackId ? source.node.id : '',
+        target.trackId === trackId ? target.node.id : '',
+      ]);
+    }
+  }
+  const segments: BranchSegment[] = [];
+  for (const [trackId, intervals] of intervalsByTrack) {
+    const ordered = intervals.slice().sort((a, b) => a.startRow - b.startRow || a.endRow - b.endRow);
+    let current: SegmentInterval | undefined;
+    let segmentIndex = 0;
+    for (const next of ordered) {
+      if (!current || next.startRow > current.endRow) {
+        if (current) {
+          segments.push({ id: `segment:${trackId}:${segmentIndex++}`, trackId, startRow: current.startRow, endRow: current.endRow, nodeIds: [...current.nodeIds].filter(Boolean) });
+        }
+        current = { startRow: next.startRow, endRow: next.endRow, nodeIds: new Set(next.nodeIds) };
+        continue;
+      }
+      current.endRow = Math.max(current.endRow, next.endRow);
+      for (const nodeId of next.nodeIds) if (nodeId) current.nodeIds.add(nodeId);
+    }
+    if (current) segments.push({ id: `segment:${trackId}:${segmentIndex}`, trackId, startRow: current.startRow, endRow: current.endRow, nodeIds: [...current.nodeIds].filter(Boolean) });
+  }
+  return segments;
+}
+
 export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOptions = {}): { nodes: GraphNode[]; tracks: GraphTrack[]; lanes: Map<string, number> } {
   const refs = branchRefs(facts.refs);
   const { candidates, refTrack } = makeCandidates(refs);
@@ -114,7 +249,9 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     return [...refTrack.entries()].find(([name]) => normalizeRefName(name) === normalized)?.[1];
   };
   const primary = options.primaryBranch ?? facts.primaryBranch;
-  const primaryCandidate = candidates.find((candidate) => candidate.refs.some((ref) => normalizeRefName(ref.shortName || ref.fullName) === primary));
+  const defaultPrimaryFamily = primary ?? candidates.find((candidate) => candidate.family === 'main' || candidate.family === 'master')?.family;
+  const primaryCandidate = candidates.find((candidate) => candidate.family === defaultPrimaryFamily
+    || candidate.refs.some((ref) => normalizeRefName(ref.shortName || ref.fullName) === primary));
   const previous = options.previousLanes ?? new Map<string, number>();
   const ordered = candidates.slice().sort((a, b) => {
     if (a.id === primaryCandidate?.id) return -1;
@@ -127,31 +264,6 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     if (a.kind !== b.kind) return a.kind === 'local' ? -1 : 1;
     return a.id.localeCompare(b.id);
   });
-  const lanes = new Map<string, number>();
-  for (const candidate of ordered) {
-    if (candidate.id === primaryCandidate?.id) lanes.set(candidate.id, 0);
-    else {
-      const occupied = new Set(lanes.values());
-      let lane = previous.get(candidate.id) ?? 1;
-      while (occupied.has(lane)) lane += 1;
-      lanes.set(candidate.id, lane);
-    }
-  }
-  const usedHues = new Set<number>();
-  const familyColors = new Map<string, string>();
-  const tracks: GraphTrack[] = ordered.map((candidate) => ({
-    id: candidate.id,
-    label: candidate.refs.map((ref) => refDisplay(ref)).join(' · '),
-    family: candidate.family,
-    kind: candidate.kind,
-    lane: lanes.get(candidate.id) as number,
-    color: familyColors.get(candidate.family) ?? (() => {
-      const color = colorFor(candidate.family, usedHues);
-      familyColors.set(candidate.family, color);
-      return color;
-    })(),
-    refNames: candidate.refs.map((ref) => ref.fullName),
-  }));
   const commits = new Map(facts.commits.map((commit) => [commit.oid, commit]));
   const claims = new Map<string, Array<{ trackId: string; distance: number }>>();
   for (const candidate of candidates) {
@@ -171,7 +283,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     ?.slice()
     .sort((a, b) => a.distance - b.distance || priority(a.trackId) - priority(b.trackId) || a.trackId.localeCompare(b.trackId))[0]
     ?.trackId;
-  const initialAssignments = facts.nodes.map((node) => {
+  const initialAssignments = facts.nodes.map((node, index) => {
     let trackId: string | undefined;
     // A clean working tree on a newly-created branch has the same OID as the
     // parent commit.  It must follow the checked-out branch track before the
@@ -186,13 +298,59 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     // main commit).  Resolve this before commit ancestry claims.
     if (!trackId && node.event?.refName) trackId = eventTrackForRef(node.targetRef ?? node.event.refName);
     if (!trackId && node.oid) trackId = trackForClaim(node.oid);
-    const lane = trackId ? lanes.get(trackId) : 0;
-    return { node, trackId, lane: lane ?? 0 };
+    return { node, trackId, row: node.row ?? index };
   });
-  const laidOut = initialAssignments.map(({ node, trackId, lane }) => {
-    if (!node.event) return { ...node, trackId, lane };
+  const segments = buildBranchSegments(initialAssignments, facts.edges);
+  const segmentLanes = assignBranchSegmentLanes(segments, {
+    primaryTrackId: primaryCandidate?.id,
+    previousLanes: previous,
+    previousNodeLanes: options.previousNodeLanes,
+  });
+  const segmentsWithLanes = segments.map((segment) => ({ ...segment, lane: segmentLanes.get(segment.id) ?? 0 }));
+  const laneByNodeId = new Map<string, number>();
+  const segmentsByTrack = new Map<string, Array<(typeof segmentsWithLanes)[number]>>();
+  for (const segment of segmentsWithLanes) {
+    segmentsByTrack.set(segment.trackId, [...(segmentsByTrack.get(segment.trackId) ?? []), segment]);
+    for (const nodeId of segment.nodeIds ?? []) laneByNodeId.set(nodeId, segment.lane);
+  }
+  const trackLane = new Map<string, number>();
+  const representativeLanes = new Set<number>();
+  for (const candidate of ordered) {
+    const candidateSegments = (segmentsByTrack.get(candidate.id) ?? []).slice().sort((a, b) => a.startRow - b.startRow || a.endRow - b.endRow || a.id.localeCompare(b.id));
+    const lane = candidate.id === primaryCandidate?.id
+      ? 0
+      : candidateSegments[0]?.lane
+        ?? (previous.get(candidate.id) !== undefined && (previous.get(candidate.id) as number) >= 1 ? previous.get(candidate.id) as number : undefined)
+        ?? (() => {
+          let fallback = 1;
+          while (representativeLanes.has(fallback)) fallback += 1;
+          return fallback;
+        })();
+    trackLane.set(candidate.id, lane);
+    representativeLanes.add(lane);
+  }
+  const lanes = new Map(ordered.map((candidate) => [candidate.id, trackLane.get(candidate.id) as number]));
+  const usedHues = new Set<number>();
+  const familyColors = new Map<string, string>();
+  const tracks: GraphTrack[] = ordered.map((candidate) => ({
+    id: candidate.id,
+    label: candidate.refs.map((ref) => refDisplay(ref)).join(' · '),
+    family: candidate.family,
+    kind: candidate.kind,
+    lane: trackLane.get(candidate.id) as number,
+    segments: (segmentsByTrack.get(candidate.id) ?? []).map((segment) => ({ startRow: segment.startRow, endRow: segment.endRow, lane: segment.lane })),
+    color: familyColors.get(candidate.family) ?? (() => {
+      const color = colorFor(candidate.family, usedHues);
+      familyColors.set(candidate.family, color);
+      return color;
+    })(),
+    refNames: candidate.refs.map((ref) => ref.fullName),
+  }));
+  const laidOut = initialAssignments.map(({ node, trackId }) => {
+    const nodeLane = trackId ? laneByNodeId.get(node.id) ?? trackLane.get(trackId) ?? 0 : 0;
+    if (!node.event) return { ...node, trackId, lane: nodeLane };
     const eventTrackId = eventTrackForRef(node.targetRef ?? node.event.refName) ?? trackId;
-    const eventLane = eventTrackId ? lanes.get(eventTrackId) ?? lane : lane;
+    const eventLane = eventTrackId ? laneByNodeId.get(node.id) ?? trackLane.get(eventTrackId) ?? nodeLane : nodeLane;
     // The event track is presentation metadata only.  It never contributes
     // a commit claim or a new GraphTrack/lane.
     return { ...node, trackId: eventTrackId, targetLaneId: eventTrackId ?? node.targetLaneId, lane: eventLane };

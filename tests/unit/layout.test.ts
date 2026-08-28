@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeLaneLayout } from '../../src/layout/laneLayout.js';
+import { assignBranchSegmentLanes, computeLaneLayout } from '../../src/layout/laneLayout.js';
 import { computeRowLayout, assertRowInvariants } from '../../src/layout/rowLayout.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { filterRenderableEdgePaths } from '../../src/layout/edgeVisibility.js';
@@ -11,6 +11,131 @@ const oid = (letter: string) => letter.repeat(40);
 function commitNode(letter: string, date: number): GraphNode { return { id: `commit:${oid(letter)}`, kind: 'commit', oid: oid(letter), refIds: [], timestamp: date, subject: letter }; }
 
 describe('graph layout', () => {
+  it('reuses a lane for non-overlapping branch segments', () => {
+    const lanes = assignBranchSegmentLanes([
+      { id: 'feature-a:segment-0', trackId: 'feature-a', startRow: 1000, endRow: 700 },
+      { id: 'feature-b:segment-0', trackId: 'feature-b', startRow: 600, endRow: 300 },
+    ]);
+    expect(lanes.get('feature-a:segment-0')).toBe(1);
+    expect(lanes.get('feature-b:segment-0')).toBe(1);
+  });
+
+  it('keeps overlapping branch segments on different lanes', () => {
+    const lanes = assignBranchSegmentLanes([
+      { id: 'feature-a:segment-0', trackId: 'feature-a', startRow: 1000, endRow: 500 },
+      { id: 'feature-b:segment-0', trackId: 'feature-b', startRow: 800, endRow: 300 },
+    ]);
+    expect(lanes.get('feature-a:segment-0')).not.toBe(lanes.get('feature-b:segment-0'));
+  });
+
+  it('chooses the leftmost available lane for a new segment', () => {
+    const lanes = assignBranchSegmentLanes([
+      { id: 'short:segment-0', trackId: 'short', startRow: 0, endRow: 5 },
+      { id: 'long:segment-0', trackId: 'long', startRow: 0, endRow: 20 },
+      { id: 'new:segment-0', trackId: 'new', startRow: 6, endRow: 10 },
+    ]);
+    expect(lanes.get('short:segment-0')).toBe(1);
+    expect(lanes.get('long:segment-0')).toBe(2);
+    expect(lanes.get('new:segment-0')).toBe(1);
+  });
+
+  it('preserves an existing segment lane without reserving it for a new range', () => {
+    const lanes = assignBranchSegmentLanes([
+      { id: 'existing:segment-0', trackId: 'existing', startRow: 0, endRow: 5, nodeIds: ['old-node'] },
+      { id: 'other:segment-0', trackId: 'other', startRow: 0, endRow: 5 },
+      { id: 'new:segment-0', trackId: 'existing', startRow: 6, endRow: 10, nodeIds: ['new-node'] },
+    ], {
+      previousLanes: new Map([['existing', 2]]),
+      previousNodeLanes: new Map([['old-node', 2]]),
+    });
+    expect(lanes.get('existing:segment-0')).toBe(2);
+    expect(lanes.get('other:segment-0')).toBe(1);
+    expect(lanes.get('new:segment-0')).toBe(1);
+  });
+
+  it('keeps every node in one connected branch segment on one lane', () => {
+    const first = { ...commitNode('a', 3), row: 0 };
+    const second = { ...commitNode('b', 2), row: 2 };
+    const refs = [{ fullName: 'refs/heads/feature', shortName: 'feature', type: 'local' as const, oid: first.oid }];
+    const facts: GraphFactModel = {
+      nodes: [first, second],
+      edges: [{ id: 'parent:a:b', type: 'parent' as const, fromNodeId: first.id, toNodeId: second.id }],
+      refs,
+      commits: [
+        { oid: first.oid!, parentOids: [second.oid!], subject: 'a', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        { oid: second.oid!, parentOids: [], subject: 'b', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      ],
+      workingTrees: [],
+      operations: [],
+      events: [],
+      primaryBranch: 'main',
+      shallowBoundaryOids: [],
+    };
+    const result = computeLaneLayout(facts);
+    expect(result.nodes.map((node) => node.lane)).toEqual([1, 1]);
+    expect(result.tracks[0]?.segments).toEqual([{ startRow: 0, endRow: 2, lane: 1 }]);
+  });
+
+  it('reuses the same lane for disjoint branch ranges while reserving main at zero', () => {
+    const main = { ...commitNode('m', 5), row: 0 };
+    const firstA = { ...commitNode('a', 4), row: 1 };
+    const lastA = { ...commitNode('b', 3), row: 2 };
+    const firstB = { ...commitNode('c', 2), row: 4 };
+    const lastB = { ...commitNode('d', 1), row: 5 };
+    const refs = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: main.oid },
+      { fullName: 'refs/heads/feature-a', shortName: 'feature-a', type: 'local' as const, oid: firstA.oid },
+      { fullName: 'refs/heads/feature-b', shortName: 'feature-b', type: 'local' as const, oid: firstB.oid },
+    ];
+    const facts: GraphFactModel = {
+      nodes: [main, firstA, lastA, firstB, lastB],
+      edges: [
+        { id: 'parent:a:b', type: 'parent' as const, fromNodeId: firstA.id, toNodeId: lastA.id },
+        { id: 'parent:c:d', type: 'parent' as const, fromNodeId: firstB.id, toNodeId: lastB.id },
+      ],
+      refs,
+      commits: [
+        { oid: main.oid!, parentOids: [], subject: 'main', authorName: 'A', authorDate: 5, committerName: 'A', committerDate: 5 },
+        { oid: firstA.oid!, parentOids: [lastA.oid!], subject: 'a', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: lastA.oid!, parentOids: [], subject: 'b', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        { oid: firstB.oid!, parentOids: [lastB.oid!], subject: 'c', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+        { oid: lastB.oid!, parentOids: [], subject: 'd', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+      ],
+      workingTrees: [],
+      operations: [],
+      events: [],
+      primaryBranch: 'main',
+      shallowBoundaryOids: [],
+    };
+    const result = computeLaneLayout(facts);
+    expect(result.nodes.find((node) => node.id === main.id)?.lane).toBe(0);
+    expect(result.nodes.filter((node) => [firstA.id, lastA.id, firstB.id, lastB.id].includes(node.id)).map((node) => node.lane)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('defaults a main family to lane zero when no primary branch is supplied', () => {
+    const main = { ...commitNode('m', 2), row: 0 };
+    const feature = { ...commitNode('f', 1), row: 1 };
+    const refs = [
+      { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local' as const, oid: feature.oid },
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: main.oid },
+    ];
+    const result = computeLaneLayout({
+      nodes: [main, feature],
+      edges: [],
+      refs,
+      commits: [
+        { oid: main.oid!, parentOids: [], subject: 'main', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+        { oid: feature.oid!, parentOids: [], subject: 'feature', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+      ],
+      workingTrees: [],
+      operations: [],
+      events: [],
+      shallowBoundaryOids: [],
+    });
+    expect(result.nodes.find((node) => node.id === main.id)?.lane).toBe(0);
+    expect(result.nodes.find((node) => node.id === feature.id)?.lane).toBe(1);
+  });
+
   it('keeps every node on a unique row and parents below children despite timestamp inversion', () => {
     const child = commitNode('a', 100);
     const parent = commitNode('b', 200);
