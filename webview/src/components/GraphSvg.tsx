@@ -14,8 +14,8 @@ function annotationPath(_fromX: number, fromY: number, toX: number, toY: number)
 }
 
 function renderNodeSymbol(node: GraphLayout['nodes'][number]): ReactNode {
-  if (node.kind === 'commit') return <circle className="node-symbol node-dot" r="7.5" />;
-  if (node.kind === 'working-tree' || node.kind === 'operation') return <circle className="node-symbol node-hollow" r="7.5" />;
+  if (node.kind === 'commit') return <circle className="node-symbol node-dot" r="8.5" />;
+  if (node.kind === 'working-tree' || node.kind === 'operation') return <circle className="node-symbol node-hollow" r="8.5" />;
   if (node.kind === 'fast-forward-event' || node.kind === 'history-event') {
     return <path className="node-symbol node-diamond" d="M 0 -6.5 L 6.5 0 L 0 6.5 L -6.5 0 Z" />;
   }
