@@ -1,10 +1,10 @@
 import type { GitRunner } from './gitRunner.js';
 import type { GitCommit } from './gitTypes.js';
-import { gitLogFormat, parseGitLogNul } from './parsers/logParser.js';
+import { gitLogNumstatFormat, gitLogFormat, parseGitLogNumstat, parseGitLogNul } from './parsers/logParser.js';
 
 export async function readCommits(runner: GitRunner, root: string, limit: number): Promise<GitCommit[]> {
-  const output = await runner.runChecked(['log', '--all', '--topo-order', '--date-order', '--no-decorate', '-n', String(Math.max(1, limit)), `--format=${gitLogFormat(false)}`], { cwd: root, timeoutMs: 12000 });
-  return parseGitLogNul(output);
+  const output = await runner.runChecked(['log', '--all', '--topo-order', '--date-order', '--no-decorate', '-n', String(Math.max(1, limit)), '--numstat', '--diff-merges=first-parent', `--format=${gitLogNumstatFormat()}`], { cwd: root, timeoutMs: 12000 });
+  return parseGitLogNumstat(output);
 }
 
 export async function readCommit(runner: GitRunner, root: string, oid: string): Promise<GitCommit | undefined> {

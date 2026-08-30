@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseGitLogNul } from '../../src/git/parsers/logParser.js';
+import { parseGitLogNumstat, parseGitLogNul } from '../../src/git/parsers/logParser.js';
 import { parsePorcelainV2 } from '../../src/git/parsers/statusParser.js';
 import { parseNameStatus, parseNumstat, sumNumstat } from '../../src/git/parsers/diffParser.js';
 import { parseRefRecords } from '../../src/git/parsers/refParser.js';
@@ -11,6 +11,16 @@ describe('Git parsers', () => {
     const output = ['a'.repeat(40), 'b'.repeat(40), 'A', 'a@example.test', '2026-08-27T10:00:00+09:00', 'C', 'c@example.test', '2026-08-27T10:01:00+09:00', '日本語の件名', ''].join('\0') + '\x1e';
     const [commit] = parseGitLogNul(output);
     expect(commit).toMatchObject({ oid: 'a'.repeat(40), parentOids: ['b'.repeat(40)], subject: '日本語の件名' });
+  });
+
+  it('parses batched commit numstat records without per-commit diffs', () => {
+    const record = (fields: string[], stats: string) => `\x1e${fields.join('\0')}\0${stats}`;
+    const output = record(['a'.repeat(40), 'b'.repeat(40), 'A', 'a@example.test', '2026-08-27T10:00:00+09:00', 'C', 'c@example.test', '2026-08-27T10:01:00+09:00', 'feature'], '\n3\t1\tfeature.txt\n')
+      + record(['b'.repeat(40), '', 'A', 'a@example.test', '2026-08-27T09:00:00+09:00', 'C', 'c@example.test', '2026-08-27T09:01:00+09:00', 'base'], '\n');
+    expect(parseGitLogNumstat(output)).toMatchObject([
+      { oid: 'a'.repeat(40), parentOids: ['b'.repeat(40)], subject: 'feature', changedFiles: 1, additions: 3, deletions: 1 },
+      { oid: 'b'.repeat(40), parentOids: [], subject: 'base', changedFiles: 0, additions: 0, deletions: 0 },
+    ]);
   });
 
   it('counts porcelain v2 staged, unstaged, untracked and conflicts', () => {

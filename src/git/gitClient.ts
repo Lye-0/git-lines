@@ -13,7 +13,7 @@ import type {
   WorkingTreeState,
 } from './gitTypes.js';
 import { OperationStateReader } from './operationStateReader.js';
-import { gitLogFormat, parseGitLogNul } from './parsers/logParser.js';
+import { gitLogNumstatFormat, gitLogFormat, parseGitLogNumstat, parseGitLogNul } from './parsers/logParser.js';
 import { parseRefRecords, refFormat } from './parsers/refParser.js';
 import { parseReflogRecords, reflogFormat } from './parsers/reflogParser.js';
 import { parsePorcelainV2, toWorkingTreeState } from './parsers/statusParser.js';
@@ -28,6 +28,10 @@ export interface GitClientOptions {
 }
 
 const DEFAULT_TIMEOUT = 12000;
+
+function isUnsupportedDiffMergeOption(error: unknown): boolean {
+  return error instanceof GitCommandError && /diff-merges|unknown option|unrecognized (?:argument|option)|invalid option/i.test(error.stderr);
+}
 
 export class GitClient {
   public readonly runner: GitRunner;
@@ -93,36 +97,44 @@ export class GitClient {
     );
     const commit = parseGitLogNul(output)[0];
     if (!commit) throw new GitCommandError(`Unable to parse commit ${oid}`, ['show', oid]);
-    const filesOutput = await this.runner.runChecked(['diff-tree', '--root', '--no-commit-id', '--name-status', '-r', '-M', '-C', oid], {
-      cwd: root,
-      timeoutMs: this.timeoutMs,
-    });
+    const filesOutput = await this.readCommitDiff(root, '--name-status', oid);
     const fileChanges = parseNameStatus(filesOutput);
     let stats: ReturnType<typeof parseNumstat> = [];
     try {
-      const statsOutput = await this.runner.runChecked(['diff-tree', '--root', '--no-commit-id', '--numstat', '-r', '-M', '-C', oid], {
-        cwd: root,
-        timeoutMs: this.timeoutMs,
-      });
+      const statsOutput = await this.readCommitDiff(root, '--numstat', oid);
       stats = parseNumstat(statsOutput);
     } catch {
       // Some object types (for example a root/merge with no diff) do not expose numstat.
     }
     const changes = fileChanges.map((change, index) => ({ ...change, ...stats[index] }));
     const { additions, deletions } = sumNumstat(stats);
-    return { ...commit, files: changes.map((change) => change.path), fileChanges: changes, additions, deletions };
+    return { ...commit, files: changes.map((change) => change.path), fileChanges: changes, changedFiles: changes.length, additions, deletions };
   }
 
   private async readCommits(root: string, limit: number): Promise<GitCommit[]> {
     try {
-      const output = await this.runner.runChecked(
-        ['log', '--all', '--topo-order', '--date-order', '--no-decorate', '-n', String(Math.max(1, limit)), `--format=${gitLogFormat(false)}`],
-        { cwd: root, timeoutMs: this.timeoutMs },
-      );
-      return parseGitLogNul(output);
+      const baseArgs = ['log', '--all', '--topo-order', '--date-order', '--no-decorate', '-n', String(Math.max(1, limit)), '--numstat'];
+      let output: string;
+      try {
+        output = await this.runner.runChecked([...baseArgs, '--diff-merges=first-parent', `--format=${gitLogNumstatFormat()}`], { cwd: root, timeoutMs: this.timeoutMs });
+      } catch (error) {
+        if (!isUnsupportedDiffMergeOption(error)) throw error;
+        output = await this.runner.runChecked([...baseArgs, `--format=${gitLogNumstatFormat()}`], { cwd: root, timeoutMs: this.timeoutMs });
+      }
+      return parseGitLogNumstat(output);
     } catch (error) {
       if (error instanceof GitCommandError && /does not have any commits|bad default revision|ambiguous argument/i.test(error.stderr)) return [];
       throw error;
+    }
+  }
+
+  private async readCommitDiff(root: string, format: '--name-status' | '--numstat', oid: string): Promise<string> {
+    const baseArgs = ['diff-tree', '--root', '--no-commit-id', format, '-r', '-M', '-C'];
+    try {
+      return await this.runner.runChecked([...baseArgs, '--diff-merges=first-parent', oid], { cwd: root, timeoutMs: this.timeoutMs });
+    } catch (error) {
+      if (!isUnsupportedDiffMergeOption(error)) throw error;
+      return this.runner.runChecked([...baseArgs, oid], { cwd: root, timeoutMs: this.timeoutMs });
     }
   }
 

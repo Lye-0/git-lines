@@ -27,7 +27,7 @@ export function parseNumstat(output: string): NumstatEntry[] {
     if (!line) return [];
     const fields = line.split('\t');
     if (fields.length < 2) return [];
-    const [added, removed] = fields;
+    const [added, removed] = fields.slice(0, 2).map((field) => field.trim());
     const additions = /^\d+$/.test(added ?? '') ? Number(added) : undefined;
     const deletions = /^\d+$/.test(removed ?? '') ? Number(removed) : undefined;
     // Keep binary (`-\t-`) entries so stats stay aligned with name-status rows.

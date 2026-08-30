@@ -3,6 +3,11 @@ export interface GitCommit {
   parentOids: string[];
   subject: string;
   body?: string;
+  /** Number of paths changed by this commit when loaded from a log snapshot. */
+  changedFiles?: number;
+  /** Aggregate line additions/deletions from the snapshot's numstat batch. */
+  additions?: number;
+  deletions?: number;
   authorName: string;
   authorEmail?: string;
   authorDate: number;
@@ -23,8 +28,6 @@ export interface GitCommitDetail extends GitCommit {
   /** Kept as a flat list for protocol/backwards compatibility. */
   files: string[];
   fileChanges?: GitFileChange[];
-  additions?: number;
-  deletions?: number;
 }
 
 export type GitRefType = 'local' | 'remote' | 'tag' | 'symbolic';

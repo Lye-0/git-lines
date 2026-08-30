@@ -3,6 +3,7 @@ import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
 import { workingTreeStateLabel } from './workingTreePresentation';
+import { commitChangeStats } from './commitStatsPresentation';
 
 function kindLabel(kind: GraphNode['kind']): string | undefined {
   if (kind === 'reflog-commit') return 'Reflog-only';
@@ -53,6 +54,7 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   const commitMeta = node.commit
     ? [node.commit.oid.slice(0, 8), node.commit.authorName, relativeTime(node.commit.committerDate)].filter(Boolean).join(' · ')
     : undefined;
+  const changeStats = (node.kind === 'commit' || node.kind === 'reflog-commit') ? commitChangeStats(node.commit) : undefined;
   const primaryTrack = node.trackId ? tracks.find((track) => track.id === node.trackId) : undefined;
   const rowStyle = { top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px`, '--row-track-color': primaryTrack?.color } as CSSProperties;
   if (refEvent) {
@@ -85,6 +87,11 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
         const style = { '--badge-color': track?.color } as CSSProperties;
         return <span className={`ref-badge ref-badge-${badge.kind}${badge.isDefault ? ' default' : ''}`} style={style} key={badge.fullName} title={badge.name}>{badge.name}{badge.isDefault ? ' · default' : ''}</span>;
       })}
+    </div>}
+    {changeStats && <div className="row-change-stats" aria-label={`${changeStats.files} files, ${changeStats.additions} additions, ${changeStats.deletions} deletions`}>
+      <span className="row-change-files">{changeStats.files} files</span>
+      <span className="row-change-additions">+{changeStats.additions}</span>
+      <span className="row-change-deletions">−{changeStats.deletions}</span>
     </div>}
   </div>;
   const secondaryWorktree = node.workingTree?.mainWorktree === false;

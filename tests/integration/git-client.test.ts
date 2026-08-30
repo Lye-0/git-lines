@@ -21,6 +21,7 @@ describe('GitClient integration fixture', () => {
     expect(snapshot.refs.some((ref) => ref.shortName === 'feature/auth' && ref.type === 'local')).toBe(true);
     expect(snapshot.workingTrees[0]).toMatchObject({ branch: 'main', clean: true });
     const feature = snapshot.commits.find((commit) => commit.subject === 'feature');
+    expect(feature).toMatchObject({ changedFiles: 1, additions: 1, deletions: 0 });
     const detail = await new GitClient().readCommitDetail(fixture.root, feature?.oid ?? '');
     expect(detail.fileChanges).toEqual([{ path: 'feature.txt', status: 'A', additions: 1, deletions: 0 }]);
     expect(snapshot.historyEvents).toHaveLength(0);
@@ -107,6 +108,9 @@ describe('GitClient integration fixture', () => {
     expect(layout.edges.filter((edge) => edge.type === 'parent' && edge.fromNodeId === mergeNode?.id)).toHaveLength(2);
     expect(layout.nodes.find((node) => node.oid === initialOid)?.lane).toBe(mergeNode?.lane);
     expect(layout.nodes.find((node) => node.oid === featureTipOid)?.lane).toBe([...featureLanes][0]);
+    expect(mergeCommit).toMatchObject({ changedFiles: 3, additions: 3, deletions: 0 });
+    const mergeDetail = await new GitClient().readCommitDetail(fixture.root, mergeCommit?.oid ?? '');
+    expect(mergeDetail).toMatchObject({ changedFiles: 3, additions: 3, deletions: 0 });
   });
 
   it('keeps a newly-created branch on one commit node and gives only its Working Tree a lane', async () => {
