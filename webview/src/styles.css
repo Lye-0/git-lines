@@ -85,13 +85,13 @@ h1, h2, p { margin: 0; }
 .row-kind { color: var(--graph-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; flex: 0 0 auto; white-space: nowrap; }
 .row-text { width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
 .row-heading { min-width: 0; display: flex; align-items: baseline; gap: 9px; overflow: hidden; }
-.subject { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.subject { min-width: 0; max-width: 620px; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .row-subtitle, .commit-meta { min-width: 0; color: var(--graph-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-meta { font-family: var(--vscode-editor-font-family, ui-monospace); }
 .compact-row .row-text { flex-direction: row; align-items: baseline; gap: 8px; }
 .compact-row .row-heading { min-width: 0; flex: 1 1 auto; }
 .compact-row .row-subtitle { flex: 1 1 auto; min-width: 0; }
-.compact-row .commit-meta { flex: 0 1 auto; min-width: 0; max-width: 45%; }
+.compact-row .commit-meta { flex: 0 1 auto; min-width: 0; }
 .row-meta { display: flex; gap: 5px; row-gap: 2px; align-items: center; align-content: center; justify-content: flex-start; flex: 0 1 auto; max-width: min(420px, 100%); min-width: 0; max-height: calc(var(--row-height, 38px) - 6px); flex-wrap: nowrap; overflow: hidden; color: var(--graph-muted); }
 .changes-grid { display: grid; grid-template-columns: 76px 64px 64px; column-gap: 9px; width: var(--changes-column-width, 222px); flex: 0 0 var(--changes-column-width, 222px); align-items: baseline; font-size: 10px; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .changes-cell { display: inline-flex; min-width: 0; align-items: baseline; justify-content: flex-end; gap: 5px; white-space: nowrap; }
@@ -103,7 +103,7 @@ h1, h2, p { margin: 0; }
 .detail-change-stat.deletions strong, .file-stats .deletions { color: #ef8f9d; }
 .row-change-stats { margin-left: auto; }
 code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 11px; }
-.ref-badge { color: var(--badge-color, var(--graph-accent)); border: 1px solid color-mix(in srgb, var(--badge-color, var(--graph-accent)) 48%, var(--graph-border)); border-radius: 4px; padding: 1px 5px; line-height: 16px; max-width: 220px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-badge { color: var(--badge-color, var(--graph-accent)); border: 1px solid color-mix(in srgb, var(--badge-color, var(--graph-accent)) 48%, var(--graph-border)); border-radius: 4px; padding: 1px 5px; line-height: 16px; max-width: 240px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ref-badge-local { font-weight: 600; }
 .ref-badge-remote { opacity: .78; font-style: italic; }
 .ref-badge-tag { border-radius: 999px; opacity: .86; }
@@ -174,13 +174,6 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
   .filter-label { flex: 1 1 240px; min-width: 180px; }
   .filter-label input { width: min(270px, 100%); }
 }
-@media (max-width: 1200px) {
-  .row-meta { max-width: 35%; }
-  .ref-badge { max-width: 100%; }
-}
-@media (max-width: 900px) {
-  .row-meta { max-width: 30%; }
-}
 @media (max-width: 720px) {
   .toolbar { align-items: flex-start; flex-direction: column; }
   .toolbar-actions { width: 100%; justify-content: flex-start; }
@@ -189,7 +182,6 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
   .repo-name { max-width: 80vw; }
   .content-shell { flex-direction: column; }
   .detail-panel { width: 100%; height: auto; flex-basis: auto; max-height: 45vh; border-left: 0; border-top: 1px solid var(--graph-border); }
-  .row-meta { max-width: 30%; }
   .commit-row { padding-right: 8px; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
