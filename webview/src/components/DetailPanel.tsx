@@ -1,12 +1,14 @@
 import { useState } from 'react';
+import type { CSSProperties } from 'react';
 import type { DetailMessage } from '../types';
 import { commitDescription, detailFileChanges, shortHash } from './detailPresentation';
+import type { DetailRefBadge } from './detailPresentation';
 
 function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'unknown';
 }
 
-export function DetailPanel({ detail, title, onClose }: { detail: Exclude<DetailMessage, null>; title?: string; onClose: () => void }) {
+export function DetailPanel({ detail, title, refBadges = [], onClose }: { detail: Exclude<DetailMessage, null>; title?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const subject = detail.subject || title || 'Commit';
   const fileChanges = detailFileChanges(detail);
@@ -55,6 +57,9 @@ export function DetailPanel({ detail, title, onClose }: { detail: Exclude<Detail
           <code title={detail.oid}>{shortHash(detail.oid)}</code>
           <button type="button" className="copy-button" onClick={() => void copyFullHash()} aria-label="Copy full commit hash">{copied ? 'Copied' : 'Copy'}</button>
         </div>
+        {refBadges.length > 0 && <div className="detail-refs" aria-label="Commit refs">
+          {refBadges.map((badge) => <span className={`ref-badge ref-badge-${badge.kind}${badge.isDefault ? ' default' : ''}`} style={{ '--badge-color': badge.color } as CSSProperties} key={badge.fullName} title={badge.fullName}>{badge.name}{badge.isDefault ? ' · default' : ''}</span>)}
+        </div>}
       </div>
       <button type="button" className="close-button" onClick={onClose} aria-label="Close commit details">×</button>
     </div>
@@ -80,7 +85,7 @@ export function DetailPanel({ detail, title, onClose }: { detail: Exclude<Detail
       </div>
     </dl>
 
-    <section className="detail-section" aria-labelledby="changed-files-heading">
+    <section className="detail-section detail-files-section" aria-labelledby="changed-files-heading">
       <div className="detail-section-header"><h3 id="changed-files-heading">Changed files</h3><span>{fileChanges.length}</span></div>
       {fileChanges.length ? <ul className="changed-files">
         {fileChanges.map((change, index) => <li className="changed-file" key={`${change.path}-${index}`}>

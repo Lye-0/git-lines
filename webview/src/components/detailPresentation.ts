@@ -1,4 +1,8 @@
 import type { GitCommitDetail, GitFileChange } from '../../../src/git/gitTypes';
+import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
+import type { GraphRefBadge } from '../../../src/model/refDisplay';
+
+export type DetailRefBadge = GraphRefBadge & { color?: string };
 
 export function shortHash(oid: string, length = 8): string {
   return oid.slice(0, length);
@@ -7,6 +11,13 @@ export function shortHash(oid: string, length = 8): string {
 export function detailFileChanges(detail: GitCommitDetail): GitFileChange[] {
   if (detail.fileChanges?.length) return detail.fileChanges;
   return detail.files.map((path) => ({ path, status: 'M' }));
+}
+
+export function resolveDetailRefBadges(node: Pick<GraphNode, 'refBadges'> | undefined, tracks: Pick<GraphTrack, 'refNames' | 'color'>[]): DetailRefBadge[] {
+  return (node?.refBadges ?? []).map((badge) => ({
+    ...badge,
+    color: tracks.find((track) => track.refNames.includes(badge.fullName))?.color,
+  }));
 }
 
 /** Returns only body text that adds information beyond the commit subject. */
