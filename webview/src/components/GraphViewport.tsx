@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { GraphSvg } from './GraphSvg';
 import { CommitRow } from './CommitRow';
-import { graphWidthForLayout, TIMELINE_MIN_CONTENT_WIDTH } from './graphMetrics';
+import { graphWidthForLayout, TIMELINE_MIN_CONTENT_WIDTH, TIMELINE_MIN_WIDTH } from './graphMetrics';
 
 interface Props {
   layout: GraphLayout;
@@ -29,8 +29,11 @@ export function GraphViewport({ layout, filter, selected, showWorkingTreeStats =
   // Keep the content and fixed changes columns usable at any viewport size;
   // the graph-scroll container provides horizontal scrolling below this
   // minimum instead of collapsing rows or hiding stats.
-  const canvasMinWidth = graphWidth + TIMELINE_MIN_CONTENT_WIDTH;
-  const eventLabelWidth = Math.max(graphWidth, viewportWidth || graphWidth);
+  const canvasMinWidth = Math.max(TIMELINE_MIN_WIDTH, graphWidth + TIMELINE_MIN_CONTENT_WIDTH);
+  // Use the scrollable canvas width for event labels as well. A narrow
+  // viewport must not make an otherwise readable event label compact before
+  // the user has a chance to scroll horizontally.
+  const eventLabelWidth = Math.max(canvasMinWidth, viewportWidth || graphWidth);
   const rowCount = Math.max(1, ...layout.nodes.map((node) => (node.row ?? 0) + 1));
   const canvasHeight = rowCount * layout.rowHeight;
   const loadThreshold = Math.max(layout.rowHeight * 3, 180);

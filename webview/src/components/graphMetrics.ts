@@ -4,6 +4,11 @@ import type { GraphLayout } from '../../../src/layout/layoutTypes';
 export const CHANGES_COLUMN_START = 1180;
 export const CHANGES_COLUMN_WIDTH = 222;
 /**
+ * Baseline width for the complete timeline. Below this width the scroll
+ * viewport moves over the timeline instead of collapsing its content rows.
+ */
+export const TIMELINE_MIN_WIDTH = 1150;
+/**
  * Keep a readable commit-content area before the fixed changes grid.  The
  * resulting minimum canvas width is intentionally larger than a narrow
  * viewport so the graph can use horizontal scrolling instead of collapsing
