@@ -1,22 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
-import type { WorkingTreeState } from '../../../src/git/gitTypes';
 import { GraphSvg } from './GraphSvg';
 import { CommitRow } from './CommitRow';
-import { WorkingTreeSummaryPanel } from './WorkingTreeSummaryPanel';
 import { graphWidthForLayout, TIMELINE_MIN_CONTENT_WIDTH } from './graphMetrics';
 
 interface Props {
   layout: GraphLayout;
   filter: string;
   selected?: string;
-  workingTree?: WorkingTreeState;
+  showWorkingTreeStats?: boolean;
   onSelect: (oid: string) => void;
   loading: boolean;
   onLoadMore: () => void;
 }
 
-export function GraphViewport({ layout, filter, selected, workingTree, onSelect, loading, onLoadMore }: Props) {
+export function GraphViewport({ layout, filter, selected, showWorkingTreeStats = true, onSelect, loading, onLoadMore }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const loadGate = useRef(true);
@@ -81,8 +79,7 @@ export function GraphViewport({ layout, filter, selected, workingTree, onSelect,
       <div className="graph-canvas" style={{ minWidth: canvasMinWidth, minHeight: canvasHeight }}>
         <GraphSvg layout={layout} width={graphWidth} height={canvasHeight} selected={selected} />
         <div className="rows" style={{ marginLeft: graphWidth, width: `calc(100% - ${graphWidth}px)`, minHeight: canvasHeight }}>
-          {workingTree && <WorkingTreeSummaryPanel tree={workingTree} />}
-          {layout.nodes.slice().sort((a, b) => (a.row ?? 0) - (b.row ?? 0)).map((node) => { const tree = node.workingTree; const haystack = [node.subject, node.label, node.oid, tree?.branch, tree?.path, tree?.detached ? 'detached' : '', tree?.clean ? 'clean' : '', ...node.refIds, ...(node.refBadges?.map((badge) => badge.fullName) ?? [])].filter(Boolean).join(' ').toLocaleLowerCase(); const selectable = node.kind === 'commit' || node.kind === 'reflog-commit'; return <CommitRow key={node.id} node={node} rowHeight={layout.rowHeight} tracks={layout.tracks} eventLabelWidth={eventLabelWidth} eventLabelX={graphWidth} selected={selectable && node.oid === selected} hidden={Boolean(needle) && !haystack.includes(needle)} onSelect={onSelect} />; })}
+          {layout.nodes.slice().sort((a, b) => (a.row ?? 0) - (b.row ?? 0)).map((node) => { const tree = node.workingTree; const haystack = [node.subject, node.label, node.oid, tree?.branch, tree?.path, tree?.detached ? 'detached' : '', tree?.clean ? 'clean' : '', ...node.refIds, ...(node.refBadges?.map((badge) => badge.fullName) ?? [])].filter(Boolean).join(' ').toLocaleLowerCase(); const selectable = node.kind === 'commit' || node.kind === 'reflog-commit'; return <CommitRow key={node.id} node={node} rowHeight={layout.rowHeight} tracks={layout.tracks} eventLabelWidth={eventLabelWidth} eventLabelX={graphWidth} selected={selectable && node.oid === selected} hidden={Boolean(needle) && !haystack.includes(needle)} showWorkingTreeStats={showWorkingTreeStats} onSelect={onSelect} />; })}
         </div>
       </div>
     </div>

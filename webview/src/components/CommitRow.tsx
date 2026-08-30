@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
-import { workingTreeStateLabel } from './workingTreePresentation';
+import { summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import { commitChangeStats } from './commitStatsPresentation';
 import { ChangeStatsGrid } from './ChangeStatsGrid';
 
@@ -38,7 +38,7 @@ function operationSummary(node: GraphNode): string | undefined {
   return node.operation.detail || (node.operation.sourceOids.length ? `${node.operation.sourceOids.length} source commit${node.operation.sourceOids.length === 1 ? '' : 's'}` : 'Waiting for Git to finish');
 }
 
-export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks = [], eventLabelWidth, eventLabelX = 0 }: { node: GraphNode; rowHeight: number; selected: boolean; hidden?: boolean; onSelect: (oid: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number }) {
+export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true }: { node: GraphNode; rowHeight: number; selected: boolean; hidden?: boolean; onSelect: (oid: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean }) {
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const working = workingSummary(node);
   const operation = operationSummary(node);
@@ -55,7 +55,14 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   const commitMeta = node.commit
     ? [node.commit.oid.slice(0, 8), node.commit.authorName, relativeTime(node.commit.committerDate)].filter(Boolean).join(' · ')
     : undefined;
-  const changeStats = (node.kind === 'commit' || node.kind === 'reflog-commit') ? commitChangeStats(node.commit) : undefined;
+  const workingStats = node.kind === 'working-tree' && showWorkingTreeStats && node.workingTree && node.workingTree.mainWorktree !== false
+    ? summarizeWorkingTree(node.workingTree)
+    : undefined;
+  const changeStats = (node.kind === 'commit' || node.kind === 'reflog-commit')
+    ? commitChangeStats(node.commit)
+    : workingStats && !workingStats.clean && !workingStats.inaccessible
+      ? { files: workingStats.files, additions: workingStats.additions, deletions: workingStats.deletions }
+      : undefined;
   const primaryTrack = node.trackId ? tracks.find((track) => track.id === node.trackId) : undefined;
   const rowStyle = { top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px`, '--row-track-color': primaryTrack?.color } as CSSProperties;
   if (refEvent) {
@@ -73,7 +80,7 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
       </div>
     </div>;
   }
-  const content = <div className={`row-content ${selected ? 'selected' : ''}`}>
+  const content = <div className={`row-content${selected ? ' selected' : ''}${changeStats ? ' has-change-stats' : ''}`}>
     <div className="row-content-main">
       <div className="row-primary">
         {kind && <span className="row-kind">{kind}</span>}
