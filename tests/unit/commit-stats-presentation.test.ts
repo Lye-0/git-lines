@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { commitChangeStats } from '../../webview/src/components/commitStatsPresentation';
+import { CHANGES_COLUMN_CONTENT_WIDTH, CHANGES_COLUMN_START, CHANGES_COLUMN_WIDTH } from '../../webview/src/components/graphMetrics';
 
 describe('commit row change stats', () => {
   it('normalises batched stats for the compact row', () => {
@@ -9,5 +10,10 @@ describe('commit row change stats', () => {
 
   it('does not invent stats for commits loaded without a snapshot batch', () => {
     expect(commitChangeStats({ additions: 2, deletions: 1 })).toBeUndefined();
+  });
+
+  it('defines one shared fixed column for Working Tree and commit rows', () => {
+    expect(CHANGES_COLUMN_WIDTH).toBe(222);
+    expect(CHANGES_COLUMN_CONTENT_WIDTH).toBe(CHANGES_COLUMN_START + CHANGES_COLUMN_WIDTH + 11);
   });
 });

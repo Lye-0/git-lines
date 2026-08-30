@@ -4,6 +4,7 @@ import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
 import { workingTreeStateLabel } from './workingTreePresentation';
 import { commitChangeStats } from './commitStatsPresentation';
+import { ChangeStatsGrid } from './ChangeStatsGrid';
 
 function kindLabel(kind: GraphNode['kind']): string | undefined {
   if (kind === 'reflog-commit') return 'Reflog-only';
@@ -88,11 +89,7 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
         return <span className={`ref-badge ref-badge-${badge.kind}${badge.isDefault ? ' default' : ''}`} style={style} key={badge.fullName} title={badge.name}>{badge.name}{badge.isDefault ? ' · default' : ''}</span>;
       })}
     </div>}
-    {changeStats && <div className="row-change-stats" aria-label={`${changeStats.files} files, ${changeStats.additions} additions, ${changeStats.deletions} deletions`}>
-      <span className="row-change-files">{changeStats.files} files</span>
-      <span className="row-change-additions">+{changeStats.additions}</span>
-      <span className="row-change-deletions">−{changeStats.deletions}</span>
-    </div>}
+    {changeStats && <ChangeStatsGrid stats={changeStats} className="row-change-stats" ariaLabel={`${changeStats.files} files, ${changeStats.additions} additions, ${changeStats.deletions} deletions`} />}
   </div>;
   const secondaryWorktree = node.workingTree?.mainWorktree === false;
   const compact = rowHeight <= 32;

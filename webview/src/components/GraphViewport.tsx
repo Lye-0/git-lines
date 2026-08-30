@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { GraphSvg } from './GraphSvg';
 import { CommitRow } from './CommitRow';
+import { graphWidthForLayout } from './graphMetrics';
 
 interface Props {
   layout: GraphLayout;
@@ -21,11 +22,9 @@ export function GraphViewport({ layout, filter, selected, onSelect, loading, onL
   // rendered nodes are the source of truth for the width that the SVG needs;
   // using only a track's representative lane could either clip a later
   // segment or reserve width for a track with no visible segment.
-  const maxLane = Math.max(0, ...layout.nodes.map((node) => node.lane ?? 0));
-  const laneWidth = (maxLane + 1) * layout.laneWidth + 48;
+  const graphWidth = graphWidthForLayout(layout);
   // The graph/content boundary is determined by branch lanes only.  Ref event
   // labels are compacted inside the SVG and must never widen this column.
-  const graphWidth = Math.max(136, laneWidth);
   const canvasMinWidth = graphWidth + 240;
   const eventLabelWidth = Math.max(graphWidth, viewportWidth || graphWidth);
   const rowCount = Math.max(1, ...layout.nodes.map((node) => (node.row ?? 0) + 1));

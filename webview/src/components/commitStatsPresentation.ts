@@ -1,10 +1,7 @@
 import type { GitCommit } from '../../../src/git/gitTypes';
+import type { ChangeStats } from './changeStats';
 
-export interface CommitChangeStats {
-  files: number;
-  additions: number;
-  deletions: number;
-}
+export type CommitChangeStats = ChangeStats;
 
 /**
  * Normalises optional snapshot statistics for the compact graph-row display.
