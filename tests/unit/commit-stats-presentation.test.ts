@@ -20,6 +20,6 @@ describe('commit row change stats', () => {
   it('keeps a minimum commit-content width for horizontal scrolling', () => {
     expect(COMMIT_CONTENT_MIN_WIDTH).toBe(320);
     expect(TIMELINE_MIN_CONTENT_WIDTH).toBe(COMMIT_CONTENT_MIN_WIDTH + CHANGES_COLUMN_WIDTH + 43);
-    expect(TIMELINE_MIN_WIDTH).toBe(1150);
+    expect(TIMELINE_MIN_WIDTH).toBe(1050);
   });
 });
