@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseGitLogNul } from '../../src/git/parsers/logParser.js';
 import { parsePorcelainV2 } from '../../src/git/parsers/statusParser.js';
+import { parseNameStatus, parseNumstat, sumNumstat } from '../../src/git/parsers/diffParser.js';
 import { parseRefRecords } from '../../src/git/parsers/refParser.js';
 import { parseReflogRecords } from '../../src/git/parsers/reflogParser.js';
 import { parseWorktreePorcelain } from '../../src/git/parsers/worktreeParser.js';
@@ -18,7 +19,18 @@ describe('Git parsers', () => {
       '1 .M N... 100644 100644 100644 abc abc other.txt\0' +
       'u UU N... 100644 100644 100644 100644 abc abc abc conflict.txt\0' +
       '? new.txt\0';
-    expect(parsePorcelainV2(output)).toMatchObject({ branch: 'feature/x', headOid: 'abcdef123456', staged: 1, unstaged: 1, conflicted: 1, untracked: 1 });
+    expect(parsePorcelainV2(output)).toMatchObject({ branch: 'feature/x', headOid: 'abcdef123456', staged: 1, unstaged: 1, conflicted: 1, untracked: 1, changedFiles: 4 });
+  });
+
+  it('parses name-status and numstat entries for commit detail files', () => {
+    expect(parseNameStatus('M\tREADME.md\nA\tsrc/new.ts\nR100\told.ts\tnew.ts\n')).toEqual([
+      { status: 'M', path: 'README.md' },
+      { status: 'A', path: 'src/new.ts' },
+      { status: 'R', path: 'old.ts -> new.ts' },
+    ]);
+    const stats = parseNumstat('18\t11\tREADME.md\n-\t-\timage.bin\n0\t4\told.ts\n');
+    expect(stats).toEqual([{ additions: 18, deletions: 11 }, { additions: undefined, deletions: undefined }, { additions: 0, deletions: 4 }]);
+    expect(sumNumstat(stats)).toEqual({ additions: 18, deletions: 15 });
   });
 
   it('classifies refs and symbolic remote HEAD', () => {

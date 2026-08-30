@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
+import { workingTreeStateLabel } from './workingTreePresentation';
 
 function kindLabel(kind: GraphNode['kind']): string | undefined {
   if (kind === 'reflog-commit') return 'Reflog-only';
@@ -24,17 +25,7 @@ function workingSummary(node: GraphNode): { title: string; detail: string } | un
   const tree = node.workingTree;
   if (!tree) return undefined;
   const location = tree.detached ? 'HEAD (detached)' : tree.branch ? `${tree.branch} ★` : 'No branch';
-  const state = tree.inaccessible
-    ? 'Status unavailable'
-    : tree.conflicted > 0
-      ? `${tree.conflicted} conflict${tree.conflicted === 1 ? '' : 's'}`
-      : tree.clean
-        ? 'Clean'
-        : [
-            tree.staged ? `${tree.staged} staged` : '',
-            tree.unstaged ? `${tree.unstaged} modified` : '',
-            tree.untracked ? `${tree.untracked} untracked` : '',
-          ].filter(Boolean).join(' · ');
+  const state = workingTreeStateLabel(tree);
   const title = tree.mainWorktree === false ? 'Worktree' : 'Working Tree';
   const pathDetail = tree.mainWorktree === false ? ` · ${tree.path}` : '';
   return { title, detail: `${location} · ${state}${pathDetail}` };

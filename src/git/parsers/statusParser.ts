@@ -8,6 +8,7 @@ export interface ParsedStatus {
   unstaged: number;
   untracked: number;
   conflicted: number;
+  changedFiles: number;
 }
 
 export function parsePorcelainV2(output: string): ParsedStatus {
@@ -17,6 +18,7 @@ export function parsePorcelainV2(output: string): ParsedStatus {
     unstaged: 0,
     untracked: 0,
     conflicted: 0,
+    changedFiles: 0,
   };
   for (const record of output.split('\0')) {
     if (!record) continue;
@@ -33,13 +35,16 @@ export function parsePorcelainV2(output: string): ParsedStatus {
     }
     const kind = record[0];
     if (kind === '1' || kind === '2') {
+      result.changedFiles += 1;
       const fields = record.split(' ');
       const xy = fields[1] ?? '..';
       if (xy[0] && xy[0] !== '.') result.staged += 1;
       if (xy[1] && xy[1] !== '.') result.unstaged += 1;
     } else if (kind === 'u') {
+      result.changedFiles += 1;
       result.conflicted += 1;
     } else if (kind === '?') {
+      result.changedFiles += 1;
       result.untracked += 1;
     }
   }
@@ -57,6 +62,7 @@ export function toWorkingTreeState(path: string, parsed: ParsedStatus, worktreeI
     unstaged: parsed.unstaged,
     untracked: parsed.untracked,
     conflicted: parsed.conflicted,
+    changedFiles: parsed.changedFiles,
     clean: parsed.staged + parsed.unstaged + parsed.untracked + parsed.conflicted === 0,
   };
 }

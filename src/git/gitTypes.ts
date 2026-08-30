@@ -11,6 +11,22 @@ export interface GitCommit {
   committerDate: number;
 }
 
+export interface GitFileChange {
+  path: string;
+  /** Git name-status code (for example M, A, D, R or C). */
+  status: string;
+  additions?: number;
+  deletions?: number;
+}
+
+export interface GitCommitDetail extends GitCommit {
+  /** Kept as a flat list for protocol/backwards compatibility. */
+  files: string[];
+  fileChanges?: GitFileChange[];
+  additions?: number;
+  deletions?: number;
+}
+
 export type GitRefType = 'local' | 'remote' | 'tag' | 'symbolic';
 
 export interface GitRef {
@@ -35,6 +51,11 @@ export interface WorkingTreeState {
   unstaged: number;
   untracked: number;
   conflicted: number;
+  /** Number of paths reported by porcelain status. */
+  changedFiles?: number;
+  /** Tracked additions/deletions in the current index/worktree diff. */
+  additions?: number;
+  deletions?: number;
   clean: boolean;
   inaccessible?: boolean;
   mainWorktree?: boolean;

@@ -20,6 +20,9 @@ describe('GitClient integration fixture', () => {
     expect(snapshot.commits.some((commit) => commit.subject === 'feature')).toBe(true);
     expect(snapshot.refs.some((ref) => ref.shortName === 'feature/auth' && ref.type === 'local')).toBe(true);
     expect(snapshot.workingTrees[0]).toMatchObject({ branch: 'main', clean: true });
+    const feature = snapshot.commits.find((commit) => commit.subject === 'feature');
+    const detail = await new GitClient().readCommitDetail(fixture.root, feature?.oid ?? '');
+    expect(detail.fileChanges).toEqual([{ path: 'feature.txt', status: 'A', additions: 1, deletions: 0 }]);
     expect(snapshot.historyEvents).toHaveLength(0);
   });
 
@@ -45,7 +48,7 @@ describe('GitClient integration fixture', () => {
     fs.writeFileSync(path.join(fixture.root, 'base.txt'), 'unstaged');
     fs.writeFileSync(path.join(fixture.root, 'untracked.txt'), 'untracked');
     let snapshot = await new GitClient().readSnapshot(fixture.root, 30, false);
-    expect(snapshot.workingTrees[0]).toMatchObject({ staged: 1, unstaged: 1, untracked: 1, clean: false });
+    expect(snapshot.workingTrees[0]).toMatchObject({ staged: 1, unstaged: 1, untracked: 1, changedFiles: 3, additions: 2, deletions: 1, clean: false });
 
     fixture.run(['restore', '.']);
     fixture.run(['clean', '-fd']);

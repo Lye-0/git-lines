@@ -1,4 +1,4 @@
-import type { GitCommit, RepositoryInfo, WorkingTreeState } from '../git/gitTypes.js';
+import type { GitCommitDetail, RepositoryInfo, WorkingTreeState } from '../git/gitTypes.js';
 import type { GraphLayout } from '../layout/layoutTypes.js';
 
 export type WebviewToExtensionMessage =
@@ -21,4 +21,4 @@ export type ExtensionToWebviewMessage =
     }
   | { type: 'loading'; loading: boolean }
   | { type: 'error'; title: string; detail?: string }
-  | { type: 'detail'; detail: (GitCommit & { files: string[]; additions?: number; deletions?: number }) | null };
+  | { type: 'detail'; detail: GitCommitDetail | null };

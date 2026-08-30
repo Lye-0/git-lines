@@ -6,6 +6,7 @@ import { DetailPanel } from './components/DetailPanel';
 import { EmptyState } from './components/EmptyState';
 import { GraphViewport } from './components/GraphViewport';
 import { Toolbar } from './components/Toolbar';
+import { WorkingTreeSummaryPanel } from './components/WorkingTreeSummaryPanel';
 
 const vscode = window.acquireVsCodeApi();
 
@@ -30,8 +31,9 @@ export function App() {
     return () => window.removeEventListener('message', listener);
   }, []);
   const selectedNode = useMemo<GraphNode | undefined>(() => graph?.layout.nodes.find((node) => node.oid === selected), [graph, selected]);
+  const workingTree = useMemo(() => graph?.workingTrees.find((tree) => tree.mainWorktree !== false) ?? graph?.workingTrees[0], [graph]);
   return <main className="app-shell">
     <Toolbar graph={graph} loading={loading} filter={filter} onFilter={setFilter} onRefresh={() => vscode.postMessage({ type: 'refresh' })} onLoadMore={handleLoadMore} onReflog={(enabled) => vscode.postMessage({ type: 'toggleReflog', enabled })} onDensity={(density) => vscode.postMessage({ type: 'setDensity', density })} />
-    {error ? <EmptyState title={error.title} detail={error.detail} /> : graph ? <div className="content-shell"><GraphViewport layout={graph.layout} loading={loading} onLoadMore={handleLoadMore} filter={filter} selected={selected} onSelect={(oid) => { setSelected(oid); vscode.postMessage({ type: 'select', oid }); }} />{detail && <DetailPanel detail={detail} title={selectedNode?.subject} onClose={() => { setDetail(null); setSelected(undefined); }} />}</div> : <EmptyState title="Loading repository" detail="Reading Git refs, history, and working tree state…" />}
+    {error ? <EmptyState title={error.title} detail={error.detail} /> : graph ? <div className="content-shell"><GraphViewport layout={graph.layout} loading={loading} onLoadMore={handleLoadMore} filter={filter} selected={selected} onSelect={(oid) => { setSelected(oid); vscode.postMessage({ type: 'select', oid }); }} />{detail ? <DetailPanel detail={detail} title={selectedNode?.subject} onClose={() => { setDetail(null); setSelected(undefined); }} /> : workingTree ? <WorkingTreeSummaryPanel tree={workingTree} /> : null}</div> : <EmptyState title="Loading repository" detail="Reading Git refs, history, and working tree state…" />}
   </main>;
 }

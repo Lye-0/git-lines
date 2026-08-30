@@ -4,6 +4,7 @@ import { RepositoryDiscovery } from '../repository/repositoryDiscovery.js';
 import { GitCommandError, GitRunner } from './gitRunner.js';
 import type {
   GitCommit,
+  GitCommitDetail,
   GitRef,
   HistoryEvent,
   ReflogEntry,
@@ -16,6 +17,7 @@ import { gitLogFormat, parseGitLogNul } from './parsers/logParser.js';
 import { parseRefRecords, refFormat } from './parsers/refParser.js';
 import { parseReflogRecords, reflogFormat } from './parsers/reflogParser.js';
 import { parsePorcelainV2, toWorkingTreeState } from './parsers/statusParser.js';
+import { parseNameStatus, parseNumstat, sumNumstat } from './parsers/diffParser.js';
 import { parseWorktreePorcelain } from './parsers/worktreeParser.js';
 import type { ParsedWorktree } from './parsers/worktreeParser.js';
 import { resolveHistoryEvents } from '../model/historyEventResolver.js';
@@ -83,7 +85,7 @@ export class GitClient {
     };
   }
 
-  public async readCommitDetail(root: string, oid: string): Promise<GitCommit & { files: string[]; additions?: number; deletions?: number }> {
+  public async readCommitDetail(root: string, oid: string): Promise<GitCommitDetail> {
     if (!/^[0-9a-f]{7,64}$/i.test(oid)) throw new Error('Invalid commit object id');
     const output = await this.runner.runChecked(
       ['show', '-s', `--format=${gitLogFormat(true)}`, oid],
@@ -91,26 +93,24 @@ export class GitClient {
     );
     const commit = parseGitLogNul(output)[0];
     if (!commit) throw new GitCommandError(`Unable to parse commit ${oid}`, ['show', oid]);
-    const filesOutput = await this.runner.runChecked(['diff-tree', '--no-commit-id', '--name-only', '-r', oid], {
+    const filesOutput = await this.runner.runChecked(['diff-tree', '--root', '--no-commit-id', '--name-status', '-r', '-M', '-C', oid], {
       cwd: root,
       timeoutMs: this.timeoutMs,
     });
-    let additions = 0;
-    let deletions = 0;
+    const fileChanges = parseNameStatus(filesOutput);
+    let stats: ReturnType<typeof parseNumstat> = [];
     try {
-      const statsOutput = await this.runner.runChecked(['diff-tree', '--no-commit-id', '--numstat', '-r', oid], {
+      const statsOutput = await this.runner.runChecked(['diff-tree', '--root', '--no-commit-id', '--numstat', '-r', '-M', '-C', oid], {
         cwd: root,
         timeoutMs: this.timeoutMs,
       });
-      for (const line of statsOutput.split(/\r?\n/)) {
-        const [added, removed] = line.split('\t');
-        if (/^\d+$/.test(added ?? '')) additions += Number(added);
-        if (/^\d+$/.test(removed ?? '')) deletions += Number(removed);
-      }
+      stats = parseNumstat(statsOutput);
     } catch {
       // Some object types (for example a root/merge with no diff) do not expose numstat.
     }
-    return { ...commit, files: filesOutput.split(/\r?\n/).filter(Boolean), additions, deletions };
+    const changes = fileChanges.map((change, index) => ({ ...change, ...stats[index] }));
+    const { additions, deletions } = sumNumstat(stats);
+    return { ...commit, files: changes.map((change) => change.path), fileChanges: changes, additions, deletions };
   }
 
   private async readCommits(root: string, limit: number): Promise<GitCommit[]> {
@@ -191,7 +191,8 @@ export class GitClient {
           timeoutMs: this.timeoutMs,
         });
         const state = toWorkingTreeState(worktree.path, parsePorcelainV2(output), `worktree-${index}`);
-        states.push({ ...state, headOid: state.headOid ?? worktree.headOid, branch: state.branch ?? worktree.branch, mainWorktree: index === 0, locked: worktree.locked, prunable: worktree.prunable });
+        const stats = await this.readWorkingTreeStats(worktree.path);
+        states.push({ ...state, ...stats, headOid: state.headOid ?? worktree.headOid, branch: state.branch ?? worktree.branch, mainWorktree: index === 0, locked: worktree.locked, prunable: worktree.prunable });
       } catch {
         states.push({
           worktreeId: `worktree-${index}`,
@@ -203,6 +204,9 @@ export class GitClient {
           unstaged: 0,
           untracked: 0,
           conflicted: 0,
+          changedFiles: 0,
+          additions: 0,
+          deletions: 0,
           clean: true,
           inaccessible: true,
           mainWorktree: index === 0,
@@ -212,8 +216,24 @@ export class GitClient {
       }
     }
     return states.length ? states : [{
-      worktreeId: 'worktree-0', path: repository.root, detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, clean: true, mainWorktree: true,
+      worktreeId: 'worktree-0', path: repository.root, detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, changedFiles: 0, additions: 0, deletions: 0, clean: true, mainWorktree: true,
     }];
+  }
+
+  private async readWorkingTreeStats(root: string): Promise<{ additions: number; deletions: number }> {
+    try {
+      const output = await this.runner.runChecked(['diff', '--numstat', 'HEAD'], { cwd: root, timeoutMs: this.timeoutMs });
+      return sumNumstat(parseNumstat(output));
+    } catch {
+      // An unborn HEAD has no revision to compare against; staged changes can
+      // still be measured independently.
+      try {
+        const output = await this.runner.runChecked(['diff', '--cached', '--numstat'], { cwd: root, timeoutMs: this.timeoutMs });
+        return sumNumstat(parseNumstat(output));
+      } catch {
+        return { additions: 0, deletions: 0 };
+      }
+    }
   }
 
   private async readReflogs(root: string, refs: GitRef[]): Promise<ReflogEntry[]> {
