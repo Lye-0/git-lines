@@ -25,6 +25,10 @@ export function isSelectedCommit(node: Pick<GraphNode, 'kind' | 'id' | 'oid'>, s
     && (node.id === `commit:${selected}` || node.oid === selected));
 }
 
+export function nodeFillStyle(fill?: string): { fill: string } | undefined {
+  return fill ? { fill } : undefined;
+}
+
 /**
  * Returns the fixed diagonal fill used inside an unsynchronized commit node.
  * The lower-left side stays visible at reduced opacity and the upper-right

@@ -4,7 +4,7 @@ import { pointForNode } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
 import { gradientForEdge } from './edgePresentation';
 import { eventTooltip, isRefEvent } from './eventPresentation';
-import { isSelectedCommit, unsyncedGradientForNode } from './nodePresentation';
+import { isSelectedCommit, nodeFillStyle, unsyncedGradientForNode } from './nodePresentation';
 
 function pathFor(fromX: number, fromY: number, toX: number, toY: number): string {
   const delta = Math.min(56, Math.max(8, Math.abs(toY - fromY) * 0.28));
@@ -16,7 +16,7 @@ function annotationPath(_fromX: number, fromY: number, toX: number, toY: number)
 }
 
 function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): ReactNode {
-  if (node.kind === 'commit') return <circle className={`node-symbol node-dot${fill ? ' node-unsynced' : ''}`} r="6.5" fill={fill} />;
+  if (node.kind === 'commit') return <circle className={`node-symbol node-dot${fill ? ' node-unsynced' : ''}`} r="6.5" style={nodeFillStyle(fill)} />;
   if (node.kind === 'working-tree' || node.kind === 'operation') return <circle className="node-symbol node-hollow" r="6.5" />;
   if (node.kind === 'fast-forward-event' || node.kind === 'history-event') {
     return <path className="node-symbol node-diamond" d="M 0 -6.5 L 6.5 0 L 0 6.5 L -6.5 0 Z" />;

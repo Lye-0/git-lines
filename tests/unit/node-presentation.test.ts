@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphNode } from '../../src/model/graphModel';
-import { isSelectedCommit, isUnsyncedCommit, unsyncedGradientForNode } from '../../webview/src/components/nodePresentation';
+import { isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from '../../webview/src/components/nodePresentation';
 
 const oid = (letter: string) => letter.repeat(40);
 
@@ -31,6 +31,7 @@ describe('unsynchronized node presentation', () => {
     expect(isUnsyncedCommit(node)).toBe(true);
     expect(isSelectedCommit(node, node.oid)).toBe(true);
     expect(unsyncedGradientForNode(node, '#2563eb', 'node-sync-gradient-selected')).toBeDefined();
+    expect(nodeFillStyle('url(#node-sync-gradient-selected)')).toEqual({ fill: 'url(#node-sync-gradient-selected)' });
   });
 
   it.each([
