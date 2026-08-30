@@ -46,6 +46,7 @@ h1, h2, p { margin: 0; }
 .graph-canvas { position: relative; min-height: 100%; }
 .graph-svg { position: absolute; top: 0; left: 0; display: block; overflow: visible; pointer-events: none; }
 .graph-edges { pointer-events: none; }
+.graph-node-masks { pointer-events: none; }
 .graph-nodes { isolation: isolate; }
 .edge { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
 .edge-working-tree, .edge-operation { stroke-dasharray: 2 5; stroke-width: 1.5; }

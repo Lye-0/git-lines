@@ -9,9 +9,9 @@ export interface UnsyncedNodeGradient {
   id: string;
   color: string;
   x1: '0%';
-  y1: '100%';
+  y1: '0%';
   x2: '100%';
-  y2: '0%';
+  y2: '100%';
   stops: UnsyncedNodeGradientStop[];
 }
 
@@ -31,8 +31,9 @@ export function nodeFillStyle(fill?: string): { fill: string } | undefined {
 
 /**
  * Returns the fixed diagonal fill used inside an unsynchronized commit node.
- * The lower-left side stays visible at reduced opacity and the upper-right
- * side keeps the branch color at full opacity, with a short blended boundary.
+ * The fill axis runs from the upper-left to the lower-right so its blended
+ * boundary runs from the lower-left to the upper-right. The node mask behind
+ * this fill keeps the reduced-opacity side opaque against graph edges.
  */
 export function unsyncedGradientForNode(node: Pick<GraphNode, 'kind' | 'syncState'>, color: string | undefined, id: string): UnsyncedNodeGradient | undefined {
   if (!isUnsyncedCommit(node) || !color) return undefined;
@@ -40,9 +41,9 @@ export function unsyncedGradientForNode(node: Pick<GraphNode, 'kind' | 'syncStat
     id,
     color,
     x1: '0%',
-    y1: '100%',
+    y1: '0%',
     x2: '100%',
-    y2: '0%',
+    y2: '100%',
     stops: [
       { offset: '0%', opacity: 0.32 },
       { offset: '38%', opacity: 0.32 },

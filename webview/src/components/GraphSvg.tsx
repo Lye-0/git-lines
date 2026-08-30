@@ -4,7 +4,7 @@ import { pointForNode } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
 import { gradientForEdge } from './edgePresentation';
 import { eventTooltip, isRefEvent } from './eventPresentation';
-import { isSelectedCommit, nodeFillStyle, unsyncedGradientForNode } from './nodePresentation';
+import { isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from './nodePresentation';
 
 function pathFor(fromX: number, fromY: number, toX: number, toY: number): string {
   const delta = Math.min(56, Math.max(8, Math.abs(toY - fromY) * 0.28));
@@ -108,6 +108,12 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
       </linearGradient>)}
     </defs>}
     <g className="graph-edges">{visiblePaths.map(renderEdge)}</g>
+    <g className="graph-node-masks" aria-hidden="true">
+      {layout.nodes.filter((node) => isUnsyncedCommit(node)).map((node) => {
+        const p = point(node.id);
+        return <circle key={`node-mask-${node.id}`} className="node-mask node-unsynced-mask" transform={`translate(${p.x},${p.y})`} r="6.5" />;
+      })}
+    </g>
     <g className="graph-nodes">{layout.nodes.map(renderNode)}</g>
   </svg>;
 }

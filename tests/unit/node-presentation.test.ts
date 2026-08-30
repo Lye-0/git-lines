@@ -11,7 +11,7 @@ function commit(syncState: GraphNode['syncState'] = 'shared'): GraphNode {
 describe('unsynchronized node presentation', () => {
   it.each(['local-only', 'remote-only'] as const)('creates a fixed diagonal gradient for %s commits', (syncState) => {
     const gradient = unsyncedGradientForNode(commit(syncState), '#2563eb', 'node-sync-gradient-test');
-    expect(gradient).toMatchObject({ x1: '0%', y1: '100%', x2: '100%', y2: '0%', color: '#2563eb' });
+    expect(gradient).toMatchObject({ x1: '0%', y1: '0%', x2: '100%', y2: '100%', color: '#2563eb' });
     expect(gradient?.stops).toEqual([
       { offset: '0%', opacity: 0.32 },
       { offset: '38%', opacity: 0.32 },
