@@ -72,7 +72,7 @@ export function GraphViewport({ layout, filter, selected, onSelect, loading, onL
   }, [checkForMore, loadThreshold]);
 
   return <section className="graph-section" aria-label="Git commit graph">
-    <div ref={scrollRef} className="graph-scroll" role="region" aria-label="Scrollable branch graph" aria-busy={loading} tabIndex={0}>
+    <div ref={scrollRef} className="graph-scroll" role="region" aria-label="Scrollable Git Lines graph" aria-busy={loading} tabIndex={0}>
       <div className="graph-canvas" style={{ minWidth: canvasMinWidth, minHeight: canvasHeight }}>
         <GraphSvg layout={layout} width={graphWidth} height={canvasHeight} selected={selected} />
         <div className="rows" style={{ marginLeft: graphWidth, minHeight: canvasHeight }}>

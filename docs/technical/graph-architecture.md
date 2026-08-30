@@ -50,7 +50,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 
 ## Runtime flow
 
-1. `Branch Graph: Open`で最初のworkspace folderをrepository候補にする。
+1. `Git Lines: Open`で最初のworkspace folderをrepository候補にする。
 2. `GitClient.readSnapshot`がroot、refs、最新30 commit、各worktree status、operation、reflog、shallow boundaryを読み込む。
 3. `buildGraphFacts`がcommit dedup、ref association、working/operation/event nodeを作る。
 4. `createGraphLayout`がrow→branch segment lane→edge routingの順に計算し、WebviewへpostMessageする。グラフ幅は実際に表示されるnodeの最大laneだけから決まり、track数やevent文字列長で不要に拡大しない。

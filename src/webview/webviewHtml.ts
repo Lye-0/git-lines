@@ -23,7 +23,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionPath: string): 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource}; script-src 'nonce-${token}';" />
   ${styleUri ? `<link rel="stylesheet" href="${styleUri}" />` : ''}
-  <title>Branch Graph</title>
+  <title>Git Lines</title>
 </head>
 <body>
   <div id="root">${fallback}</div>

@@ -18,15 +18,15 @@
     "commands": [
       {
         "command": "branchGraph.open",
-        "title": "Branch Graph: Open"
+        "title": "Git Lines: Open"
       },
       {
         "command": "branchGraph.refresh",
-        "title": "Branch Graph: Refresh"
+        "title": "Git Lines: Refresh"
       }
     ],
     "configuration": {
-      "title": "Branch Graph",
+      "title": "Git Lines",
       "properties": {
         "branchGraph.primaryBranch": {
           "type": ["string", "null"],

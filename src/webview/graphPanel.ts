@@ -26,12 +26,12 @@ export class GraphPanel {
   private constructor(private readonly context: vscode.ExtensionContext, repositoryRoot: string) {
     this.repositoryRoot = repositoryRoot;
     this.client = new GitClient();
-    this.output = vscode.window.createOutputChannel('Branch Graph');
+    this.output = vscode.window.createOutputChannel('Git Lines');
     const config = vscode.workspace.getConfiguration('branchGraph');
     this.commitLimit = config.get<number>('initialCommitCount', 30);
     this.showReflog = config.get<boolean>('showReflog', true);
     this.density = config.get<'comfortable' | 'compact'>('density', 'comfortable');
-    this.panel = vscode.window.createWebviewPanel('branchGraph', 'Branch Graph', vscode.ViewColumn.Active, {
+    this.panel = vscode.window.createWebviewPanel('branchGraph', 'Git Lines', vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
       localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')],

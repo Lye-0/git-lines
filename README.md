@@ -19,7 +19,7 @@ Commitの親子関係を変更せず、`main`が停止してfeatureだけ進ん�
 
 ## 使い方
 
-1. `Branch Graph: Open`をCommand Paletteから実行します。
+1. `Git Lines: Open`をCommand Paletteから実行します。
 2. Reflog表示、`Comfortable / Compact`密度、Refreshをヘッダーから切り替えます。
 3. commitを選択すると、hash、parents、author、日時、message、変更ファイルを詳細パネルで確認できます。
 4. 初期表示は30 commitです。グラフを下へスクロールすると、残りが少なくなった時点で10 commitずつ自動追加します（`Load more`ボタンからの追加も可能です）。既存の行・レーンはページ追加だけでは不必要に移動しません。
