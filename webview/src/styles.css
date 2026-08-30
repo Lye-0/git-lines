@@ -94,6 +94,8 @@ h1, h2, p { margin: 0; }
 .changes-files { color: var(--graph-muted); }
 .changes-additions { color: #81d3a4; }
 .changes-deletions { color: #ef8f9d; }
+.detail-change-stat.additions strong, .file-stats .additions { color: #81d3a4; }
+.detail-change-stat.deletions strong, .file-stats .deletions { color: #ef8f9d; }
 .row-change-stats { margin-left: auto; }
 code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 11px; }
 .ref-badge { color: var(--badge-color, var(--graph-accent)); border: 1px solid color-mix(in srgb, var(--badge-color, var(--graph-accent)) 48%, var(--graph-border)); border-radius: 4px; padding: 1px 5px; line-height: 16px; max-width: 220px; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
