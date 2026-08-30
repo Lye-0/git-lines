@@ -74,21 +74,25 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
     </div>;
   }
   const content = <div className={`row-content ${selected ? 'selected' : ''}`}>
-    <div className="row-primary">
-      {kind && <span className="row-kind">{kind}</span>}
-      <div className="row-text">
-        <span className="subject" title={node.subject ?? node.label}>{title}</span>
-        {subtitle && <span className="row-subtitle" title={subtitle}>{subtitle}</span>}
-        {commitMeta && <span className="commit-meta" title={new Date(node.commit!.committerDate).toLocaleString()}>{commitMeta}</span>}
+    <div className="row-content-main">
+      <div className="row-primary">
+        {kind && <span className="row-kind">{kind}</span>}
+        <div className="row-text">
+          <div className="row-heading">
+            <span className="subject" title={node.subject ?? node.label}>{title}</span>
+            {badges.length > 0 && <div className="row-meta">
+              {badges.map((badge) => {
+                const track = tracks.find((candidate) => candidate.refNames.includes(badge.fullName));
+                const style = { '--badge-color': track?.color } as CSSProperties;
+                return <span className={`ref-badge ref-badge-${badge.kind}${badge.isDefault ? ' default' : ''}`} style={style} key={badge.fullName} title={badge.name}>{badge.name}{badge.isDefault ? ' · default' : ''}</span>;
+              })}
+            </div>}
+          </div>
+          {subtitle && <span className="row-subtitle" title={subtitle}>{subtitle}</span>}
+          {commitMeta && <span className="commit-meta" title={new Date(node.commit!.committerDate).toLocaleString()}>{commitMeta}</span>}
+        </div>
       </div>
     </div>
-    {badges.length > 0 && <div className="row-meta">
-      {badges.map((badge) => {
-        const track = tracks.find((candidate) => candidate.refNames.includes(badge.fullName));
-        const style = { '--badge-color': track?.color } as CSSProperties;
-        return <span className={`ref-badge ref-badge-${badge.kind}${badge.isDefault ? ' default' : ''}`} style={style} key={badge.fullName} title={badge.name}>{badge.name}{badge.isDefault ? ' · default' : ''}</span>;
-      })}
-    </div>}
     {changeStats && <ChangeStatsGrid stats={changeStats} className="row-change-stats" ariaLabel={`${changeStats.files} files, ${changeStats.additions} additions, ${changeStats.deletions} deletions`} />}
   </div>;
   const secondaryWorktree = node.workingTree?.mainWorktree === false;

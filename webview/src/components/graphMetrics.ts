@@ -4,6 +4,15 @@ import type { GraphLayout } from '../../../src/layout/layoutTypes';
 export const CHANGES_COLUMN_START = 1180;
 export const CHANGES_COLUMN_WIDTH = 222;
 /**
+ * Keep a readable commit-content area before the fixed changes grid.  The
+ * resulting minimum canvas width is intentionally larger than a narrow
+ * viewport so the graph can use horizontal scrolling instead of collapsing
+ * rows or dropping data.
+ */
+export const COMMIT_CONTENT_MIN_WIDTH = 320;
+// 14px row gap + 22px row border/padding + 7px changes-column alignment inset.
+export const TIMELINE_MIN_CONTENT_WIDTH = COMMIT_CONTENT_MIN_WIDTH + CHANGES_COLUMN_WIDTH + 43;
+/**
  * Normal row content has a 1px border and 10px of right padding. Include that
  * inset in the bounded content width so the fixed stats grid starts at the
  * same x position as the overlay grid used by Working Tree.

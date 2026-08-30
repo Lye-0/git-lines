@@ -4,7 +4,7 @@ import type { WorkingTreeState } from '../../../src/git/gitTypes';
 import { GraphSvg } from './GraphSvg';
 import { CommitRow } from './CommitRow';
 import { WorkingTreeSummaryPanel } from './WorkingTreeSummaryPanel';
-import { graphWidthForLayout } from './graphMetrics';
+import { graphWidthForLayout, TIMELINE_MIN_CONTENT_WIDTH } from './graphMetrics';
 
 interface Props {
   layout: GraphLayout;
@@ -28,7 +28,10 @@ export function GraphViewport({ layout, filter, selected, workingTree, onSelect,
   const graphWidth = graphWidthForLayout(layout);
   // The graph/content boundary is determined by branch lanes only.  Ref event
   // labels are compacted inside the SVG and must never widen this column.
-  const canvasMinWidth = graphWidth + 240;
+  // Keep the content and fixed changes columns usable at any viewport size;
+  // the graph-scroll container provides horizontal scrolling below this
+  // minimum instead of collapsing rows or hiding stats.
+  const canvasMinWidth = graphWidth + TIMELINE_MIN_CONTENT_WIDTH;
   const eventLabelWidth = Math.max(graphWidth, viewportWidth || graphWidth);
   const rowCount = Math.max(1, ...layout.nodes.map((node) => (node.row ?? 0) + 1));
   const canvasHeight = rowCount * layout.rowHeight;
