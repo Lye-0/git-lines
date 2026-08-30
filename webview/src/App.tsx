@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
 import type { GraphNode } from '../../src/model/graphModel';
 import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../../src/webview/messageProtocol';
 import type { DetailMessage, GraphMessage } from './types';
@@ -7,9 +6,7 @@ import { DetailPanel } from './components/DetailPanel';
 import { EmptyState } from './components/EmptyState';
 import { GraphViewport } from './components/GraphViewport';
 import { Toolbar } from './components/Toolbar';
-import { WorkingTreeSummaryPanel } from './components/WorkingTreeSummaryPanel';
 import { resolveDetailRefBadges } from './components/detailPresentation';
-import { CHANGES_COLUMN_CONTENT_WIDTH, CHANGES_COLUMN_START, CHANGES_COLUMN_WIDTH, graphWidthForLayout } from './components/graphMetrics';
 
 const vscode = window.acquireVsCodeApi();
 
@@ -36,14 +33,8 @@ export function App() {
   const selectedNode = useMemo<GraphNode | undefined>(() => graph?.layout.nodes.find((node) => node.oid === selected), [graph, selected]);
   const workingTree = useMemo(() => graph?.workingTrees.find((tree) => tree.mainWorktree !== false) ?? graph?.workingTrees[0], [graph]);
   const detailRefBadges = useMemo(() => resolveDetailRefBadges(selectedNode, graph?.layout.tracks ?? []), [graph, selectedNode]);
-  const graphContentStyle = graph ? {
-    '--graph-width': `${graphWidthForLayout(graph.layout)}px`,
-    '--changes-column-start': `${CHANGES_COLUMN_START}px`,
-    '--changes-column-width': `${CHANGES_COLUMN_WIDTH}px`,
-    '--changes-column-content-width': `${CHANGES_COLUMN_CONTENT_WIDTH}px`,
-  } as CSSProperties : undefined;
   return <main className="app-shell">
     <Toolbar graph={graph} loading={loading} filter={filter} onFilter={setFilter} onRefresh={() => vscode.postMessage({ type: 'refresh' })} onLoadMore={handleLoadMore} onReflog={(enabled) => vscode.postMessage({ type: 'toggleReflog', enabled })} onDensity={(density) => vscode.postMessage({ type: 'setDensity', density })} />
-    {error ? <EmptyState title={error.title} detail={error.detail} /> : graph ? <div className="content-shell"><div className="graph-content" style={graphContentStyle}><GraphViewport layout={graph.layout} loading={loading} onLoadMore={handleLoadMore} filter={filter} selected={selected} onSelect={(oid) => { setSelected(oid); vscode.postMessage({ type: 'select', oid }); }} />{!detail && workingTree && <WorkingTreeSummaryPanel tree={workingTree} />}</div>{detail && <DetailPanel detail={detail} title={selectedNode?.subject} refBadges={detailRefBadges} onClose={() => { setDetail(null); setSelected(undefined); }} />}</div> : <EmptyState title="Loading repository" detail="Reading Git refs, history, and working tree state…" />}
+    {error ? <EmptyState title={error.title} detail={error.detail} /> : graph ? <div className="content-shell"><div className="graph-content"><GraphViewport layout={graph.layout} loading={loading} onLoadMore={handleLoadMore} filter={filter} selected={selected} workingTree={!detail ? workingTree : undefined} onSelect={(oid) => { setSelected(oid); vscode.postMessage({ type: 'select', oid }); }} /></div>{detail && <DetailPanel detail={detail} title={selectedNode?.subject} refBadges={detailRefBadges} onClose={() => { setDetail(null); setSelected(undefined); }} />}</div> : <EmptyState title="Loading repository" detail="Reading Git refs, history, and working tree state…" />}
   </main>;
 }
