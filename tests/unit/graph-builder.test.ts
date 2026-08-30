@@ -117,4 +117,52 @@ describe('graph fact builder', () => {
     expect(facts.nodes.find((node) => node.oid === oid('b'))?.refIds).toEqual(['main', 'origin/main', 'v1']);
     expect(facts.nodes.find((node) => node.oid === oid('b'))?.refBadges?.map((badge) => badge.name)).toEqual(['main', 'origin/main', 'v1']);
   });
+
+  it('marks shared commits as synchronized and only one-sided commits as unsynchronized', () => {
+    const commits = [
+      { oid: oid('c'), parentOids: [oid('b')], subject: 'C', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      { oid: oid('b'), parentOids: [oid('a')], subject: 'B', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: oid('a'), parentOids: [], subject: 'A', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+    const refs = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('c') },
+      { fullName: 'refs/remotes/origin/main', shortName: 'origin/main', type: 'remote' as const, oid: oid('b') },
+    ];
+    const facts = buildGraphFacts({ ...snapshot, commits, refs, workingTrees: [], visibleCommitCount: commits.length });
+    expect(facts.nodes.find((node) => node.oid === oid('c'))?.syncState).toBe('local-only');
+    expect(facts.nodes.find((node) => node.oid === oid('b'))?.syncState).toBe('shared');
+    expect(facts.nodes.find((node) => node.oid === oid('a'))?.syncState).toBe('shared');
+  });
+
+  it('marks remote-only commits in the same way as local-only commits', () => {
+    const commits = [
+      { oid: oid('c'), parentOids: [oid('b')], subject: 'C', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      { oid: oid('b'), parentOids: [oid('a')], subject: 'B', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: oid('a'), parentOids: [], subject: 'A', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+    const refs = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('b') },
+      { fullName: 'refs/remotes/origin/main', shortName: 'origin/main', type: 'remote' as const, oid: oid('c') },
+    ];
+    const facts = buildGraphFacts({ ...snapshot, commits, refs, workingTrees: [], visibleCommitCount: commits.length });
+    expect(facts.nodes.find((node) => node.oid === oid('c'))?.syncState).toBe('remote-only');
+    expect(facts.nodes.find((node) => node.oid === oid('b'))?.syncState).toBe('shared');
+    expect(facts.nodes.find((node) => node.oid === oid('a'))?.syncState).toBe('shared');
+  });
+
+  it('marks both sides of a diverged history as unsynchronized while keeping the base shared', () => {
+    const commits = [
+      { oid: oid('l'), parentOids: [oid('a')], subject: 'local', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      { oid: oid('r'), parentOids: [oid('a')], subject: 'remote', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: oid('a'), parentOids: [], subject: 'base', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+    const refs = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('l') },
+      { fullName: 'refs/remotes/origin/main', shortName: 'origin/main', type: 'remote' as const, oid: oid('r') },
+    ];
+    const facts = buildGraphFacts({ ...snapshot, commits, refs, workingTrees: [], visibleCommitCount: commits.length });
+    expect(facts.nodes.find((node) => node.oid === oid('l'))?.syncState).toBe('local-only');
+    expect(facts.nodes.find((node) => node.oid === oid('r'))?.syncState).toBe('remote-only');
+    expect(facts.nodes.find((node) => node.oid === oid('a'))?.syncState).toBe('shared');
+  });
 });

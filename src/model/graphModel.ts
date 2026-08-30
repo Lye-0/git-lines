@@ -11,6 +11,8 @@ export type GraphNodeKind =
   | 'history-event'
   | 'history-boundary';
 
+export type GraphSyncState = 'shared' | 'local-only' | 'remote-only';
+
 export interface GraphNode {
   id: string;
   kind: GraphNodeKind;
@@ -23,6 +25,8 @@ export interface GraphNode {
   timestamp?: number;
   subject?: string;
   commit?: GitCommit;
+  /** Synchronization reachability for real commit nodes. */
+  syncState?: GraphSyncState;
   event?: HistoryEvent;
   /** Commit node reached by a ref event. Ref events do not participate in the commit DAG. */
   anchorCommitId?: string;

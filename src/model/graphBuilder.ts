@@ -1,5 +1,5 @@
 import type { RepositorySnapshot } from '../git/gitTypes.js';
-import type { GraphEdge, GraphFactModel, GraphNode } from './graphModel.js';
+import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState } from './graphModel.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
 export interface GraphBuilderOptions {
@@ -17,6 +17,27 @@ function reachableFromRefs(snapshot: RepositorySnapshot, commits: Map<string, { 
     for (const parent of commits.get(oid)?.parentOids ?? []) queue.push(parent);
   }
   return reachable;
+}
+
+function reachableFromRefType(snapshot: RepositorySnapshot, commits: Map<string, { parentOids: string[] }>, type: 'local' | 'remote'): Set<string> {
+  const reachable = new Set<string>();
+  const queue = snapshot.refs.filter((ref) => ref.type === type).map((ref) => ref.oid).filter((oid): oid is string => Boolean(oid));
+  while (queue.length) {
+    const oid = queue.shift() as string;
+    if (reachable.has(oid)) continue;
+    reachable.add(oid);
+    for (const parent of commits.get(oid)?.parentOids ?? []) queue.push(parent);
+  }
+  return reachable;
+}
+
+function syncStateFor(oid: string, localReachable: Set<string>, remoteReachable: Set<string>): GraphSyncState | undefined {
+  const local = localReachable.has(oid);
+  const remote = remoteReachable.has(oid);
+  if (local && remote) return 'shared';
+  if (local) return 'local-only';
+  if (remote) return 'remote-only';
+  return undefined;
 }
 
 function eventLabel(type: string, refName: string, sourceLabel?: string): string {
@@ -54,7 +75,10 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   const commits = options.showReflog === false
     ? visibleCommits
     : [...visibleCommits, ...snapshot.commits.slice(visibleCount).filter((commit) => !visibleOids.has(commit.oid))];
-  const reachableOids = reachableFromRefs(snapshot, new Map(commits.map((commit) => [commit.oid, commit])));
+  const commitMap = new Map(commits.map((commit) => [commit.oid, commit]));
+  const reachableOids = reachableFromRefs(snapshot, commitMap);
+  const localReachable = reachableFromRefType(snapshot, commitMap, 'local');
+  const remoteReachable = reachableFromRefType(snapshot, commitMap, 'remote');
   const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
     if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
@@ -71,6 +95,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       subject: commit.subject,
       label: commit.subject,
       commit,
+      syncState: syncStateFor(commit.oid, localReachable, remoteReachable),
     };
   });
   const nodeByOid = new Map(nodes.filter((node) => node.oid).map((node) => [node.oid as string, node]));
