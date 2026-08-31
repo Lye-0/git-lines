@@ -28,6 +28,7 @@ interface TrackCandidate {
   kind: 'local' | 'remote';
   refs: GitRef[];
   oids: Set<string>;
+  synthetic?: boolean;
 }
 
 function interval(segment: Pick<BranchSegment, 'startRow' | 'endRow'>): { startRow: number; endRow: number } {
@@ -39,7 +40,14 @@ function interval(segment: Pick<BranchSegment, 'startRow' | 'endRow'>): { startR
 function overlaps(a: Pick<BranchSegment, 'startRow' | 'endRow'>, b: Pick<BranchSegment, 'startRow' | 'endRow'>): boolean {
   const left = interval(a);
   const right = interval(b);
-  return left.startRow <= right.endRow && right.startRow <= left.endRow;
+  if (left.endRow < right.startRow || right.endRow < left.startRow) return false;
+  // A branch transition may touch a merge node at the end of one segment and
+  // the start of the next one. The merge node itself is on the primary lane,
+  // so sharing that boundary is safe. A zero-length segment still occupies
+  // its row and conflicts with another zero-length segment there.
+  if (left.startRow === left.endRow && right.startRow === right.endRow) return left.startRow === right.startRow;
+  if (left.endRow === right.startRow || right.endRow === left.startRow) return false;
+  return true;
 }
 
 /**
@@ -106,9 +114,9 @@ function colorFor(family: string, used: Set<number>): string {
 
 /**
  * Returns the shortest parent distance from a ref tip to each reachable
- * commit.  A merged feature commit is one edge farther away from the main
- * tip than from the feature tip, so this keeps it on the feature lane while
- * still assigning shared ancestors to the primary lane.
+ * commit. This is a conservative fallback for incomplete fact models and for
+ * grouping comparable local/remote tips; normal lane ownership is established
+ * by the primary first-parent spine and merge side paths below.
  */
 function ancestorDistances(tip: string, commits: Map<string, GitCommit>): Map<string, number> {
   const result = new Map<string, number>();
@@ -174,6 +182,92 @@ function makeCandidates(refs: GitRef[], commits: Map<string, GitCommit>): { cand
     }
   }
   return { candidates, refTrack };
+}
+
+function refTip(candidate: TrackCandidate | undefined, primary?: string): string | undefined {
+  if (!candidate) return undefined;
+  const normalizedPrimary = primary ? normalizeRefName(primary) : undefined;
+  return candidate.refs.find((ref) => normalizedPrimary && normalizeRefName(ref.shortName || ref.fullName) === normalizedPrimary)?.oid
+    ?? candidate.refs.find((ref) => ref.type === 'local')?.oid
+    ?? candidate.refs[0]?.oid;
+}
+
+/**
+ * Follows only the first parent. This is the stable spine of a checked-out
+ * primary branch; merge side parents are handled as separate branch segments.
+ */
+function firstParentChain(tip: string | undefined, commits: Map<string, GitCommit>, stopTips = new Set<string>()): Set<string> {
+  const chain = new Set<string>();
+  let current = tip;
+  while (current && !chain.has(current)) {
+    chain.add(current);
+    const parent = commits.get(current)?.parentOids[0];
+    if (!parent || stopTips.has(parent)) break;
+    current = parent;
+  }
+  return chain;
+}
+
+function firstParentDistance(tip: string | undefined, targetOid: string, commits: Map<string, GitCommit>): number {
+  let distance = 0;
+  let current = tip;
+  while (current) {
+    if (current === targetOid) return distance;
+    current = commits.get(current)?.parentOids[0];
+    distance += 1;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function candidateForSideRoot(rootOid: string, candidates: TrackCandidate[], primaryCandidate: TrackCandidate | undefined, commits: Map<string, GitCommit>): TrackCandidate | undefined {
+  return candidates
+    .filter((candidate) => candidate !== primaryCandidate && candidate.refs.some((ref) => Boolean(ref.oid && firstParentDistance(ref.oid, rootOid, commits) !== Number.POSITIVE_INFINITY)))
+    .sort((a, b) => Math.min(...a.refs.map((ref) => firstParentDistance(ref.oid, rootOid, commits))) - Math.min(...b.refs.map((ref) => firstParentDistance(ref.oid, rootOid, commits)))
+      || Number(b.kind === 'local') - Number(a.kind === 'local')
+      || a.id.localeCompare(b.id))[0];
+}
+
+interface SideBranch {
+  mergeOid: string;
+  parentIndex: number;
+  rootOid: string;
+  candidate: TrackCandidate;
+}
+
+function historicalCandidate(mergeOid: string, parentIndex: number): TrackCandidate {
+  return {
+    id: `history:${mergeOid}:parent:${parentIndex}`,
+    family: 'historical',
+    kind: 'local',
+    refs: [],
+    oids: new Set<string>(),
+    synthetic: true,
+  };
+}
+
+function sideBranchesFor(commits: Map<string, GitCommit>, nodes: GraphNode[], candidates: TrackCandidate[], primaryCandidate: TrackCandidate | undefined, primaryOids: Set<string>): SideBranch[] {
+  const rowByOid = new Map(nodes.filter((node) => node.oid).map((node) => [node.oid as string, node.row ?? 0]));
+  const orderOf = (commit: GitCommit): number => rowByOid.get(commit.oid) ?? -commit.committerDate;
+  const mergeCommits = [...commits.values()]
+    .filter((commit) => commit.parentOids.length > 1)
+    // Process older merge side paths first. If a later merge's side path
+    // passes through an earlier side branch, the earlier branch keeps its
+    // identity and the later branch naturally becomes a transition into it.
+    .sort((a, b) => orderOf(b) - orderOf(a) || a.oid.localeCompare(b.oid));
+  const branches: SideBranch[] = [];
+  for (const merge of mergeCommits) {
+    for (let parentIndex = 1; parentIndex < merge.parentOids.length; parentIndex += 1) {
+      const rootOid = merge.parentOids[parentIndex];
+      if (primaryOids.has(rootOid)) continue;
+      let candidate = candidateForSideRoot(rootOid, candidates, primaryCandidate, commits);
+      if (!candidate) {
+        candidate = historicalCandidate(merge.oid, parentIndex);
+        candidates.push(candidate);
+      }
+      branches.push({ mergeOid: merge.oid, parentIndex, rootOid, candidate });
+    }
+  }
+  return branches;
 }
 
 interface NodeAssignment {
@@ -272,10 +366,18 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     return [...refTrack.entries()].find(([name]) => normalizeRefName(name) === normalized)?.[1];
   };
   const primary = options.primaryBranch ?? facts.primaryBranch;
-  const defaultPrimaryFamily = primary ?? candidates.find((candidate) => candidate.family === 'main' || candidate.family === 'master')?.family;
-  const primaryCandidate = candidates.find((candidate) => candidate.family === defaultPrimaryFamily
-    || candidate.refs.some((ref) => normalizeRefName(ref.shortName || ref.fullName) === primary));
+  const normalizedPrimary = primary ? normalizeRefName(primary) : undefined;
+  const defaultPrimaryFamily = normalizedPrimary ?? candidates.find((candidate) => candidate.family === 'main' || candidate.family === 'master')?.family;
+  const primaryCandidate = candidates.find((candidate) => normalizedPrimary && candidate.refs.some((ref) => normalizeRefName(ref.shortName || ref.fullName) === normalizedPrimary))
+    ?? candidates.find((candidate) => candidate.family === defaultPrimaryFamily);
   const previous = options.previousLanes ?? new Map<string, number>();
+
+  const primaryTip = refTip(primaryCandidate, primary);
+  const nonPrimaryTipOids = new Set(candidates
+    .filter((candidate) => candidate !== primaryCandidate)
+    .flatMap((candidate) => candidate.refs.map((ref) => ref.oid).filter((oid): oid is string => Boolean(oid))));
+  const primaryOids = primaryCandidate ? firstParentChain(primaryTip, commits, nonPrimaryTipOids) : new Set<string>();
+  const sideBranches = sideBranchesFor(commits, facts.nodes, candidates, primaryCandidate, primaryOids);
   const ordered = candidates.slice().sort((a, b) => {
     if (a.id === primaryCandidate?.id) return -1;
     if (b.id === primaryCandidate?.id) return 1;
@@ -287,6 +389,35 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     if (a.kind !== b.kind) return a.kind === 'local' ? -1 : 1;
     return a.id.localeCompare(b.id);
   });
+  const trackByOid = new Map<string, string>();
+  for (const oid of primaryOids) trackByOid.set(oid, primaryCandidate!.id);
+
+  const assignFirstParentPath = (tip: string | undefined, trackId: string): void => {
+    const visited = new Set<string>();
+    let current = tip;
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      if (primaryOids.has(current)) break;
+      const existing = trackByOid.get(current);
+      if (existing && existing !== trackId) break;
+      trackByOid.set(current, trackId);
+      current = commits.get(current)?.parentOids[0];
+    }
+  };
+
+  // Older side paths are assigned first so a later merge whose side parent
+  // passes through them transitions into the already-established branch
+  // segment instead of overwriting its track.
+  for (const branch of sideBranches) assignFirstParentPath(branch.rootOid, branch.candidate.id);
+  // A live branch ref is useful for naming an otherwise unmerged branch, but
+  // it cannot override the primary first-parent spine or an older side path.
+  for (const candidate of candidates.filter((item) => item !== primaryCandidate && !item.synthetic)) {
+    for (const ref of candidate.refs) assignFirstParentPath(ref.oid, candidate.id);
+  }
+
+  // Every real commit should normally be covered by the primary spine, a
+  // merge side path, or a live branch path. Keep a conservative ancestry
+  // fallback for incomplete/shallow fact models and reflog-only fixtures.
   const claims = new Map<string, Array<{ trackId: string; distance: number }>>();
   for (const candidate of candidates) {
     // A unified local/remote track may have one tip ahead of the other.  Use
@@ -321,14 +452,17 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     // commit claim is considered, otherwise it is incorrectly drawn on main.
     if (node.kind === 'working-tree') {
       const branch = node.workingTree?.branch ?? node.refIds[0];
-      const ref = refs.find((item) => item.shortName === branch || normalizeRefName(item.fullName) === branch);
+      // A checked-out branch is always a local ref. Do not let the remote
+      // tracking ref become the Working Tree's lane anchor when it is ahead.
+      const ref = refs.find((item) => item.type === 'local'
+        && (item.shortName === branch || normalizeRefName(item.fullName) === branch));
       trackId = ref ? refTrack.get(ref.fullName) : undefined;
     }
     // Ref events must share the target ref's lane even when their destination
     // commit is claimed by another branch (for example a feature reset to a
     // main commit).  Resolve this before commit ancestry claims.
     if (!trackId && node.event?.refName) trackId = eventTrackForRef(node.targetRef ?? node.event.refName);
-    if (!trackId && node.oid) trackId = trackForClaim(node.oid);
+    if (!trackId && node.oid) trackId = trackByOid.get(node.oid) ?? trackForClaim(node.oid);
     return { node, trackId, row: node.row ?? index };
   });
   const segments = buildBranchSegments(initialAssignments, facts.edges);
@@ -365,7 +499,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   const familyColors = new Map<string, string>();
   const tracks: GraphTrack[] = ordered.map((candidate) => ({
     id: candidate.id,
-    label: candidate.refs.map((ref) => refDisplay(ref)).join(' · '),
+    label: candidate.refs.length ? candidate.refs.map((ref) => refDisplay(ref)).join(' · ') : 'Historical branch',
     family: candidate.family,
     kind: candidate.kind,
     lane: trackLane.get(candidate.id) as number,

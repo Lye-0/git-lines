@@ -31,6 +31,31 @@ describe('graph fact builder', () => {
     expect(working?.workingTree?.clean).toBe(true);
   });
 
+  it('connects Working Tree to the checked-out HEAD instead of a remote-ahead tip', () => {
+    const remoteAheadSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: oid('c'), parentOids: [oid('b')], subject: 'remote C', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oid('b'), parentOids: [oid('a')], subject: 'remote B', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        { oid: oid('a'), parentOids: [oid('i')], subject: 'local A', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+        { oid: oid('i'), parentOids: [], subject: 'initial', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+      ],
+      refs: [
+        { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('i') },
+        { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: oid('a') },
+        { fullName: 'refs/remotes/origin/feature', shortName: 'origin/feature', type: 'remote', oid: oid('c') },
+      ],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('a'), branch: 'feature' }],
+      visibleCommitCount: 4,
+    };
+    const facts = buildGraphFacts(remoteAheadSnapshot);
+    const working = facts.nodes.find((node) => node.kind === 'working-tree');
+    const workingEdge = facts.edges.find((edge) => edge.type === 'working-tree');
+    expect(working?.oid).toBe(oid('a'));
+    expect(workingEdge?.toNodeId).toBe(`commit:${oid('a')}`);
+    expect(workingEdge?.toNodeId).not.toBe(`commit:${oid('c')}`);
+  });
+
   it('keeps a reachable commit normal even when it was loaded beyond the visible page', () => {
     const facts = buildGraphFacts({ ...snapshot, visibleCommitCount: 1 });
     expect(facts.nodes.find((node) => node.oid === oid('a'))?.kind).toBe('commit');

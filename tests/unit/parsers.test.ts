@@ -58,6 +58,24 @@ describe('Git parsers', () => {
     expect(refs.find((ref) => ref.fullName === 'refs/tags/v1')?.type).toBe('tag');
   });
 
+  it('uses the peeled commit for annotated tags while keeping lightweight tags intact', () => {
+    const record = (fields: string[]) => `${fields.join('\0')}\0\x1e`;
+    const tagObject = 'a'.repeat(40);
+    const commit = 'b'.repeat(40);
+    const refs = parseRefRecords(record(['refs/tags/annotated', 'annotated', tagObject, '', '', '', commit]));
+    expect(refs[0]).toMatchObject({ fullName: 'refs/tags/annotated', type: 'tag', oid: commit });
+  });
+
+  it('parses the line-delimited peeled ref format used by for-each-ref', () => {
+    const line = (fields: string[]) => `${fields.join('\0')}\0`;
+    const commit = 'c'.repeat(40);
+    const refs = parseRefRecords([
+      line(['refs/tags/annotated', 'annotated', 'a'.repeat(40), '', '', '', commit]),
+      line(['refs/tags/lightweight', 'lightweight', commit, '', '', '', '']),
+    ].join('\n'));
+    expect(refs.map((ref) => ref.oid)).toEqual([commit, commit]);
+  });
+
   it('derives previous reflog OID only for adjacent records', () => {
     const output = [
       `${'c'.repeat(40)}\x00HEAD@{0}\x00merge feature: Fast-forward\x001724000000\x00A\x00a@x\x00\x1e`,

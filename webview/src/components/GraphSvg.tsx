@@ -1,19 +1,10 @@
 import type { ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
-import { pointForNode } from '../../../src/layout/edgeRouter';
+import { pointForNode, routeEdges } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
 import { gradientForEdge } from './edgePresentation';
 import { eventTooltip, isRefEvent } from './eventPresentation';
 import { isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from './nodePresentation';
-
-function pathFor(fromX: number, fromY: number, toX: number, toY: number): string {
-  const delta = Math.min(56, Math.max(8, Math.abs(toY - fromY) * 0.28));
-  return `M ${fromX} ${fromY} C ${fromX} ${fromY + delta}, ${toX} ${toY - delta}, ${toX} ${toY}`;
-}
-
-function annotationPath(_fromX: number, fromY: number, toX: number, toY: number): string {
-  return `M ${toX} ${fromY} L ${toX} ${toY}`;
-}
 
 function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): ReactNode {
   if (node.kind === 'commit') return <circle className={`node-symbol node-dot${fill ? ' node-unsynced' : ''}`} r="6.5" style={nodeFillStyle(fill)} />;
@@ -37,12 +28,7 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
   });
   const unsyncedGradientByNodeId = new Map(unsyncedGradients.map((gradient) => [gradient.nodeId, gradient]));
   const point = (id: string) => pointForNode(byId.get(id)!, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth });
-  const paths = layout.edgePaths ?? layout.edges.flatMap((edge) => {
-    if (!byId.has(edge.fromNodeId) || !byId.has(edge.toNodeId)) return [];
-    const fromPoint = point(edge.fromNodeId);
-    const toPoint = point(edge.toNodeId);
-    return [{ ...edge, d: edge.annotation === 'ref-event' ? annotationPath(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) : pathFor(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y) }];
-  });
+  const paths = layout.edgePaths ?? routeEdges(layout.nodes, layout.edges, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth });
   const visiblePaths = filterRenderableEdgePaths(paths, layout.edges, layout.nodes);
   const gradients = visiblePaths.flatMap((edge, index) => {
     const definition = edgeById.get(edge.id);

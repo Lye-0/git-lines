@@ -42,6 +42,40 @@ function linearRefFacts(localOid: string, remoteOid: string): GraphFactModel {
   };
 }
 
+function testCommit(letter: string, parentLetters: string[], date: number, subject = letter) {
+  return {
+    oid: oid(letter),
+    parentOids: parentLetters.map(oid),
+    subject,
+    authorName: 'A',
+    authorDate: date,
+    committerName: 'A',
+    committerDate: date,
+  };
+}
+
+function dagFacts(commits: GraphFactModel['commits'], refs: GraphFactModel['refs']): GraphFactModel {
+  const nodeOids = new Set(commits.map((commit) => commit.oid));
+  const nodes: GraphNode[] = commits.map((commit, row) => ({
+    id: `commit:${commit.oid}`,
+    kind: 'commit',
+    oid: commit.oid,
+    refIds: refs.filter((ref) => ref.oid === commit.oid).map((ref) => ref.shortName),
+    row,
+    timestamp: commit.committerDate,
+    subject: commit.subject,
+  }));
+  const edges = commits.flatMap((commit) => commit.parentOids
+    .filter((parentOid) => nodeOids.has(parentOid))
+    .map((parentOid) => ({
+      id: `parent:${commit.oid}:${parentOid}`,
+      type: 'parent' as const,
+      fromNodeId: `commit:${commit.oid}`,
+      toNodeId: `commit:${parentOid}`,
+    })));
+  return { nodes, edges, refs, commits, workingTrees: [], operations: [], events: [], primaryBranch: 'main', shallowBoundaryOids: [] };
+}
+
 describe('graph layout', () => {
   it('reuses a lane for non-overlapping branch segments', () => {
     const lanes = assignBranchSegmentLanes([
@@ -142,6 +176,85 @@ describe('graph layout', () => {
     const result = computeLaneLayout(facts);
     expect(result.nodes.find((node) => node.id === main.id)?.lane).toBe(0);
     expect(result.nodes.filter((node) => [firstA.id, lastA.id, firstB.id, lastB.id].includes(node.id)).map((node) => node.lane)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('reconstructs historical sequential merge branches without current refs', () => {
+    const commits = [
+      testCommit('m', ['p', 's'], 6, 'merge second'),
+      testCommit('s', ['p'], 5, 'second segment'),
+      testCommit('p', ['b', 'f'], 4, 'merge first'),
+      testCommit('f', ['b'], 3, 'first segment'),
+      testCommit('b', ['i'], 2, 'main base'),
+      testCommit('i', [], 1, 'initial'),
+    ];
+    const result = computeLaneLayout(dagFacts(commits, [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('m') }]));
+    const laneFor = (letter: string) => result.nodes.find((node) => node.oid === oid(letter))?.lane;
+    expect(['m', 'p', 'b', 'i'].map(laneFor)).toEqual([0, 0, 0, 0]);
+    expect(laneFor('s')).toBe(laneFor('f'));
+    expect(laneFor('s')).toBeGreaterThan(0);
+    expect(result.tracks.filter((track) => track.label === 'Historical branch')).toHaveLength(2);
+  });
+
+  it('keeps an octopus merge first-parent spine on the primary lane', () => {
+    const commits = [
+      testCommit('m', ['x', 'a', 'b', 'c'], 7, 'octopus'),
+      testCommit('x', ['z'], 6, 'main side'),
+      testCommit('a', ['z'], 5, 'feature a'),
+      testCommit('b', ['z'], 4, 'feature b'),
+      testCommit('c', ['z'], 3, 'feature c'),
+      testCommit('z', ['i'], 2, 'shared base'),
+      testCommit('i', [], 1, 'initial'),
+    ];
+    const result = computeLaneLayout(dagFacts(commits, [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('m') }]));
+    const laneFor = (letter: string) => result.nodes.find((node) => node.oid === oid(letter))?.lane;
+    expect(['m', 'x', 'z', 'i'].map(laneFor)).toEqual([0, 0, 0, 0]);
+    expect(new Set(['a', 'b', 'c'].map(laneFor)).size).toBe(3);
+    expect(['a', 'b', 'c'].every((letter) => (laneFor(letter) ?? 0) > 0)).toBe(true);
+  });
+
+  it('keeps repeated merge first-parent history continuous while side branches remain separate', () => {
+    const commits = [
+      testCommit('m', ['n', 'c'], 9, 'merge C'),
+      testCommit('c', ['q'], 8, 'feature C'),
+      testCommit('n', ['a', 'q'], 7, 'merge B'),
+      testCommit('q', ['r'], 6, 'feature B two'),
+      testCommit('r', ['a'], 5, 'feature B one'),
+      testCommit('a', ['z', 'w'], 4, 'merge A'),
+      testCommit('w', ['z'], 3, 'feature A'),
+      testCommit('z', ['i'], 2, 'main base'),
+      testCommit('i', [], 1, 'initial'),
+    ];
+    const refs = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('m') },
+      { fullName: 'refs/heads/feature-a', shortName: 'feature-a', type: 'local' as const, oid: oid('w') },
+      { fullName: 'refs/heads/feature-b', shortName: 'feature-b', type: 'local' as const, oid: oid('q') },
+      { fullName: 'refs/heads/feature-c', shortName: 'feature-c', type: 'local' as const, oid: oid('c') },
+    ];
+    const result = computeLaneLayout(dagFacts(commits, refs));
+    const laneFor = (letter: string) => result.nodes.find((node) => node.oid === oid(letter))?.lane;
+    expect(['m', 'n', 'a', 'z', 'i'].map(laneFor)).toEqual([0, 0, 0, 0, 0]);
+    expect(laneFor('q')).toBe(laneFor('r'));
+    expect(laneFor('q')).not.toBe(laneFor('c'));
+    expect(laneFor('w')).toBeGreaterThan(0);
+  });
+
+  it('does not let ORIG_HEAD change the primary lane of a merge', () => {
+    const commits = [
+      testCommit('m', ['n', 'f'], 5, 'merge'),
+      testCommit('n', ['b'], 4, 'main side'),
+      testCommit('f', ['b'], 3, 'feature'),
+      testCommit('b', ['i'], 2, 'base'),
+      testCommit('i', [], 1, 'initial'),
+    ];
+    const refs: GraphFactModel['refs'] = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('m') },
+      { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: oid('f') },
+      { fullName: 'ORIG_HEAD', shortName: 'ORIG_HEAD', type: 'symbolic', oid: oid('n') },
+    ];
+    const result = computeLaneLayout(dagFacts(commits, refs));
+    const laneFor = (letter: string) => result.nodes.find((node) => node.oid === oid(letter))?.lane;
+    expect(['m', 'n', 'b', 'i'].map(laneFor)).toEqual([0, 0, 0, 0]);
+    expect(laneFor('f')).toBeGreaterThan(0);
   });
 
   it('defaults a main family to lane zero when no primary branch is supplied', () => {
@@ -403,6 +516,40 @@ describe('graph layout', () => {
     expect(paths[0]?.d.endsWith(`${middlePoint.x} ${middlePoint.y}`)).toBe(true);
     expect(paths[1]?.d.startsWith(`M ${middlePoint.x} ${middlePoint.y}`)).toBe(true);
     expect(paths[1]?.d.endsWith(`${pointForNode(parent).x} ${pointForNode(parent).y}`)).toBe(true);
+  });
+
+  it('routes Working Tree around remote-ahead commits to the checked-out HEAD', () => {
+    const working: GraphNode = {
+      id: 'working:main',
+      kind: 'working-tree',
+      oid: oid('a'),
+      refIds: [],
+      row: 0,
+      lane: 1,
+      workingTree: {
+        worktreeId: 'main',
+        path: 'C:/repo',
+        headOid: oid('a'),
+        branch: 'feature',
+        detached: false,
+        staged: 0,
+        unstaged: 0,
+        untracked: 0,
+        conflicted: 0,
+        clean: true,
+      },
+    };
+    const remoteTip = { ...commitNode('c', 4), row: 1, lane: 1 };
+    const remoteMiddle = { ...commitNode('b', 3), row: 2, lane: 1 };
+    const head = { ...commitNode('a', 2), row: 3, lane: 1 };
+    const edge = { id: 'working:main:head', type: 'working-tree' as const, fromNodeId: working.id, toNodeId: head.id };
+    const path = routeEdges([working, remoteTip, remoteMiddle, head], [edge], { laneWidth: 34 })[0];
+    const workingPoint = pointForNode(working);
+    const headPoint = pointForNode(head);
+    expect(path?.d.startsWith(`M ${workingPoint.x} ${workingPoint.y}`)).toBe(true);
+    expect(path?.d.endsWith(`${headPoint.x} ${headPoint.y}`)).toBe(true);
+    expect(path?.d).toContain(`C ${workingPoint.x + 15.3}`);
+    expect(path?.d).not.toContain(`C ${workingPoint.x} `);
   });
 
   it('gives multiple events independent rows while keeping one target lane', () => {

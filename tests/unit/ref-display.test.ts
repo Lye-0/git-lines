@@ -32,4 +32,17 @@ describe('ref display model', () => {
       'v1.0.0',
     ]);
   });
+
+  it('keeps every normal ref badge in the model when one commit has many refs', () => {
+    const badges = Array.from({ length: 24 }, (_, index) => toGraphRefBadge({
+      fullName: `refs/heads/ref-branch-${String(index + 1).padStart(2, '0')}`,
+      shortName: `ref-branch-${String(index + 1).padStart(2, '0')}`,
+      type: 'local',
+      oid: 'a'.repeat(40),
+    }));
+    const result = uniqueGraphRefBadges(badges);
+    expect(result).toHaveLength(24);
+    expect(result.every((badge) => badge.name.startsWith('ref-branch-'))).toBe(true);
+    expect(result.map((badge) => badge.name)).toContain('ref-branch-24');
+  });
 });
