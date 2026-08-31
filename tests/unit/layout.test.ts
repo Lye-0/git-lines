@@ -4,6 +4,7 @@ import { computeRowLayout, assertRowInvariants } from '../../src/layout/rowLayou
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { filterRenderableEdgePaths } from '../../src/layout/edgeVisibility.js';
 import { pointForNode, routeEdges } from '../../src/layout/edgeRouter.js';
+import { HISTORICAL_ROUTE_COLOR, isSafeLiveBranchColor } from '../../src/utils/color.js';
 import type { EdgePath } from '../../src/layout/layoutTypes.js';
 import type { GraphFactModel, GraphNode } from '../../src/model/graphModel.js';
 
@@ -192,7 +193,11 @@ describe('graph layout', () => {
     expect(['m', 'p', 'b', 'i'].map(laneFor)).toEqual([0, 0, 0, 0]);
     expect(laneFor('s')).toBe(laneFor('f'));
     expect(laneFor('s')).toBeGreaterThan(0);
-    expect(result.tracks.filter((track) => track.label === 'Historical branch')).toHaveLength(2);
+    const mergedSideRoutes = result.tracks.filter((track) => track.label === 'Merged side route');
+    expect(mergedSideRoutes).toHaveLength(2);
+    expect(mergedSideRoutes.every((track) => track.family !== 'historical')).toBe(true);
+    expect(mergedSideRoutes.every((track) => isSafeLiveBranchColor(track.color))).toBe(true);
+    expect(mergedSideRoutes.every((track) => track.color !== HISTORICAL_ROUTE_COLOR)).toBe(true);
   });
 
   it('keeps an octopus merge first-parent spine on the primary lane', () => {
@@ -490,6 +495,82 @@ describe('graph layout', () => {
     expect(laidOutPrevious.trackId).toBe(historicalTrack?.id);
     expect(laidOutPrevious.lane).toBeGreaterThan(laidOutCurrent.lane!);
     expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
+  });
+
+  it('stops an amend historical route before its live shared ancestry', () => {
+    const current = testCommit('n', ['l'], 6, 'Local developer L2');
+    const remoteTip = testCommit('s', ['r'], 5, 'Other developer R2');
+    const remoteBase = testCommit('r', ['b'], 4, 'Other developer R1');
+    const previous = testCommit('o', ['l'], 5, 'Local developer L2');
+    const localBase = testCommit('l', ['b'], 3, 'Local developer L1');
+    const base = testCommit('b', ['i'], 2, 'A shared feature base');
+    const initial = testCommit('i', [], 1, 'Initial commit');
+    const nodeFor = (commit: GraphFactModel['commits'][number], row: number, kind: GraphNode['kind'] = 'commit'): GraphNode => ({
+      ...commitNode(commit.oid[0]!, commit.committerDate),
+      id: `commit:${commit.oid}`,
+      oid: commit.oid,
+      kind,
+      row,
+      subject: commit.subject,
+      previousRoute: kind === 'reflog-commit',
+    });
+    const currentNode = nodeFor(current, 0);
+    const remoteTipNode = nodeFor(remoteTip, 1);
+    const remoteBaseNode = nodeFor(remoteBase, 2);
+    const previousNode = nodeFor(previous, 3, 'reflog-commit');
+    const localBaseNode = nodeFor(localBase, 4);
+    const baseNode = nodeFor(base, 5);
+    const initialNode = nodeFor(initial, 6);
+    const edge = (from: GraphNode, to: GraphNode): GraphFactModel['edges'][number] => ({
+      id: `parent:${from.oid}:${to.oid}`,
+      type: 'parent',
+      fromNodeId: from.id,
+      toNodeId: to.id,
+    });
+    const amend: GraphFactModel['events'][number] = {
+      id: 'event:amend:shared-ancestor',
+      type: 'amend',
+      refName: 'refs/heads/feature',
+      fromOid: previous.oid,
+      toOid: current.oid,
+      timestamp: 7,
+      subject: 'commit (amend): Local developer L2',
+    };
+    const result = computeLaneLayout({
+      nodes: [currentNode, remoteTipNode, remoteBaseNode, previousNode, localBaseNode, baseNode, initialNode],
+      edges: [
+        edge(currentNode, localBaseNode),
+        edge(remoteTipNode, remoteBaseNode),
+        edge(remoteBaseNode, baseNode),
+        edge(previousNode, localBaseNode),
+        edge(localBaseNode, baseNode),
+        edge(baseNode, initialNode),
+      ],
+      refs: [
+        { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: current.oid },
+        { fullName: 'refs/remotes/alice/feature', shortName: 'alice/feature', type: 'remote', oid: remoteTip.oid },
+        { fullName: 'refs/remotes/bob/feature', shortName: 'bob/feature', type: 'remote', oid: base.oid },
+        { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: initial.oid },
+      ],
+      commits: [current, remoteTip, remoteBase, previous, localBase, base, initial],
+      workingTrees: [],
+      operations: [],
+      events: [amend],
+      primaryBranch: 'feature',
+      shallowBoundaryOids: [],
+    });
+    const historicalTrack = result.tracks.find((track) => track.family === 'historical');
+    const liveTrack = result.tracks.find((track) => track.id === result.nodes.find((node) => node.oid === localBase.oid)?.trackId);
+    const laidOutPrevious = result.nodes.find((node) => node.oid === previous.oid)!;
+    const laidOutLocalBase = result.nodes.find((node) => node.oid === localBase.oid)!;
+    const laidOutBase = result.nodes.find((node) => node.oid === base.oid)!;
+
+    expect(historicalTrack).toBeDefined();
+    expect(laidOutPrevious.trackId).toBe(historicalTrack?.id);
+    expect(laidOutLocalBase.trackId).not.toBe(historicalTrack?.id);
+    expect(laidOutBase.trackId).not.toBe(historicalTrack?.id);
+    expect(liveTrack?.family).toBe('feature');
+    expect(result.nodes.find((node) => node.oid === localBase.oid)?.trackId).toBe(result.nodes.find((node) => node.oid === base.oid)?.trackId);
   });
 
   it('does not move a branch lane when a remote badge appears mid-chain', () => {

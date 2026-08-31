@@ -2,8 +2,10 @@ import type { ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { pointForNode, routeEdges } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
+import { branchColor } from '../../../src/utils/color';
 import { gradientForEdge } from './edgePresentation';
 import { eventTooltip, isRefEvent } from './eventPresentation';
+import { createGraphColorResolver } from './graphColor';
 import { isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from './nodePresentation';
 
 function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): ReactNode {
@@ -19,11 +21,11 @@ function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): Re
 export function GraphSvg({ layout, width, height, selected }: { layout: GraphLayout; width: number; height?: number; selected?: string }) {
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
   const edgeById = new Map(layout.edges.map((edge) => [edge.id, edge]));
-  const colorByTrack = new Map(layout.tracks.map((track) => [track.id, track.color]));
+  const colorResolver = createGraphColorResolver(layout);
   const opacityByTrack = new Map(layout.tracks.map((track) => [track.id, track.kind === 'remote' ? 0.64 : 1]));
   const unsyncedGradients = layout.nodes.flatMap((node, index) => {
     const id = `node-sync-gradient-${index}-${node.id.replace(/[^A-Za-z0-9_-]/g, '-')}`;
-    const gradient = unsyncedGradientForNode(node, colorByTrack.get(node.trackId ?? '') ?? 'var(--graph-muted)', id);
+    const gradient = unsyncedGradientForNode(node, colorResolver.colorForNode(node), id);
     return gradient ? [{ nodeId: node.id, ...gradient }] : [];
   });
   const unsyncedGradientByNodeId = new Map(unsyncedGradients.map((gradient) => [gradient.nodeId, gradient]));
@@ -35,8 +37,8 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
     const target = definition ? byId.get(definition.toNodeId) : undefined;
     if (!definition || !source || !target) return [];
-    const sourceColor = source.trackId ? colorByTrack.get(source.trackId) : undefined;
-    const targetColor = target.trackId ? colorByTrack.get(target.trackId) : undefined;
+    const sourceColor = colorResolver.colorForNode(source);
+    const targetColor = colorResolver.colorForNode(target);
     const gradient = gradientForEdge({
       edge: definition,
       source,
@@ -63,12 +65,16 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     const baseOpacity = opacityByTrack.get(track ?? '') ?? 1;
     const muted = source?.kind === 'reflog-commit' || target?.kind === 'reflog-commit';
     const gradient = gradientByEdgeId.get(edge.id);
-    const stroke = gradient ? `url(#${gradient.id})` : colorByTrack.get(track ?? '') ?? 'var(--graph-muted)';
+    const stroke = gradient
+      ? `url(#${gradient.id})`
+      : definition
+        ? colorResolver.colorForEdge(definition, annotation ? 'target' : 'source')
+        : branchColor('main');
     return <path key={edge.id} d={edge.d} className={`edge edge-${edge.type}${annotation ? ' edge-ref-annotation' : ''}${muted ? ' edge-reflog' : ''}`} stroke={stroke} opacity={muted ? baseOpacity * 0.68 : baseOpacity} />;
   };
   const renderNode = (node: (typeof layout.nodes)[number]) => {
     const p = point(node.id);
-    const track = colorByTrack.get(node.trackId ?? '') ?? 'var(--graph-muted)';
+    const track = colorResolver.colorForNode(node);
     const refEvent = isRefEvent(node);
     const title = refEvent ? eventTooltip(node) : node.label ?? node.subject;
     const isSelected = isSelectedCommit(node, selected);
