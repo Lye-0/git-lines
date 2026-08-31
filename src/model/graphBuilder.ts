@@ -40,6 +40,22 @@ function syncStateFor(oid: string, localReachable: Set<string>, remoteReachable:
   return undefined;
 }
 
+function previousRouteCommitOids(snapshot: RepositorySnapshot, commits: Map<string, { parentOids: string[] }>, reachableOids: Set<string>): Set<string> {
+  const previous = new Set<string>();
+  for (const event of snapshot.historyEvents) {
+    if (event.type !== 'reset' && event.type !== 'amend') continue;
+    let current = event.fromOid;
+    const visited = new Set<string>();
+    while (current && !visited.has(current)) {
+      visited.add(current);
+      if (reachableOids.has(current)) break;
+      previous.add(current);
+      current = commits.get(current)?.parentOids[0];
+    }
+  }
+  return previous;
+}
+
 function eventLabel(type: string, refName: string, sourceLabel?: string): string {
   const ref = normalizeRefName(refName);
   const source = sourceLabel ? normalizeRefName(sourceLabel) : undefined;
@@ -79,6 +95,9 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   const reachableOids = reachableFromRefs(snapshot, commitMap);
   const localReachable = reachableFromRefType(snapshot, commitMap, 'local');
   const remoteReachable = reachableFromRefType(snapshot, commitMap, 'remote');
+  const previousRouteOids = options.showReflog === false
+    ? new Set<string>()
+    : previousRouteCommitOids(snapshot, commitMap, reachableOids);
   const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
     if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
@@ -96,6 +115,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       label: commit.subject,
       commit,
       syncState: syncStateFor(commit.oid, localReachable, remoteReachable),
+      previousRoute: previousRouteOids.has(commit.oid),
     };
   });
   const nodeByOid = new Map(nodes.filter((node) => node.oid).map((node) => [node.oid as string, node]));

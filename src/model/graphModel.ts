@@ -27,6 +27,8 @@ export interface GraphNode {
   commit?: GitCommit;
   /** Synchronization reachability for real commit nodes. */
   syncState?: GraphSyncState;
+  /** Commit belongs to the old route produced by a reset or amend event. */
+  previousRoute?: boolean;
   event?: HistoryEvent;
   /** Commit node reached by a ref event. Ref events do not participate in the commit DAG. */
   anchorCommitId?: string;

@@ -48,7 +48,7 @@
         "branchGraph.showReflog": {
           "type": "boolean",
           "default": true,
-          "description": "Show reflog-only commits and ref movement events when Git still retains them."
+          "description": "Show previous-route commits and ref movement events when Git still retains them."
         },
         "branchGraph.density": {
           "type": "string",

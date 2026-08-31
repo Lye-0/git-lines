@@ -78,8 +78,40 @@ describe('GitClient integration fixture', () => {
     const facts = (await import('../../src/model/graphBuilder.js')).buildGraphFacts(snapshot);
     const oldNode = facts.nodes.find((node) => node.oid === oldTip);
     expect(oldNode?.kind).toBe('reflog-commit');
+    expect(oldNode?.previousRoute).toBe(true);
     expect(facts.edges.some((edge) => edge.type === 'parent' && edge.fromNodeId === oldNode?.id)).toBe(true);
     expect(snapshot.historyEvents.some((event) => event.type === 'reset')).toBe(true);
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    const oldLayoutNode = layout.nodes.find((node) => node.oid === oldTip);
+    const currentLayoutNode = layout.nodes.find((node) => node.oid === snapshot.workingTrees[0]?.headOid);
+    const historicalTrack = layout.tracks.find((track) => track.id === oldLayoutNode?.trackId);
+    expect(historicalTrack?.family).toBe('historical');
+    expect(oldLayoutNode?.lane).toBeGreaterThan(currentLayoutNode?.lane ?? -1);
+    expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
+  });
+
+  it('places an amended reflog commit on a gray previous route', async () => {
+    fixture = createGitFixture();
+    commitFixture(fixture, 'base', '2026-08-27T09:00:00+09:00');
+    commitFixture(fixture, 'old commit before amend', '2026-08-27T10:00:00+09:00');
+    const oldTip = fixture.run(['rev-parse', 'HEAD']).trim();
+    fs.writeFileSync(path.join(fixture.root, 'amended.txt'), 'amended content');
+    fixture.run(['add', '.']);
+    fixture.run(['commit', '--amend', '-m', 'amended commit'], { GIT_AUTHOR_DATE: '2026-08-27T11:00:00+09:00', GIT_COMMITTER_DATE: '2026-08-27T11:00:00+09:00' });
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 1, true);
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    const oldNode = facts.nodes.find((node) => node.oid === oldTip);
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    const oldLayoutNode = layout.nodes.find((node) => node.oid === oldTip);
+    const currentLayoutNode = layout.nodes.find((node) => node.oid === snapshot.workingTrees[0]?.headOid);
+    const historicalTrack = layout.tracks.find((track) => track.id === oldLayoutNode?.trackId);
+
+    expect(oldNode?.kind).toBe('reflog-commit');
+    expect(oldNode?.previousRoute).toBe(true);
+    expect(snapshot.historyEvents.some((event) => event.type === 'amend')).toBe(true);
+    expect(historicalTrack?.family).toBe('historical');
+    expect(oldLayoutNode?.lane).toBeGreaterThan(currentLayoutNode?.lane ?? -1);
+    expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
   });
 
   it('keeps a long feature lane independent and preserves both merge parents', async () => {

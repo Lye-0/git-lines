@@ -19,6 +19,27 @@ export function normalizeRefName(value: string): string {
   return refName;
 }
 
+/**
+ * Returns the logical branch family used by the graph layout.  A local branch
+ * keeps its complete name, while a remote-tracking ref drops only the remote
+ * name from Git's canonical `refs/remotes/<remote>/<branch>` form.  Using the
+ * ref type and canonical name avoids treating a local `alice/feature` branch
+ * as the same family as the remote `alice/feature` ref.
+ */
+export function branchFamilyForRef(ref: Pick<GitRef, 'fullName' | 'shortName' | 'type'>): string {
+  const normalized = normalizeRefName(ref.fullName || ref.shortName);
+  if (ref.type !== 'remote') return normalized;
+
+  if (ref.fullName.startsWith('refs/remotes/')) {
+    const remoteBranch = ref.fullName.slice('refs/remotes/'.length);
+    const separator = remoteBranch.indexOf('/');
+    return separator >= 0 ? remoteBranch.slice(separator + 1) : remoteBranch;
+  }
+
+  const separator = normalized.indexOf('/');
+  return separator >= 0 ? normalized.slice(separator + 1) : normalized;
+}
+
 export function badgeKind(ref: GitRef | undefined, fullName: string): GraphRefBadgeKind {
   if (fullName === 'ORIG_HEAD' || fullName === 'AUTO_MERGE') return 'special';
   if (fullName.startsWith('refs/remotes/') && fullName.endsWith('/HEAD')) return 'special';

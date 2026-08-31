@@ -361,6 +361,137 @@ describe('graph layout', () => {
     expect(localNode.lane).not.toBe(remoteNode.lane);
   });
 
+  it('keeps local, Alice, and Bob refs on one lane when their tips are one chain', () => {
+    const commits = [
+      testCommit('c', ['b'], 4, 'C'),
+      testCommit('b', ['a'], 3, 'B'),
+      testCommit('a', ['i'], 2, 'A'),
+      testCommit('i', [], 1, 'Initial'),
+    ];
+    const refs = [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('i') },
+      { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local' as const, oid: oid('a') },
+      { fullName: 'refs/remotes/alice/feature', shortName: 'alice/feature', type: 'remote' as const, oid: oid('b') },
+      { fullName: 'refs/remotes/bob/feature', shortName: 'bob/feature', type: 'remote' as const, oid: oid('c') },
+    ];
+    const facts = { ...dagFacts(commits, refs), primaryBranch: 'feature' };
+    const result = computeLaneLayout(facts);
+    const featureTracks = result.tracks.filter((track) => track.family === 'feature');
+    const featureOids = new Set([oid('a'), oid('b'), oid('c')]);
+    const featureNodes = result.nodes.filter((node) => node.oid && featureOids.has(node.oid));
+
+    expect(featureTracks).toHaveLength(1);
+    expect(featureTracks[0]?.refNames).toEqual(expect.arrayContaining([
+      'refs/heads/feature',
+      'refs/remotes/alice/feature',
+      'refs/remotes/bob/feature',
+    ]));
+    expect(featureTracks[0]?.refNames).toHaveLength(3);
+    expect(new Set(featureNodes.map((node) => node.lane)).size).toBe(1);
+  });
+
+  it('uses separate lanes but the same hue for diverged routes in one family', () => {
+    const commits = [
+      testCommit('l', ['m'], 5, 'Local L2'),
+      testCommit('m', ['i'], 4, 'Local L1'),
+      testCommit('r', ['s'], 3, 'Alice R2'),
+      testCommit('s', ['i'], 2, 'Alice R1'),
+      testCommit('i', [], 1, 'Initial'),
+    ];
+    const refs = [
+      { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local' as const, oid: oid('l') },
+      { fullName: 'refs/remotes/alice/feature', shortName: 'alice/feature', type: 'remote' as const, oid: oid('r') },
+    ];
+    const result = computeLaneLayout({ ...dagFacts(commits, refs), primaryBranch: 'feature' });
+    const featureTracks = result.tracks.filter((track) => track.family === 'feature');
+    const hueOf = (color: string) => color.match(/^hsl\((\d+)/)?.[1];
+
+    expect(featureTracks).toHaveLength(2);
+    expect(new Set(featureTracks.map((track) => track.lane)).size).toBe(2);
+    expect(new Set(featureTracks.map((track) => hueOf(track.color)).filter(Boolean)).size).toBe(1);
+    expect(featureTracks[0]?.color).not.toBe(featureTracks[1]?.color);
+  });
+
+  it('keeps the Working Tree lane tied to the checked-out local HEAD', () => {
+    const facts = linearRefFacts(oid('a'), oid('c'));
+    const working: GraphNode = {
+      id: 'working:feature',
+      kind: 'working-tree',
+      oid: oid('a'),
+      refIds: [],
+      row: 3,
+      workingTree: {
+        worktreeId: 'feature',
+        path: 'C:/repo',
+        headOid: oid('a'),
+        branch: 'feature',
+        detached: false,
+        staged: 0,
+        unstaged: 0,
+        untracked: 0,
+        conflicted: 0,
+        clean: true,
+      },
+    };
+    facts.nodes = [...facts.nodes, working];
+    facts.edges = [...facts.edges, { id: 'working:feature:head', type: 'working-tree', fromNodeId: working.id, toNodeId: `commit:${oid('a')}` }];
+    facts.workingTrees = [working.workingTree!];
+
+    const result = computeLaneLayout(facts);
+    const laidOutWorking = result.nodes.find((node) => node.id === working.id)!;
+    const head = result.nodes.find((node) => node.oid === oid('a'))!;
+
+    expect(laidOutWorking.trackId).toBe(head.trackId);
+    expect(laidOutWorking.lane).toBe(head.lane);
+    expect(facts.edges.find((edge) => edge.type === 'working-tree')?.toNodeId).toBe(head.id);
+  });
+
+  it.each([
+    ['reset', 'Reset · main'],
+    ['amend', 'Amend · main'],
+  ] as const)('places %s reflog commits on a gray historical route', (eventType, eventLabel) => {
+    const current = testCommit('n', ['b'], 4, 'Current commit');
+    const previous = testCommit('o', ['b'], 3, 'Previous commit');
+    const base = testCommit('b', [], 1, 'Initial');
+    const currentNode = { ...commitNode('n', 4), row: 1 };
+    const previousNode: GraphNode = { ...commitNode('o', 3), kind: 'reflog-commit', row: 2 };
+    const baseNode = { ...commitNode('b', 1), row: 3 };
+    const event: GraphNode = {
+      id: `event:${eventType}`,
+      kind: 'history-event',
+      row: 0,
+      refIds: ['main'],
+      timestamp: 5,
+      label: eventLabel,
+      anchorCommitId: currentNode.id,
+      targetRef: 'refs/heads/main',
+      event: { id: `event:${eventType}`, type: eventType, refName: 'refs/heads/main', fromOid: previous.oid, toOid: current.oid, timestamp: 5 },
+    };
+    const result = computeLaneLayout({
+      nodes: [event, currentNode, previousNode, baseNode],
+      edges: [
+        { id: 'parent:n:b', type: 'parent', fromNodeId: currentNode.id, toNodeId: baseNode.id },
+        { id: 'parent:o:b', type: 'parent', fromNodeId: previousNode.id, toNodeId: baseNode.id },
+        { id: `${event.id}:annotation`, type: 'history-event', fromNodeId: currentNode.id, toNodeId: event.id, annotation: 'ref-event' },
+      ],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: current.oid }],
+      commits: [current, previous, base],
+      workingTrees: [],
+      operations: [],
+      events: [event.event!],
+      primaryBranch: 'main',
+      shallowBoundaryOids: [],
+    });
+    const historicalTrack = result.tracks.find((track) => track.family === 'historical');
+    const laidOutPrevious = result.nodes.find((node) => node.id === previousNode.id)!;
+    const laidOutCurrent = result.nodes.find((node) => node.id === currentNode.id)!;
+
+    expect(historicalTrack).toBeDefined();
+    expect(laidOutPrevious.trackId).toBe(historicalTrack?.id);
+    expect(laidOutPrevious.lane).toBeGreaterThan(laidOutCurrent.lane!);
+    expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
+  });
+
   it('does not move a branch lane when a remote badge appears mid-chain', () => {
     const facts = linearRefFacts(oid('c'), oid('b'));
     const result = computeLaneLayout(facts);

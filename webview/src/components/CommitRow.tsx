@@ -1,13 +1,13 @@
-import type { CSSProperties } from 'react';
+import React, { type CSSProperties } from 'react';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
 import { summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import { commitChangeStats } from './commitStatsPresentation';
+import { commitRowPresentation } from './commitRowPresentation';
 import { ChangeStatsGrid } from './ChangeStatsGrid';
 
 function kindLabel(kind: GraphNode['kind']): string | undefined {
-  if (kind === 'reflog-commit') return 'Reflog-only';
   if (kind === 'working-tree') return 'Working Tree';
   if (kind === 'operation') return 'Operation';
   if (kind === 'history-boundary') return 'History boundary';
@@ -43,6 +43,8 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   const working = workingSummary(node);
   const operation = operationSummary(node);
   const refEvent = isRefEvent(node);
+  const rowPresentation = commitRowPresentation(node);
+  const previousRoute = rowPresentation.previousRoute;
   // The title already identifies these state rows ("Working Tree" or
   // "Merge in progress"); repeating a second kind label only adds noise.
   const kind = refEvent || node.kind === 'working-tree' || node.kind === 'operation' ? undefined : kindLabel(node.kind);
@@ -86,7 +88,8 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
         {kind && <span className="row-kind">{kind}</span>}
         <div className="row-text">
           <div className="row-heading">
-            <span className="subject" title={node.subject ?? node.label}>{title}</span>
+            {rowPresentation.previousBadgeLabel && <span className="previous-badge" title="Previous route">{rowPresentation.previousBadgeLabel}</span>}
+            <span className={`subject${previousRoute ? ' previous-subject' : ''}`} title={node.subject ?? node.label}>{title}</span>
             {badges.length > 0 && <div className="row-meta">
               {badges.map((badge) => {
                 const track = tracks.find((candidate) => candidate.refNames.includes(badge.fullName));
@@ -104,7 +107,7 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   </div>;
   const secondaryWorktree = node.workingTree?.mainWorktree === false;
   const compact = rowHeight <= 32;
-  return <div className={`commit-row row-${node.kind}${compact ? ' compact-row' : ''}${secondaryWorktree ? ' secondary-worktree' : ''}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
+  return <div className={`commit-row row-${node.kind}${previousRoute ? ' previous-row' : ''}${compact ? ' compact-row' : ''}${secondaryWorktree ? ' secondary-worktree' : ''}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
     {isSelectable ? <button type="button" className="row-button" aria-label={`${title}${commitMeta ? `, ${commitMeta}` : ''}`} aria-pressed={selected} onClick={() => onSelect(node.oid!)}>{content}</button> : content}
   </div>;
 }

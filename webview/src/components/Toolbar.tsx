@@ -17,7 +17,7 @@ function GraphLegend() {
     <div className="legend-popover" role="dialog" aria-label="Graph legend">
       <div><span className="legend-symbol commit-dot">●</span> Commit</div>
       <div><span className="legend-symbol work-dot">○</span> Working Tree / operation</div>
-      <div><span className="legend-symbol reflog-dot">◌</span> Reflog-only commit</div>
+      <div><span className="legend-symbol reflog-dot">◌</span> Historical commit</div>
       <div><span className="legend-symbol ff-dot">◇</span> Ref event</div>
       <div><span className="legend-line legend-line-parent" /> Parent relationship</div>
       <div><span className="legend-line legend-line-operation" /> Working / operation</div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isUserFacingRef, normalizeRefName, toGraphRefBadge, uniqueGraphRefBadges } from '../../src/model/refDisplay.js';
+import { branchFamilyForRef, isUserFacingRef, normalizeRefName, toGraphRefBadge, uniqueGraphRefBadges } from '../../src/model/refDisplay.js';
 
 describe('ref display model', () => {
   it('normalizes heads, remote-tracking refs, and tags for UI labels', () => {
@@ -14,6 +14,18 @@ describe('ref display model', () => {
     expect(isUserFacingRef(remoteHead)).toBe(false);
     expect(isUserFacingRef(origHead)).toBe(false);
     expect(toGraphRefBadge(remoteHead)).toMatchObject({ name: 'origin/HEAD', kind: 'special' });
+  });
+
+  it('uses the canonical remote name to resolve a shared branch family', () => {
+    const local = { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local' as const };
+    const alice = { fullName: 'refs/remotes/alice/feature', shortName: 'alice/feature', type: 'remote' as const };
+    const bob = { fullName: 'refs/remotes/bob/feature', shortName: 'bob/feature', type: 'remote' as const };
+    const localSlashBranch = { fullName: 'refs/heads/alice/feature', shortName: 'alice/feature', type: 'local' as const };
+
+    expect(branchFamilyForRef(local)).toBe('feature');
+    expect(branchFamilyForRef(alice)).toBe('feature');
+    expect(branchFamilyForRef(bob)).toBe('feature');
+    expect(branchFamilyForRef(localSlashBranch)).toBe('alice/feature');
   });
 
   it('prioritizes the checked-out branch and corresponding remote before tags', () => {

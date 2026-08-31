@@ -20,12 +20,12 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 `GraphNode`の種類は次のとおり。commit nodeには表示用に正規化したref badgeと、local/remoteからの到達性に基づく`syncState`（`shared` / `local-only` / `remote-only`）を持たせるが、full refは事実モデルに保持する。symbolic ref、`ORIG_HEAD`などのpseudo refは通常のbranch badgeやlaneに含めない。
 
 - `commit` — current refsから読み込んだ実在commit
-- `reflog-commit` — 現在のuser-facing refから到達できず、reflogから確認でき、objectが残っているcommit
+- `reflog-commit` — 現在のuser-facing refから到達できず、reflogから確認でき、objectが残っているcommit。Reset/Amendの旧経路だけ`previousRoute`を持ち、行表示では`PREVIOUS`になる
 - `working-tree` / `operation` — commit objectではない現在状態
 - `fast-forward-event` / `history-event` — reflogから確認できるref移動の時系列行。commitとは別モデルだが、`anchorCommitId`でdestinationを参照する
 - `history-boundary` — paginationまたはshallow cloneで未読parentを示すstub
 
-`GraphTrack`はbranch identityごとの色・ref一覧に加え、表示中のY区間ごとの`segments`（`startRow`、`endRow`、`lane`）を持つ。`lane`は互換性のための代表値であり、実際のノードX座標は各nodeのsegment割り当てを使う。
+`GraphTrack`はbranch family内のRouteごとの色・ref一覧に加え、表示中のY区間ごとの`segments`（`startRow`、`endRow`、`lane`）を持つ。RouteはDAG上の連続経路、laneはその経路の一時的なX座標であり、`lane`は互換性のための代表値である。refの追加や移動だけではlaneを増やさず、同じfamilyでもtipが実際に分岐したRouteだけを別laneへ置く。familyはlocal refとremote-tracking refのcanonicalなbranch名から解決し、同じfamilyの別Routeは同じbase hueの明度・彩度差で表示する。
 
 実在のparent関係は`GraphEdge.type = "parent"`で表し、`GitCommit.parentOids`の各要素から1本ずつ生成する。laneや表示都合でparent edgeを削除・統合しない。Working Tree、未完了operation、ref移動はそれぞれ`working-tree`、`operation`、`history-event`で分離する。Ref Eventのedgeには`annotation: "ref-event"`を付け、destination commitからイベントglyphへ向かう単一の補助接続として扱う。patchが似ているだけのsquash/cherry-pick/rebase前後をparent edgeへ変換しない。
 
@@ -36,11 +36,11 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 3. ready queueのcommitter date、kind、stable idを用いて同じ入力から同じ順序を得る。
 4. primary branchのfirst-parent chainはlane 0に固定する。mergeの2番目以降のparentは、現在refが残っていなくてもGitのparent関係から歴史branch segmentとして復元し、feature-only ancestryを別laneへ置く。現在のrefはbranch identityとbadgeの根拠であり、main laneの連続性や削除済みbranchの履歴を決める唯一の根拠にはしない。
 5. 非primary laneはbranch identityごとに永久予約せず、parent / Working Tree / operation / Ref Eventの表示線を含む連続したY区間をbranch segmentとして割り当てる。古いmerge side pathから先にtrackを確定し、後続mergeのside pathが同じ履歴へ戻る場合はそのtrackへ遷移させる。segmentのY範囲が重ならない場合は同じlaneを再利用し、merge nodeだけで境界が接するsegmentも同じlaneを共有できる。重なる場合はlane 1から左側の空きlaneを選び、同一segment内のnodeは同じlaneを維持する。
-6. local/remoteの同一familyは同系色とし、同一oidまたはtip同士がDAG上で祖先/子孫関係にある場合はref badgeだけを複数持つ一つのtrackへ統合する。tip同士が比較可能でないdivergedな場合だけ別trackとし、laneを再利用しても色はtrack（branch identity）から解決する。commitのlocal/remote到達性が片側だけの場合は`syncState`で未同期とし、node内部の固定斜めgradientだけを変える。gradientの軸は左上→右下、境界は左下→右上に固定する。
-7. Working Treeはstatusが返す実際のchecked-out HEAD OIDをcommit nodeへ接続し、checkout中branchのtrackを優先する。remote-tracking refが先行していてもremote tipへ接続しない。同じoidを指す新規branch作成直後でも、commit nodeは増やさずWorking Treeだけをbranch専用segmentへ置き、最初のcommitが作られたら同じsegment laneを引き継ぐ。
+6. local/remoteの同一branch familyは同系色とし、同一oidまたはtip同士がDAG上で祖先/子孫関係にある場合はref badgeだけを複数持つ一つのRoute/trackへ統合する。tip同士が比較可能でないdivergedな場合だけ別Route/trackとし、laneを再利用してもfamilyのbase hueとRoute variationを維持する。commitのlocal/remote到達性が片側だけの場合は`syncState`で未同期とし、node内部の固定斜めgradientだけを変える。gradientの軸は左上→右下、境界は左下→右上に固定する。
+7. Working Treeはstatusが返す実際のchecked-out HEAD OIDをcommit nodeへ接続し、lane描画とは独立にcheckout中branchのlocal refをanchorの識別根拠として優先する。remote-tracking refが先行していてもremote tipへ接続しない。同じoidを指す新規branch作成直後でも、commit nodeは増やさずWorking Treeだけをbranch専用segmentへ置き、最初のcommitが作られたら同じsegment laneを引き継ぐ。
 8. paginationでは最初から取得した先行commitのrow / laneを可能な限り維持し、追加parentを下へappendする。既存nodeのlaneを優先しつつ、新しく現れたsegmentには空いている左端laneを割り当てる。current Git stateの更新時だけ再レイアウトを許可する。
 
-lane claimはvisual trackの補助情報であり、「commitがbranchに所属する」というGitの事実を表さない。branch作成地点やdeleted branch名はreflogに明示的な証拠がない限り表示しない。
+lane claimはvisual trackの補助情報であり、「commitがbranchに所属する」というGitの事実を表さない。Reset/AmendでfromOid側に残ったreflog commitはcurrent Routeとは別のhistorical Routeとしてgrayのside laneへ置き、通常行では`PREVIOUS` badgeをmessageの横に表示する。branch作成地点やdeleted branch名はreflogに明示的な証拠がない限り表示しない。
 
 ## Reflogとoperation
 
@@ -57,7 +57,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 5. Webviewはcommit選択時だけdetail/filesをon-demand取得し、グラフ専用のスクロール領域を持つ。通常時はWorking Tree rowと各commit rowへ、同じcontent構造と固定3列のchanges columnを使って一括取得済みのfiles/additions/deletionsを表示する。commit選択時はWorking Treeの変更量を隠してsubject・short hash・同一commitのref badge・変更量・author・parent・Git name-status一覧・追加本文を階層化した約400pxのCommit Detailへ切り替える。Changed Filesはdetail panelの残り高さを使い、行を上詰めにして必要時だけ内部スクロールする。下端手前で次ページを自動取得し、手動refresh・focus・Git metadata watchでも再読込する。
 
 グラフのSVGレイヤーにはレーン用の左余白を確保し、HTMLのcommit行はその右側から固定changes columnまでの幅を使って開始する。Working Tree summaryと全commitのchanges gridは同じ3列・同じ桁揃えを共有し、本文・badgeの開始位置は維持する。changes columnの開始位置はグラフcontentの利用可能幅に応じて左側へ追従する。Timelineにはgraph lane、最低限のcommit content、changes column、rowのgap/paddingを合算したminimum widthを持たせ、表示領域が狭い場合もchanges・metadataを先に隠さず横スクロールで確認できるようにする。ref badgeが多数ある行は全badgeを`flex-shrink: 0`で保持し、その合計幅をcontent minimumへ反映する。commit contentはmessage/refを1行目、short hash・author・relative timeを2行目に置き、messageは最大620px、各badgeは最大240pxを超えた場合だけellipsisする。Ref Eventは`anchorCommitId`でdestination commitを参照し、構造DAGのtopological計算からは除外したまま、destinationの直上へ独立したtimeline rowを割り当てる。同じイベントの`targetRef`を`targetLaneId`へ解決して対象branch/refと同じX座標に置き、イベントのためのGraphTrackや横方向の分岐は作らない。annotation edgeは同一lane内の縦コネクタとして描画し、イベントの`from`側をcommit DAGの線として描画しない。同一destinationに複数イベントがある場合は必要な数だけ独立rowを連続して割り当てる。Working Tree / operationは細い点線、commit parentとRef Event annotationは実線で表示する。commit rowのref badgeはcheckout中local branch、その他local、対応remote、その他remote、tag/specialの順にcommit本文の近くへ配置し、tagは形状を変えてbranch laneを作らない。Ref Eventのrowには`REF EVENT`種別ラベルや同一refの重複badgeを表示せず、diamond glyphだけをSVGのbranch lane上へ描画し、`FF · +N commits · operation`形式のイベント文字列は通常commitと同じHTML content columnから開始する。raw reflog、OID、影響ref、日時などの詳細はSVG glyphと行文字列のtooltipへ分離する。edge layerを先に、node layerを後に描画し、commit / Working Tree / Ref EventのSVG記号は線と同じnode layer上の図形で描画して線の隙間を作らない。commitとWorking Treeの`●`/`○`は同じ基準サイズで揃え、graph areaの幅は実際のnode laneから決まり、長いevent textでは広がらない。凡例はtoolbarのpopoverから参照できる。
-実在する`parent` edgeの両端commitでtrack色が異なる場合だけ、SVG `linearGradient`をsource nodeからtarget nodeへ向けて適用する。同一branchのedge、Working Tree / operation、Ref Event annotation、reflog-only補助表現、lane再利用だけでGit edgeがない区間は単色のままにする。gradient定義はedgeごとに一意なIDを持ち、ノード・badge・lane割り当ての色は変更しない。`syncState`が`local-only`または`remote-only`のcommit nodeは、branch色を保ったまま左下から右上を境界とするnode専用gradientで描画する。薄い側のopacityでedgeが透けないよう、edge層とnode層の間にgraph background色の不透明な円形マスクを置く。選択時の外側リングは別レイヤーとして共存させる。Working Tree、Ref Event、reflog-only nodeには適用しない。
+実在する`parent` edgeの両端commitでtrack色が異なる場合だけ、SVG `linearGradient`をsource nodeからtarget nodeへ向けて適用する。同一branchのedge、Working Tree / operation、Ref Event annotation、reflog-only補助表現、lane再利用だけでGit edgeがない区間は単色のままにする。gradient定義はedgeごとに一意なIDを持ち、ノード・badge・lane割り当ての色は変更しない。`syncState`が`local-only`または`remote-only`のcommit nodeは、branch色を保ったまま左下から右上を境界とするnode専用gradientで描画する。薄い側のopacityでedgeが透けないよう、edge層とnode層の間にgraph background色の不透明な円形マスクを置く。選択時の外側リングは別レイヤーとして共存させる。Working Tree、Ref Event、reflog-only nodeには適用しない。旧経路commitの行はUI上`PREVIOUS`とし、badgeはmessageのinline、metadataは通常commitと同じcontent startに置く。
 
 ## Security / Accessibility
 

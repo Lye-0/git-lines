@@ -86,6 +86,8 @@ h1, h2, p { margin: 0; }
 .row-text { width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow: visible; }
 .row-heading { min-width: 0; display: flex; align-items: baseline; gap: 9px; overflow: visible; }
 .subject { min-width: 0; max-width: 620px; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.previous-badge { flex: 0 0 auto; color: #a9a9b5; background: color-mix(in srgb, #777783 18%, transparent); border: 1px solid color-mix(in srgb, #a9a9b5 42%, var(--graph-border)); border-radius: 4px; padding: 1px 5px; line-height: 14px; font-size: 9px; font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
+.previous-subject { color: color-mix(in srgb, var(--graph-text) 78%, var(--graph-muted)); }
 .row-subtitle, .commit-meta { min-width: 0; color: var(--graph-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-meta { font-family: var(--vscode-editor-font-family, ui-monospace); }
 .compact-row .row-text { flex-direction: row; align-items: baseline; gap: 8px; }

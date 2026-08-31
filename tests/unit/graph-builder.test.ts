@@ -123,6 +123,19 @@ describe('graph fact builder', () => {
     expect(eventNodes.every((node) => node.oid === undefined)).toBe(true);
   });
 
+  it('does not relabel generic ref-move history as a reset/amend previous route', () => {
+    const facts = buildGraphFacts({
+      ...snapshot,
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('a') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('a') }],
+      historyEvents: [{ id: 'history:branch-move:3:a', type: 'branch-move', refName: 'refs/heads/main', fromOid: oid('b'), toOid: oid('a'), timestamp: 3, subject: 'branch: moving to a' }],
+    });
+    const oldNode = facts.nodes.find((node) => node.oid === oid('b'));
+
+    expect(oldNode?.kind).toBe('reflog-commit');
+    expect(oldNode?.previousRoute).toBe(false);
+  });
+
   it('keeps operation relationships separate from parent edges', () => {
     const operationSnapshot = { ...snapshot, operations: [{ type: 'cherry-pick' as const, headOid: oid('b'), sourceOids: [oid('a')] }] };
     const facts = buildGraphFacts(operationSnapshot);
