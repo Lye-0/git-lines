@@ -6,6 +6,10 @@ export interface CommitRowPresentation {
   metadataPlacement: 'content-start';
 }
 
+export function commitMetaText(oid: string, routeName: string | undefined, relative: string | undefined): string {
+  return [oid.slice(0, 8), routeName, relative].filter(Boolean).join(' · ');
+}
+
 /** Keeps the visual contract for current and historical commit rows explicit. */
 export function commitRowPresentation(node: Pick<GraphNode, 'kind' | 'previousRoute'>): CommitRowPresentation {
   const previousRoute = node.previousRoute === true;

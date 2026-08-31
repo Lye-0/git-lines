@@ -7,6 +7,7 @@ import { EmptyState } from './components/EmptyState';
 import { GraphViewport } from './components/GraphViewport';
 import { Toolbar } from './components/Toolbar';
 import { resolveDetailRefBadges } from './components/detailPresentation';
+import { routeNameForNode } from './components/routePresentation';
 
 const vscode = window.acquireVsCodeApi();
 
@@ -32,8 +33,9 @@ export function App() {
   }, []);
   const selectedNode = useMemo<GraphNode | undefined>(() => graph?.layout.nodes.find((node) => node.oid === selected), [graph, selected]);
   const detailRefBadges = useMemo(() => resolveDetailRefBadges(selectedNode, graph?.layout.tracks ?? []), [graph, selectedNode]);
+  const detailRouteName = routeNameForNode(selectedNode, graph?.layout.tracks ?? []);
   return <main className="app-shell">
     <Toolbar graph={graph} loading={loading} filter={filter} onFilter={setFilter} onRefresh={() => vscode.postMessage({ type: 'refresh' })} onLoadMore={handleLoadMore} onReflog={(enabled) => vscode.postMessage({ type: 'toggleReflog', enabled })} onDensity={(density) => vscode.postMessage({ type: 'setDensity', density })} />
-    {error ? <EmptyState title={error.title} detail={error.detail} /> : graph ? <div className="content-shell"><div className="graph-content"><GraphViewport layout={graph.layout} loading={loading} onLoadMore={handleLoadMore} filter={filter} selected={selected} showWorkingTreeStats={!detail} onSelect={(oid) => { setSelected(oid); vscode.postMessage({ type: 'select', oid }); }} /></div>{detail && <DetailPanel detail={detail} title={selectedNode?.subject} refBadges={detailRefBadges} onClose={() => { setDetail(null); setSelected(undefined); }} />}</div> : <EmptyState title="Loading repository" detail="Reading Git refs, history, and working tree state…" />}
+    {error ? <EmptyState title={error.title} detail={error.detail} /> : graph ? <div className="content-shell"><div className="graph-content"><GraphViewport layout={graph.layout} loading={loading} onLoadMore={handleLoadMore} filter={filter} selected={selected} showWorkingTreeStats={!detail} onSelect={(oid) => { setSelected(oid); vscode.postMessage({ type: 'select', oid }); }} /></div>{detail && <DetailPanel detail={detail} title={selectedNode?.subject} routeName={detailRouteName} refBadges={detailRefBadges} onClose={() => { setDetail(null); setSelected(undefined); }} />}</div> : <EmptyState title="Loading repository" detail="Reading Git refs, history, and working tree state…" />}
   </main>;
 }

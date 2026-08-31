@@ -148,6 +148,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .detail-meta > div { display: grid; gap: 4px; }
 .detail-meta dt { color: var(--graph-muted); font-size: 11px; }
 .detail-meta dd { margin: 0; overflow-wrap: anywhere; }
+.detail-route-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .detail-meta dd strong { display: block; font-weight: 600; }
 .detail-email { display: block; color: var(--graph-muted); font-size: 11px; overflow-wrap: anywhere; }
 .detail-parent-list { display: flex; flex-wrap: wrap; gap: 6px; }

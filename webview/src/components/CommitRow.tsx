@@ -4,8 +4,9 @@ import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
 import { summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import { commitChangeStats } from './commitStatsPresentation';
-import { commitRowPresentation } from './commitRowPresentation';
+import { commitMetaText, commitRowPresentation } from './commitRowPresentation';
 import { ChangeStatsGrid } from './ChangeStatsGrid';
+import { routeNameForNode } from './routePresentation';
 
 function kindLabel(kind: GraphNode['kind']): string | undefined {
   if (kind === 'working-tree') return 'Working Tree';
@@ -54,8 +55,9 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
   // affected refs as badges would make the annotation look like a second ref
   // row; detailed affected-ref data remains available in its tooltip.
   const badges = refEvent ? [] : node.refBadges ?? node.refIds.map((name) => specialRefBadge(name));
+  const routeName = routeNameForNode(node, tracks);
   const commitMeta = node.commit
-    ? [node.commit.oid.slice(0, 8), node.commit.authorName, relativeTime(node.commit.committerDate)].filter(Boolean).join(' · ')
+    ? commitMetaText(node.commit.oid, routeName, relativeTime(node.commit.committerDate))
     : undefined;
   const workingStats = node.kind === 'working-tree' && showWorkingTreeStats && node.workingTree && node.workingTree.mainWorktree !== false
     ? summarizeWorkingTree(node.workingTree)
@@ -99,7 +101,7 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
             </div>}
           </div>
           {subtitle && <span className="row-subtitle" title={subtitle}>{subtitle}</span>}
-          {commitMeta && <span className="commit-meta" title={new Date(node.commit!.committerDate).toLocaleString()}>{commitMeta}</span>}
+          {commitMeta && <span className="commit-meta" title={routeName ?? commitMeta}>{commitMeta}</span>}
         </div>
       </div>
     </div>

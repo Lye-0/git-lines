@@ -8,7 +8,7 @@ function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'unknown';
 }
 
-export function DetailPanel({ detail, title, refBadges = [], onClose }: { detail: Exclude<DetailMessage, null>; title?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
+export function DetailPanel({ detail, title, routeName, refBadges = [], onClose }: { detail: Exclude<DetailMessage, null>; title?: string; routeName?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const subject = detail.subject || title || 'Commit';
   const fileChanges = detailFileChanges(detail);
@@ -71,6 +71,10 @@ export function DetailPanel({ detail, title, refBadges = [], onClose }: { detail
     </section>
 
     <dl className="detail-meta">
+      <div>
+        <dt>Branch / Route</dt>
+        <dd className="detail-route-value" title={routeName}>{routeName || 'Unknown route'}</dd>
+      </div>
       <div>
         <dt>Author</dt>
         <dd><strong>{detail.authorName || 'Unknown author'}</strong>{detail.authorEmail && <span className="detail-email">{detail.authorEmail}</span>}</dd>
