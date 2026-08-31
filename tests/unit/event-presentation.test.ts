@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphNode } from '../../src/model/graphModel.js';
-import { eventLabelForWidth, eventMainLabel, eventTooltip } from '../../webview/src/components/eventPresentation';
+import { eventLabelForWidth, eventMainLabel, eventMovementLabel, eventTooltip } from '../../webview/src/components/eventPresentation';
 
 const oid = (letter: string) => letter.repeat(40);
 
@@ -35,6 +35,18 @@ describe('ref event presentation', () => {
     expect(eventMainLabel(eventNode({ commitCount: 1 }))).toBe('FF · +1 commit · pull');
     expect(eventMainLabel(eventNode({ operation: undefined }))).toBe('FF · +3 commits');
     expect(eventMainLabel(eventNode({ operation: 'fetch' }))).toBe('FF · +3 commits');
+  });
+
+  it('shows reset and amend ref movement in the single event row', () => {
+    const reset = eventNode({ id: 'history:reset:1:b', type: 'reset', operation: undefined });
+    reset.kind = 'history-event';
+    reset.label = 'Reset · main';
+    expect(eventMovementLabel(reset)).toBe('Reset · main: aaaaaaaa → bbbbbbbb');
+    expect(eventMainLabel(reset)).toBe('Reset · main: aaaaaaaa → bbbbbbbb');
+
+    const amend = eventNode({ id: 'history:amend:1:b', type: 'amend', operation: undefined });
+    amend.kind = 'history-event';
+    expect(eventMainLabel(amend)).toBe('Amend · main: aaaaaaaa → bbbbbbbb');
   });
 
   it('compacts only the event label when the graph area is narrow', () => {

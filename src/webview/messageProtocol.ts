@@ -1,4 +1,4 @@
-import type { GitCommitDetail, RepositoryInfo, WorkingTreeState } from '../git/gitTypes.js';
+import type { GitCommitDetail, HistoryEvent, RepositoryInfo, WorkingTreeState } from '../git/gitTypes.js';
 import type { GraphLayout } from '../layout/layoutTypes.js';
 
 export type WebviewToExtensionMessage =
@@ -6,6 +6,7 @@ export type WebviewToExtensionMessage =
   | { type: 'refresh' }
   | { type: 'loadMore' }
   | { type: 'select'; oid: string }
+  | { type: 'selectEvent'; id: string }
   | { type: 'toggleReflog'; enabled: boolean }
   | { type: 'setDensity'; density: 'comfortable' | 'compact' };
 
@@ -21,4 +22,4 @@ export type ExtensionToWebviewMessage =
     }
   | { type: 'loading'; loading: boolean }
   | { type: 'error'; title: string; detail?: string }
-  | { type: 'detail'; detail: GitCommitDetail | null };
+  | { type: 'detail'; detail: GitCommitDetail | null; event?: HistoryEvent | null };

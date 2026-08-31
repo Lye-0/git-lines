@@ -3,13 +3,37 @@ import type { CSSProperties } from 'react';
 import type { DetailMessage } from '../types';
 import { commitDescription, detailFileChanges, shortHash } from './detailPresentation';
 import type { DetailRefBadge } from './detailPresentation';
+import type { HistoryEvent } from '../../../src/git/gitTypes';
+import { eventDetailFields, eventDetailTitle } from './eventDetailPresentation';
 
 function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'unknown';
 }
 
-export function DetailPanel({ detail, title, routeName, refBadges = [], onClose }: { detail: Exclude<DetailMessage, null>; title?: string; routeName?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
+export function DetailPanel({ detail, event, title, routeName, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; title?: string; routeName?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  if (event) {
+    const fields = eventDetailFields(event);
+    return <aside className="detail-panel" aria-label="Git operation details">
+      <div className="detail-header">
+        <div className="detail-heading">
+          <span className="eyebrow">Git operation</span>
+          <h2 title={eventDetailTitle(event)}>{eventDetailTitle(event)}</h2>
+          {refBadges.length > 0 && <div className="detail-refs" aria-label="Event refs">
+            {refBadges.map((badge) => <span className={`ref-badge ref-badge-${badge.kind}${badge.isDefault ? ' default' : ''}`} style={{ '--badge-color': badge.color } as CSSProperties} key={badge.fullName} title={badge.fullName}>{badge.name}{badge.isDefault ? ' · default' : ''}</span>)}
+          </div>}
+        </div>
+        <button type="button" className="close-button" onClick={onClose} aria-label="Close operation details">×</button>
+      </div>
+      <dl className="detail-meta event-detail-meta">
+        {fields.map((field) => <div key={field.label}>
+          <dt>{field.label}</dt>
+          <dd className={field.kind === 'raw' ? 'detail-raw-message' : undefined} title={field.title}>{field.kind === 'hash' ? <code>{field.value}</code> : field.value}</dd>
+        </div>)}
+      </dl>
+    </aside>;
+  }
+  if (!detail) return null;
   const subject = detail.subject || title || 'Commit';
   const fileChanges = detailFileChanges(detail);
   const description = commitDescription(detail);

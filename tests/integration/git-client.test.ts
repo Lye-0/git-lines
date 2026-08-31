@@ -4,6 +4,8 @@ import path from 'node:path';
 import { GitClient } from '../../src/git/gitClient.js';
 import { buildGraphFacts } from '../../src/model/graphBuilder.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
+import { HISTORICAL_ROUTE_COLOR } from '../../src/utils/color.js';
+import { createGraphColorResolver } from '../../webview/src/components/graphColor';
 import { commitFixture, createGitFixture } from '../fixtures/gitFixture.js';
 
 describe('GitClient integration fixture', () => {
@@ -88,6 +90,47 @@ describe('GitClient integration fixture', () => {
     expect(historicalTrack?.family).toBe('historical');
     expect(oldLayoutNode?.lane).toBeGreaterThan(currentLayoutNode?.lane ?? -1);
     expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
+  });
+
+  it('repositions an older reset event when a later reset makes its destination historical', async () => {
+    fixture = createGitFixture();
+    commitFixture(fixture, 'initial', '2026-08-27T09:00:00+09:00');
+    const initialOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    commitFixture(fixture, 'reset soft commit one', '2026-08-27T10:00:00+09:00');
+    const firstDestinationOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    commitFixture(fixture, 'reset soft commit two', '2026-08-27T11:00:00+09:00');
+    commitFixture(fixture, 'reset soft commit three', '2026-08-27T12:00:00+09:00');
+    const firstFromOid = fixture.run(['rev-parse', 'HEAD']).trim();
+
+    fixture.run(['reset', '--soft', firstDestinationOid]);
+    commitFixture(fixture, 'replacement after first reset', '2026-08-27T13:00:00+09:00');
+    const secondFromOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['reset', '--soft', initialOid]);
+
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 1, true);
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    const firstReset = facts.events.find((event) => event.type === 'reset' && event.fromOid === firstFromOid && event.toOid === firstDestinationOid);
+    const secondReset = facts.events.find((event) => event.type === 'reset' && event.fromOid === secondFromOid && event.toOid === initialOid);
+    const firstEventNode = firstReset ? layout.nodes.find((node) => node.id === firstReset.id) : undefined;
+    const secondEventNode = secondReset ? layout.nodes.find((node) => node.id === secondReset.id) : undefined;
+    const firstDestinationNode = layout.nodes.find((node) => node.oid === firstDestinationOid);
+    const initialNode = layout.nodes.find((node) => node.oid === initialOid);
+    const firstEventTrack = layout.tracks.find((track) => track.id === firstEventNode?.trackId);
+    const secondEventTrack = layout.tracks.find((track) => track.id === secondEventNode?.trackId);
+    const colors = createGraphColorResolver(layout);
+
+    expect(firstReset).toBeDefined();
+    expect(secondReset).toBeDefined();
+    expect(firstEventNode?.historicalEvent).toBe(true);
+    expect(secondEventNode?.historicalEvent).toBe(false);
+    expect(firstEventTrack?.family).toBe('historical');
+    expect(secondEventTrack?.family).toBe('main');
+    expect(firstEventNode?.trackId).toBe(firstDestinationNode?.trackId);
+    expect(secondEventNode?.trackId).toBe(initialNode?.trackId);
+    expect(firstEventNode?.trackId).not.toBe(secondEventNode?.trackId);
+    expect(colors.colorForNode(firstEventNode!)).toBe(HISTORICAL_ROUTE_COLOR);
+    expect(colors.colorForNode(secondEventNode!)).not.toBe(HISTORICAL_ROUTE_COLOR);
   });
 
   it('places an amended reflog commit on a gray previous route', async () => {

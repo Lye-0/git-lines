@@ -29,8 +29,10 @@ function knownOperation(node: GraphNode): 'pull' | 'merge' | undefined {
   return operation === 'pull' || operation === 'merge' ? operation : undefined;
 }
 
-/** Main timeline label. Detailed event data is kept for the tooltip below. */
+/** Main timeline label. Raw reflog data is kept for the tooltip below. */
 export function eventMainLabel(node: GraphNode): string {
+  const movement = eventMovementLabel(node);
+  if (movement) return movement;
   if (node.event?.type !== 'fast-forward') return node.label ?? node.subject ?? 'Ref event';
   const parts = ['FF'];
   const count = fastForwardCountLabel(node);
@@ -51,6 +53,17 @@ function compactEventKind(node: GraphNode): string {
     case 'amend': return 'Amend';
     default: return 'Event';
   }
+}
+
+/** Shows the ref movement without expanding the event row's height. */
+export function eventMovementLabel(node: GraphNode): string | undefined {
+  const event = node.event;
+  if (!event || (event.type !== 'reset' && event.type !== 'amend')) return undefined;
+  const branch = normalizeRefName(node.targetRef ?? event.refName);
+  const from = shortOid(event.fromOid);
+  const to = shortOid(event.toOid);
+  if (!branch || !from || !to) return undefined;
+  return `${compactEventKind(node)} · ${branch}: ${from} → ${to}`;
 }
 
 function textUnits(value: string): number {

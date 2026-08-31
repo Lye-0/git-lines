@@ -78,4 +78,18 @@ describe('graph live color resolution', () => {
     expect(hueOf(sharedColor)).toBe(hueOf(featureColor));
     expect(hueOf(sharedColor)).toBe(hueOf(aliceColor));
   });
+
+  it('keeps live nodes and edges colored even if a stale layout points at a historical track', () => {
+    const live = node('live', 0, 'historical');
+    const liveParent = node('parent', 1, 'historical');
+    const context = {
+      nodes: [live, liveParent],
+      edges: [{ id: 'live-parent', type: 'parent' as const, fromNodeId: live.id, toNodeId: liveParent.id, trackId: 'historical' }],
+      tracks: [{ id: 'historical', label: 'Historical branch', family: 'historical', kind: 'local' as const, lane: 1, color: historicalColor, refNames: [] }],
+    };
+    const resolver = createGraphColorResolver(context);
+
+    expect(resolver.colorForNode(live)).not.toBe(historicalColor);
+    expect(resolver.colorForEdge(context.edges[0])).not.toBe(historicalColor);
+  });
 });

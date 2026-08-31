@@ -46,7 +46,7 @@ lane claimはvisual trackの補助情報であり、「commitがbranchに所属�
 
 拡張は独自履歴DBを持たない。`ReflogEntry.previousOid`は同一refのselector indexが連続している場合だけ導出する。`Fast-forward`は明示的なmerge/pullまたはoperation-less `Fast-forward` subject、既存ancestor関係、移動先commitがsingle-parentであることのすべてが成立した場合だけ`fast-forward`に分類し、通常commit・checkout・fetch更新・multi-parent mergeなどはイベント化しない。意味のあるイベントも種別とfrom/to OIDが一致するHEAD/local/remote更新を1つの論理イベントへまとめ、refごとの時刻差には依存しない。FF eventには`git rev-list old..new`相当の`commitCount`を保持し、明示的に判別できた`pull`/`merge`だけを`operation`へ保存する。元のreflog subjectは`rawReflogMessage`としてtooltipへ残し、object graphが不完全な場合は件数を推測しない。
 
-`MERGE_HEAD`、`REBASE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`などが現在存在する場合のみoperation nodeを生成する。operation edgeは点線で、commit parent edgeとは混同しない。objectがGC済みのreflog OIDは表示しない。
+`MERGE_HEAD`、`REBASE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`などが現在存在する場合のみoperation nodeを生成する。operation edgeは点線で、commit parent edgeとは混同しない。objectがGC済みのreflog OIDは表示しない。Reset / Amendのhistory eventはreflog subjectだけでは生成せず、from OIDからcurrent refへ到達できない実commitを少なくとも1つ表示できる場合に限って生成する。旧経路が存在しない通常のreflog移動はEventへ昇格しない。生成されたEventを選択すると、operation、branch / ref、old / new hash、timestamp、raw reflog messageをDetailで確認できる。Reset / Amend eventのtrackはref名だけで固定せず、現在の`toOid`が割り当てられたrouteを基準に解決する。後続のref移動でdestinationがPREVIOUSになった場合は同じHistorical Routeへ移し、live destinationの場合だけ現在のref laneへ置く。
 
 ## Runtime flow
 
@@ -71,4 +71,4 @@ Gitは`spawn`へ引数配列を渡し、shell文字列連結を行わない。We
 - `tests/unit/event-presentation.test.ts` — FFラベルの単数/複数、幅別compact表示、content column配置、tooltip情報
 - `tests/unit/graph-builder.test.ts` — ref dedup、tag、常時Working Tree、remote-ahead時の実HEAD接続、2/3-parent edge、destination/targetRef付きRef Event
 - `tests/unit/ref-display.test.ts` / `tests/unit/graph-metrics.test.ts` — 多数refのbadge保持とchanges column用横幅確保
-- `tests/integration/git-client.test.ts` — 実Git repository fixtureからのbranch/ref/status読み取り、long feature merge、未commitbranch、first commit
+- `tests/integration/git-client.test.ts` — 実Git repository fixtureからのbranch/ref/status読み取り、long feature merge、未commitbranch、first commit、後続ResetでHistoricalへ移る旧Reset event

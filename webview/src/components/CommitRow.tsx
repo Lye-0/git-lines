@@ -39,7 +39,7 @@ function operationSummary(node: GraphNode): string | undefined {
   return node.operation.detail || (node.operation.sourceOids.length ? `${node.operation.sourceOids.length} source commit${node.operation.sourceOids.length === 1 ? '' : 's'}` : 'Waiting for Git to finish');
 }
 
-export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true }: { node: GraphNode; rowHeight: number; selected: boolean; hidden?: boolean; onSelect: (oid: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean }) {
+export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true }: { node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean }) {
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const working = workingSummary(node);
   const operation = operationSummary(node);
@@ -73,15 +73,19 @@ export function CommitRow({ node, rowHeight, selected, hidden, onSelect, tracks 
     const fullEventLabel = eventMainLabel(node);
     const eventLabel = eventLabelForWidth(node, eventLabelWidth ?? Number.POSITIVE_INFINITY, eventLabelX);
     const tooltip = eventTooltip(node);
-    return <div className={`commit-row row-${node.kind}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
-      <div className="row-content event-row-content">
+    const eventContent = <div className={`row-content event-row-content${selectedEvent ? ' selected' : ''}`}>
         <div className="row-primary">
           <div className="row-text">
             <span className="subject event-subject" title={tooltip}>{eventLabel}</span>
             <span className="sr-only">{fullEventLabel}. {tooltip}</span>
           </div>
         </div>
-      </div>
+      </div>;
+    const eventButton = node.event && onSelectEvent
+      ? <button type="button" className="row-button event-row-button" aria-label={fullEventLabel} aria-pressed={selectedEvent} onClick={() => onSelectEvent(node.event!.id)}>{eventContent}</button>
+      : eventContent;
+    return <div className={`commit-row row-${node.kind}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
+      {eventButton}
     </div>;
   }
   const content = <div className={`row-content${selected ? ' selected' : ''}${changeStats ? ' has-change-stats' : ''}`}>

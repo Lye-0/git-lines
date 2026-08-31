@@ -40,20 +40,39 @@ function syncStateFor(oid: string, localReachable: Set<string>, remoteReachable:
   return undefined;
 }
 
-function previousRouteCommitOids(snapshot: RepositorySnapshot, commits: Map<string, { parentOids: string[] }>, reachableOids: Set<string>): Set<string> {
-  const previous = new Set<string>();
+interface PreviousRouteSelection {
+  commitOids: Set<string>;
+  eventIds: Set<string>;
+}
+
+/**
+ * Finds old first-parent paths that are no longer reachable from a current
+ * user-facing ref.  The event is useful only when at least one real commit is
+ * retained on that old path; a reflog message by itself is not a timeline
+ * event.  Stop at the first live ancestor so a shared live section is never
+ * reclassified as PREVIOUS.
+ */
+function previousRouteSelection(snapshot: RepositorySnapshot, commits: Map<string, { parentOids: string[] }>, reachableOids: Set<string>): PreviousRouteSelection {
+  const commitOids = new Set<string>();
+  const eventIds = new Set<string>();
   for (const event of snapshot.historyEvents) {
     if (event.type !== 'reset' && event.type !== 'amend') continue;
+    const routeOids = new Set<string>();
     let current = event.fromOid;
     const visited = new Set<string>();
     while (current && !visited.has(current)) {
       visited.add(current);
       if (reachableOids.has(current)) break;
-      previous.add(current);
+      // A reflog may outlive its commit object.  Such an entry cannot produce
+      // a visible PREVIOUS route, so do not promote its event either.
+      if (!commits.has(current)) break;
+      commitOids.add(current);
+      routeOids.add(current);
       current = commits.get(current)?.parentOids[0];
     }
+    if (routeOids.size > 0) eventIds.add(event.id);
   }
-  return previous;
+  return { commitOids, eventIds };
 }
 
 function eventLabel(type: string, refName: string, sourceLabel?: string): string {
@@ -95,9 +114,10 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   const reachableOids = reachableFromRefs(snapshot, commitMap);
   const localReachable = reachableFromRefType(snapshot, commitMap, 'local');
   const remoteReachable = reachableFromRefType(snapshot, commitMap, 'remote');
-  const previousRouteOids = options.showReflog === false
-    ? new Set<string>()
-    : previousRouteCommitOids(snapshot, commitMap, reachableOids);
+  const previousRoute = options.showReflog === false
+    ? { commitOids: new Set<string>(), eventIds: new Set<string>() }
+    : previousRouteSelection(snapshot, commitMap, reachableOids);
+  const previousRouteOids = previousRoute.commitOids;
   const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
     if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
@@ -165,7 +185,9 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       if (source) edges.push({ id: `${node.id}:source:${sourceOid}`, type: 'operation', fromNodeId: node.id, toNodeId: source.id, label: 'source' });
     }
   }
-  const events = options.showReflog === false ? [] : snapshot.historyEvents;
+  const events = options.showReflog === false
+    ? []
+    : snapshot.historyEvents.filter((event) => event.type !== 'reset' && event.type !== 'amend' || previousRoute.eventIds.has(event.id));
   for (const event of events) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
@@ -185,6 +207,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       timestamp: event.timestamp,
       subject: event.subject,
       event,
+      historicalEvent: (event.type === 'reset' || event.type === 'amend') && previousRouteOids.has(event.toOid),
       anchorCommitId: target.id,
       targetRef: event.refName,
     };

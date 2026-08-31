@@ -93,10 +93,14 @@ describe('graph fact builder', () => {
     expect(facts.edges.filter((edge) => edge.type === 'parent' && edge.fromNodeId === `commit:${oid('m')}`).map((edge) => edge.toNodeId)).toEqual([`commit:${oid('b')}`, `commit:${oid('c')}`]);
   });
 
-  it('represents a ref move with one annotation edge instead of synthetic DAG edges', () => {
+  it('represents a meaningful reset with one annotation edge instead of synthetic DAG edges', () => {
     const eventSnapshot: RepositorySnapshot = {
       ...snapshot,
-      historyEvents: [{ id: 'history:reset:3:b', type: 'reset', refName: 'refs/heads/main', fromOid: oid('a'), toOid: oid('b'), timestamp: 3, subject: 'reset: moving to b' }],
+      commits: [
+        ...snapshot.commits,
+        { oid: oid('o'), parentOids: [oid('a')], subject: 'old unreachable tip', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      ],
+      historyEvents: [{ id: 'history:reset:3:b', type: 'reset', refName: 'refs/heads/main', fromOid: oid('o'), toOid: oid('b'), timestamp: 3, subject: 'reset: moving to b' }],
     };
     const facts = buildGraphFacts(eventSnapshot);
     const eventEdges = facts.edges.filter((edge) => edge.type === 'history-event');
@@ -111,9 +115,13 @@ describe('graph fact builder', () => {
   it('keeps multiple ref events as separate timeline facts on one destination', () => {
     const facts = buildGraphFacts({
       ...snapshot,
+      commits: [
+        ...snapshot.commits,
+        { oid: oid('o'), parentOids: [oid('a')], subject: 'old unreachable tip', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      ],
       historyEvents: [
-        { id: 'history:reset:3:b', type: 'reset', refName: 'refs/heads/main', fromOid: oid('a'), toOid: oid('b'), timestamp: 3, subject: 'reset: moving to b' },
-        { id: 'history:amend:4:b', type: 'amend', refName: 'refs/heads/main', fromOid: oid('a'), toOid: oid('b'), timestamp: 4, subject: 'amend: moving to b' },
+        { id: 'history:reset:3:b', type: 'reset', refName: 'refs/heads/main', fromOid: oid('o'), toOid: oid('b'), timestamp: 3, subject: 'reset: moving to b' },
+        { id: 'history:amend:4:b', type: 'amend', refName: 'refs/heads/main', fromOid: oid('o'), toOid: oid('b'), timestamp: 4, subject: 'amend: moving to b' },
       ],
     });
     const eventNodes = facts.nodes.filter((node) => node.kind === 'history-event');
@@ -121,6 +129,54 @@ describe('graph fact builder', () => {
     expect(eventNodes.every((node) => node.anchorCommitId === `commit:${oid('b')}`)).toBe(true);
     expect(eventNodes.every((node) => node.targetRef === 'refs/heads/main')).toBe(true);
     expect(eventNodes.every((node) => node.oid === undefined)).toBe(true);
+  });
+
+  it('does not create a reset/amend event when the old tip is still live', () => {
+    const facts = buildGraphFacts({
+      ...snapshot,
+      historyEvents: [
+        { id: 'history:reset:3:b', type: 'reset', refName: 'refs/heads/main', fromOid: oid('a'), toOid: oid('b'), timestamp: 3, subject: 'reset: moving to b' },
+        { id: 'history:amend:4:b', type: 'amend', refName: 'refs/heads/main', fromOid: oid('a'), toOid: oid('b'), timestamp: 4, subject: 'commit (amend): B' },
+      ],
+    });
+
+    expect(facts.events).toEqual([]);
+    expect(facts.nodes.filter((node) => node.kind === 'history-event')).toEqual([]);
+    expect(facts.nodes.find((node) => node.oid === oid('a'))?.previousRoute).toBe(false);
+  });
+
+  it('marks only the unreachable part of a reset path as PREVIOUS and hides it with Reflog off', () => {
+    const facts = buildGraphFacts({
+      ...snapshot,
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('a') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('a') }],
+      commits: [
+        ...snapshot.commits,
+        { oid: oid('x'), parentOids: [oid('y')], subject: 'old x', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oid('y'), parentOids: [oid('a')], subject: 'old y', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      ],
+      historyEvents: [{ id: 'history:reset:5:a', type: 'reset', refName: 'refs/heads/main', fromOid: oid('x'), toOid: oid('a'), timestamp: 5, subject: 'reset --hard HEAD~2' }],
+      visibleCommitCount: 2,
+    });
+    expect(facts.nodes.find((node) => node.oid === oid('x'))?.previousRoute).toBe(true);
+    expect(facts.nodes.find((node) => node.oid === oid('y'))?.previousRoute).toBe(true);
+    expect(facts.nodes.find((node) => node.oid === oid('a'))?.previousRoute).toBe(false);
+    expect(facts.events).toHaveLength(1);
+
+    const hidden = buildGraphFacts({
+      ...snapshot,
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: oid('a') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('a') }],
+      commits: [
+        ...snapshot.commits,
+        { oid: oid('x'), parentOids: [oid('y')], subject: 'old x', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oid('y'), parentOids: [oid('a')], subject: 'old y', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      ],
+      historyEvents: [{ id: 'history:reset:5:a', type: 'reset', refName: 'refs/heads/main', fromOid: oid('x'), toOid: oid('a'), timestamp: 5, subject: 'reset --hard HEAD~2' }],
+      visibleCommitCount: 2,
+    }, { showReflog: false });
+    expect(hidden.events).toEqual([]);
+    expect(hidden.nodes.some((node) => node.oid === oid('x'))).toBe(false);
   });
 
   it('does not relabel generic ref-move history as a reset/amend previous route', () => {

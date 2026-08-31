@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { GitClient } from '../git/gitClient.js';
-import type { RepositorySnapshot } from '../git/gitTypes.js';
+import type { HistoryEvent, RepositorySnapshot } from '../git/gitTypes.js';
 import { buildGraphFacts } from '../model/graphBuilder.js';
 import { createGraphLayout } from '../layout/graphLayout.js';
 import { LayoutState } from '../layout/layoutState.js';
@@ -22,6 +22,7 @@ export class GraphPanel {
   private watcher?: RepositoryWatcher;
   private disposed = false;
   private loading = false;
+  private visibleEvents = new Map<string, HistoryEvent>();
 
   private constructor(private readonly context: vscode.ExtensionContext, repositoryRoot: string) {
     this.repositoryRoot = repositoryRoot;
@@ -74,6 +75,7 @@ export class GraphPanel {
     if (message.type === 'ready' || message.type === 'refresh') await this.load(false);
     else if (message.type === 'loadMore') await this.loadMore();
     else if (message.type === 'select') await this.select(message.oid);
+    else if (message.type === 'selectEvent') await this.selectEvent(message.id);
     else if (message.type === 'toggleReflog') {
       this.showReflog = message.enabled;
       await this.load(false);
@@ -101,6 +103,7 @@ export class GraphPanel {
       }
       const primaryBranch = vscode.workspace.getConfiguration('branchGraph').get<string | null>('primaryBranch', null);
       const facts = buildGraphFacts(next, { showReflog: this.showReflog, primaryBranch });
+      this.visibleEvents = new Map(facts.events.map((event) => [event.id, event]));
       const layout = createGraphLayout(facts, {
         visibleCommitCount: next.visibleCommitCount,
         hasMore: next.hasMore,
@@ -121,7 +124,7 @@ export class GraphPanel {
         reflogEnabled: this.showReflog,
         density: this.density,
       });
-      await this.send({ type: 'detail', detail: null });
+      await this.send({ type: 'detail', detail: null, event: null });
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
       this.output.appendLine(`error ${detail}`);
@@ -141,10 +144,15 @@ export class GraphPanel {
     if (!this.snapshot) return;
     try {
       const detail = await this.client.readCommitDetail(this.snapshot.repository.root, oid);
-      await this.send({ type: 'detail', detail });
+      await this.send({ type: 'detail', detail, event: null });
     } catch (error) {
       await this.send({ type: 'error', title: 'Unable to read commit details', detail: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  private async selectEvent(id: string): Promise<void> {
+    const event = this.visibleEvents.get(id);
+    if (event) await this.send({ type: 'detail', detail: null, event });
   }
 
   private async send(message: ExtensionToWebviewMessage): Promise<void> {

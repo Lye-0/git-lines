@@ -20,6 +20,13 @@ function safeTrackColor(track: GraphTrack): string {
 }
 
 function isHistoricalNode(node: GraphNode, track: GraphTrack | undefined): boolean {
+  // A real commit, working tree, or ref event is live by model kind.  Its
+  // lane assignment must not be allowed to turn it gray if a historical
+  // route happens to occupy the same reusable lane.
+  if (node.kind === 'commit' || node.kind === 'working-tree' || node.kind === 'operation'
+    || node.kind === 'fast-forward-event' || node.kind === 'history-event') {
+    return node.previousRoute === true || node.historicalEvent === true;
+  }
   return node.previousRoute === true
     || node.kind === 'reflog-commit'
     || node.kind === 'history-boundary'
@@ -63,6 +70,11 @@ export function createGraphColorResolver(context: GraphColorContext): GraphColor
   const directColorForNode = (node: GraphNode): { color: string; track: GraphTrack } | undefined => {
     const track = directTrackForNode(node);
     if (!track) return undefined;
+    // A live node can retain a stale/reused historical track id in an
+    // incomplete or transitioning layout.  Do not expose the historical gray
+    // as a live direct color; let the resolver continue to a live neighbor or
+    // representative palette color instead.
+    if (track.family === 'historical' && !isHistoricalNode(node, track)) return undefined;
     return { color: safeTrackColor(track), track };
   };
 
@@ -123,12 +135,19 @@ export function createGraphColorResolver(context: GraphColorContext): GraphColor
     const source = nodeById.get(edge.fromNodeId);
     const target = nodeById.get(edge.toNodeId);
     const edgeTrack = edge.trackId ? trackById.get(edge.trackId) : undefined;
-    if (edgeTrack?.family === 'historical') return HISTORICAL_ROUTE_COLOR;
-    if (edgeTrack) return safeTrackColor(edgeTrack);
     const sourceDirect = source ? directColorForNode(source) : undefined;
     const targetDirect = target ? directColorForNode(target) : undefined;
-    if (source && isHistoricalNode(source, sourceDirect?.track)) return HISTORICAL_ROUTE_COLOR;
-    if (target && isHistoricalNode(target, targetDirect?.track)) return HISTORICAL_ROUTE_COLOR;
+    const sourceHistorical = source ? isHistoricalNode(source, sourceDirect?.track) : false;
+    const targetHistorical = target ? isHistoricalNode(target, targetDirect?.track) : false;
+    if (edgeTrack?.family === 'historical') {
+      // A historical track can be reused next to a live node.  Only the edge
+      // whose endpoints are actually historical remains gray; an edge between
+      // two live endpoints must resolve through the live palette.
+      if (sourceHistorical || targetHistorical || !source || !target) return HISTORICAL_ROUTE_COLOR;
+    }
+    if (edgeTrack && edgeTrack.family !== 'historical') return safeTrackColor(edgeTrack);
+    if (sourceHistorical) return HISTORICAL_ROUTE_COLOR;
+    if (targetHistorical) return HISTORICAL_ROUTE_COLOR;
     const selected = endpoint === 'target' ? target : source;
     return selected ? colorForNode(selected) : fallbackColor;
   };

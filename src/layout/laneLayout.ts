@@ -436,6 +436,10 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   const trackByOid = new Map<string, string>();
   for (const oid of primaryOids) trackByOid.set(oid, primaryCandidate!.id);
 
+  const nodeByOid = new Map(facts.nodes
+    .filter((node) => node.oid)
+    .map((node) => [node.oid as string, node]));
+
   const assignFirstParentPath = (tip: string | undefined, trackId: string, allowedOids?: ReadonlySet<string>): void => {
     const visited = new Set<string>();
     let current = tip;
@@ -491,6 +495,26 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     ?.slice()
     .sort((a, b) => a.distance - b.distance || priority(a.trackId) - priority(b.trackId) || a.trackId.localeCompare(b.trackId))[0]
     ?.trackId;
+  const historicalEventTrackForNode = (node: GraphNode): string | undefined => {
+    const event = node.event;
+    if (!event || (event.type !== 'reset' && event.type !== 'amend')) return undefined;
+    const destination = nodeByOid.get(event.toOid);
+    const historicalRoute = previousRoutes.find((route) => route.oids.has(event.toOid));
+    const destinationTrackId = trackByOid.get(event.toOid) ?? historicalRoute?.candidate.id;
+    const destinationTrack = destinationTrackId ? candidates.find((candidate) => candidate.id === destinationTrackId) : undefined;
+    const destinationIsHistorical = node.historicalEvent === true
+      || destination?.previousRoute === true
+      || destination?.kind === 'reflog-commit';
+    return destinationIsHistorical && destinationTrack?.family === 'historical' ? destinationTrackId : undefined;
+  };
+  const eventTrackForNode = (node: GraphNode): string | undefined => {
+    if (!node.event) return undefined;
+    // A later reset can make the destination of an older event historical.
+    // In that case the event follows the destination's historical route rather
+    // than remaining attached to the ref's current live lane.
+    return historicalEventTrackForNode(node)
+      ?? eventTrackForRef(node.targetRef ?? node.event.refName);
+  };
   const initialAssignments = facts.nodes.map((node, index) => {
     let trackId: string | undefined;
     // A clean working tree on a newly-created branch has the same OID as the
@@ -507,7 +531,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     // Ref events must share the target ref's lane even when their destination
     // commit is claimed by another branch (for example a feature reset to a
     // main commit).  Resolve this before commit ancestry claims.
-    if (!trackId && node.event?.refName) trackId = eventTrackForRef(node.targetRef ?? node.event.refName);
+    if (!trackId && node.event) trackId = eventTrackForNode(node);
     if (!trackId && node.oid) trackId = trackByOid.get(node.oid) ?? trackForClaim(node.oid);
     return { node, trackId, row: node.row ?? index };
   });
@@ -581,11 +605,18 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   const laidOut = initialAssignments.map(({ node, trackId }) => {
     const nodeLane = trackId ? laneByNodeId.get(node.id) ?? trackLane.get(trackId) ?? 0 : 0;
     if (!node.event) return { ...node, trackId, lane: nodeLane };
-    const eventTrackId = eventTrackForRef(node.targetRef ?? node.event.refName) ?? trackId;
+    const historicalTrackId = historicalEventTrackForNode(node);
+    const eventTrackId = eventTrackForNode(node) ?? trackId;
     const eventLane = eventTrackId ? laneByNodeId.get(node.id) ?? trackLane.get(eventTrackId) ?? nodeLane : nodeLane;
     // The event track is presentation metadata only.  It never contributes
     // a commit claim or a new GraphTrack/lane.
-    return { ...node, trackId: eventTrackId, targetLaneId: eventTrackId ?? node.targetLaneId, lane: eventLane };
+    return {
+      ...node,
+      historicalEvent: node.historicalEvent === true || Boolean(historicalTrackId),
+      trackId: eventTrackId,
+      targetLaneId: eventTrackId ?? node.targetLaneId,
+      lane: eventLane,
+    };
   });
   return { nodes: laidOut, tracks, lanes };
 }
