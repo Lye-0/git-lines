@@ -1,7 +1,7 @@
 import type { GraphFactModel, GraphLayout } from '../model/graphModel.js';
 import { computeLaneLayout } from './laneLayout.js';
 import { computeRowLayout } from './rowLayout.js';
-import { placeRebaseEventsOnParentCurves, routeEdges } from './edgeRouter.js';
+import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeEdges } from './edgeRouter.js';
 
 export interface GraphLayoutOptions {
   visibleCommitCount: number;
@@ -24,7 +24,11 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   const laidOutNodes = lanes.nodes.map((node) => ({ ...node, row: rows.rows.get(node.id) ?? node.row }));
   const rowHeight = options.rowHeight ?? 38;
   const laneWidth = options.laneWidth ?? 34;
-  const routedNodes = placeRebaseEventsOnParentCurves(laidOutNodes, facts.edges, { rowHeight, laneWidth });
+  const routedNodes = placeRebaseEventsOnParentCurves(
+    placeBranchRenameEventsOnWorkingTreeCurves(laidOutNodes, facts.edges, { rowHeight, laneWidth }),
+    facts.edges,
+    { rowHeight, laneWidth },
+  );
   return {
     nodes: routedNodes,
     edges: facts.edges,

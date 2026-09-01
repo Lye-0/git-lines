@@ -15,6 +15,12 @@ const kindPriority: Record<GraphNode['kind'], number> = {
 function compareNodes(a: GraphNode, b: GraphNode): number {
   const timestamp = (b.timestamp ?? 0) - (a.timestamp ?? 0);
   if (timestamp !== 0) return timestamp;
+  const eventKinds = (kind: GraphNode['kind']): boolean => kind === 'fast-forward-event' || kind === 'history-event';
+  if (eventKinds(a.kind) && eventKinds(b.kind)) {
+    const aReflogIndex = a.event?.reflogIndex;
+    const bReflogIndex = b.event?.reflogIndex;
+    if (aReflogIndex !== undefined && bReflogIndex !== undefined && aReflogIndex !== bReflogIndex) return aReflogIndex - bReflogIndex;
+  }
   const kind = kindPriority[a.kind] - kindPriority[b.kind];
   if (kind !== 0) return kind;
   return a.id.localeCompare(b.id);
@@ -66,8 +72,10 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
   }
 
   // Ref events are not part of the structural topological sort, but they are
-  // real timeline rows.  Insert each event immediately before its semantic
-  // boundary while preserving the structural order and parent constraints.
+  // real timeline rows.  Commit-producing events are inserted at their
+  // semantic boundary. Ref-only moves are a separate operation timeline after
+  // Working Tree and before the first DAG node, so they cannot look like
+  // commits created between two existing objects.
   const eventAnchorById = new Map(edges
     .filter((edge) => edge.annotation === 'ref-event' && structuralIds.has(edge.fromNodeId))
     .map((edge) => [edge.toNodeId, edge.fromNodeId]));
@@ -76,6 +84,7 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     .filter((node) => node.oid)
     .map((node) => [node.oid as string, node.id]));
   const eventNodes = nodes.filter((candidate) => !structuralIds.has(candidate.id)).sort(compareNodes);
+  const refOnlyEvents = eventNodes.filter((candidate) => candidate.refOnly === true);
   const eventsAfterNode = new Map<string, GraphNode[]>();
   for (const node of eventNodes) {
     // Amend's old object is a historical side-route commit.  It must not be
@@ -93,7 +102,7 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     return explicitBoundary ?? destinationAnchor ?? eventStart ?? eventAnchorById.get(node.id) ?? (node.event?.toOid ? commitIdByOid.get(node.event.toOid) : undefined);
   };
   const structuralRowSet = new Set(result.values());
-  const canReusePreviousTimeline = Boolean(previousRows && eventNodes.length > 0 && eventsAfterNode.size === 0 && eventNodes.every((node) => {
+  const canReusePreviousTimeline = Boolean(previousRows && eventNodes.length > 0 && refOnlyEvents.length === 0 && eventsAfterNode.size === 0 && eventNodes.every((node) => {
     const previousRow = previousRows.get(node.id);
     if (previousRow === undefined || structuralRowSet.has(previousRow)) return false;
     const anchorId = anchorForEvent(node);
@@ -107,7 +116,15 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
   } else if (eventNodes.length > 0) {
     const anchoredEvents = new Map<string, GraphNode[]>();
     const fallbackEvents: GraphNode[] = [];
+    const structuralSequence = structuralNodes.slice().sort((a, b) => {
+      const row = (result.get(a.id) ?? 0) - (result.get(b.id) ?? 0);
+      return row || compareNodes(a, b);
+    });
+    const firstDagNode = structuralSequence.find((node) => node.kind === 'commit' || node.kind === 'reflog-commit' || node.kind === 'history-boundary');
+    if (firstDagNode && refOnlyEvents.length > 0) anchoredEvents.set(firstDagNode.id, refOnlyEvents.slice());
+    else fallbackEvents.push(...refOnlyEvents);
     for (const node of eventNodes) {
+      if (node.refOnly === true) continue;
       if ([...eventsAfterNode.values()].some((events) => events.some((event) => event.id === node.id))) continue;
       const anchorId = anchorForEvent(node);
       if (anchorId !== undefined && result.has(anchorId)) {
@@ -117,10 +134,6 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
       }
     }
 
-    const structuralSequence = structuralNodes.slice().sort((a, b) => {
-      const row = (result.get(a.id) ?? 0) - (result.get(b.id) ?? 0);
-      return row || compareNodes(a, b);
-    });
     let cumulativeShift = 0;
     for (const structuralNode of structuralSequence) {
       const baseRow = result.get(structuralNode.id) ?? 0;

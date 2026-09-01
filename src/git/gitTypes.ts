@@ -131,6 +131,16 @@ export interface HistoryEvent {
   subject?: string;
   /** All refs updated by the same logical Git operation, including HEAD. */
   affectedRefs?: string[];
+  /** Reflog selector index used only as a deterministic same-timestamp order. */
+  reflogIndex?: number;
+  /** Number of commits removed from the ref by a proven backward reset. */
+  removedCommitCount?: number;
+  /** Oldest first-parent commit removed by a proven backward reset. */
+  removedRangeStartOid?: string;
+  /** Old tip of the range removed by a proven backward reset. */
+  removedRangeEndOid?: string;
+  /** Reset mode only when Git records it explicitly; never inferred from status. */
+  resetMode?: 'soft' | 'mixed' | 'hard';
 }
 
 export interface RepositoryInfo {

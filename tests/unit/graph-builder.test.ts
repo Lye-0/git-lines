@@ -131,7 +131,7 @@ describe('graph fact builder', () => {
     expect(eventNodes.every((node) => node.oid === undefined)).toBe(true);
   });
 
-  it('does not create a reset/amend event when the old tip is still live', () => {
+  it('keeps a live ref-only reset event without turning it into a historical route', () => {
     const facts = buildGraphFacts({
       ...snapshot,
       historyEvents: [
@@ -140,8 +140,10 @@ describe('graph fact builder', () => {
       ],
     });
 
-    expect(facts.events).toEqual([]);
-    expect(facts.nodes.filter((node) => node.kind === 'history-event')).toEqual([]);
+    expect(facts.events).toHaveLength(1);
+    expect(facts.events[0]).toMatchObject({ type: 'reset', fromOid: oid('a'), toOid: oid('b') });
+    expect(facts.nodes.filter((node) => node.kind === 'history-event')).toHaveLength(1);
+    expect(facts.nodes.find((node) => node.event?.type === 'reset')).toMatchObject({ refOnly: true, historicalEvent: false });
     expect(facts.nodes.find((node) => node.oid === oid('a'))?.previousRoute).toBe(false);
   });
 

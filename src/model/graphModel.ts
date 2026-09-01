@@ -53,6 +53,8 @@ export interface GraphNode {
   targetRef?: string;
   /** Graph-track identifier resolved from targetRef during lane layout. */
   targetLaneId?: string;
+  /** A ref-only operation shown in the post-Working-Tree operation timeline. */
+  refOnly?: boolean;
   workingTree?: WorkingTreeState;
   operation?: OperationState;
   refBadges?: GraphRefBadge[];

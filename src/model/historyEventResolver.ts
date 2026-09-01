@@ -18,6 +18,7 @@ interface EventGroup {
   fromRef?: string;
   toRef?: string;
   timestamp: number;
+  reflogIndex?: number;
   entries: ReflogEntry[];
 }
 
@@ -195,6 +196,11 @@ function refPriority(refName: string): number {
   return 3;
 }
 
+function reflogIndex(entry: ReflogEntry): number | undefined {
+  const match = /@\{(\d+)\}$/.exec(entry.selector.trim());
+  return match ? Number(match[1]) : undefined;
+}
+
 function groupKey(entry: ClassifiedEntry): string {
   // The same operation can write different subjects (or cross a timestamp
   // boundary) for HEAD, a local branch, and a remote-tracking ref. The
@@ -312,6 +318,34 @@ function firstChildAboveBoundary(toOid: string, boundaryOid: string | undefined,
   return undefined;
 }
 
+interface ResetRemoval {
+  removedCommitCount: number;
+  removedRangeStartOid: string;
+  removedRangeEndOid: string;
+}
+
+function resetRemovalFor(group: EventGroup, commits: Map<string, GitCommit>): ResetRemoval | undefined {
+  if (group.type !== 'reset' || !group.fromOid || !isAncestor(group.toOid, group.fromOid, commits)) return undefined;
+  const count = countCommitsBetween(group.toOid, group.fromOid, commits.values());
+  const start = firstChildAboveBoundary(group.fromOid, group.toOid, commits);
+  if (!count || count < 1 || !start) return undefined;
+  return {
+    removedCommitCount: count,
+    removedRangeStartOid: start,
+    removedRangeEndOid: group.fromOid,
+  };
+}
+
+function resetModeFor(subject: string): 'soft' | 'mixed' | 'hard' | undefined {
+  const match = /^reset\s+--(soft|mixed|hard)(?::|\s|$)/i.exec(subject.trim());
+  return match?.[1]?.toLowerCase() as 'soft' | 'mixed' | 'hard' | undefined;
+}
+
+function resetModeForEntries(entries: ReflogEntry[]): 'soft' | 'mixed' | 'hard' | undefined {
+  const modes = [...new Set(entries.map((entry) => resetModeFor(entry.subject)).filter((mode): mode is 'soft' | 'mixed' | 'hard' => Boolean(mode)))];
+  return modes.length === 1 ? modes[0] : undefined;
+}
+
 function eventStartOidFor(group: EventGroup, boundaryOid: string | undefined, commits: Map<string, GitCommit>): string | undefined {
   if (group.type === 'rebase') return firstChildAboveBoundary(group.toOid, boundaryOid, commits) ?? group.toOid;
   if (group.type === 'branch-rename') return group.toOid;
@@ -341,9 +375,11 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
   for (const candidate of candidates) {
     const key = groupKey(candidate);
     const current = groups.get(key);
+    const candidateReflogIndex = reflogIndex(candidate.entry);
     if (current) {
       current.entries.push(candidate.entry);
       current.timestamp = Math.max(current.timestamp, candidate.entry.timestamp);
+      if (candidateReflogIndex !== undefined && (current.reflogIndex === undefined || candidateReflogIndex < current.reflogIndex)) current.reflogIndex = candidateReflogIndex;
     }
     else groups.set(key, {
       type: candidate.type,
@@ -351,12 +387,17 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
       toOid: candidate.entry.newOid,
       ...(candidate.branchRename ? { fromRef: candidate.branchRename.fromRef, toRef: candidate.branchRename.toRef } : {}),
       timestamp: candidate.entry.timestamp,
+      ...(candidateReflogIndex !== undefined ? { reflogIndex: candidateReflogIndex } : {}),
       entries: [candidate.entry],
     });
   }
 
   return [...groups.values()]
-    .sort((a, b) => b.timestamp - a.timestamp || refPriority(firstRef(a)) - refPriority(firstRef(b)) || firstRef(a).localeCompare(firstRef(b)) || a.toOid.localeCompare(b.toOid))
+    .sort((a, b) => b.timestamp - a.timestamp
+      || (a.reflogIndex !== undefined && b.reflogIndex !== undefined ? a.reflogIndex - b.reflogIndex : 0)
+      || refPriority(firstRef(a)) - refPriority(firstRef(b))
+      || firstRef(a).localeCompare(firstRef(b))
+      || a.toOid.localeCompare(b.toOid))
     .map((group) => {
       const entriesForGroup = group.entries.slice().sort((a, b) => refPriority(a.refName) - refPriority(b.refName) || a.refName.localeCompare(b.refName));
       const representative = bestSubject(entriesForGroup);
@@ -366,6 +407,8 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
       const operationCommit = commitMap.get(group.toOid);
       const sourceOid = group.type === 'cherry-pick' ? cherryPickSourceOid(operationCommit?.body) : undefined;
       const targetOid = group.type === 'revert' ? revertTargetOid(operationCommit?.body) : undefined;
+      const resetRemoval = resetRemovalFor(group, commitMap);
+      const resetMode = group.type === 'reset' ? resetModeForEntries(entriesForGroup) : undefined;
       return {
         id: `history:${group.type}:${group.timestamp}:${group.toOid}`,
         type: group.type,
@@ -375,6 +418,7 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
         ...(boundaryOid ? { boundaryOid } : {}),
         ...(eventStartOid ? { eventStartOid } : {}),
         timestamp: group.timestamp,
+        ...(group.reflogIndex !== undefined ? { reflogIndex: group.reflogIndex } : {}),
         ...(group.type === 'branch-rename' ? {
           operation: 'Branch rename',
           fromRef: group.fromRef,
@@ -383,6 +427,8 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
         ...(group.type === 'fast-forward' ? { commitCount: countCommitsBetween(group.fromOid, group.toOid, commitMap.values()), operation: operationName(representative.subject) } : {}),
         ...(sourceOid ? { sourceOid } : {}),
         ...(targetOid ? { targetOid } : {}),
+        ...(resetRemoval ?? {}),
+        ...(resetMode ? { resetMode } : {}),
         rawReflogMessage: representative.subject,
         sourceLabel: sourceLabel(representative.subject),
         subject: representative.subject,

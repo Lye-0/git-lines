@@ -80,6 +80,41 @@ describe('history event resolver', () => {
     expect(resolveHistoryEvents([entry('rebase (finish): refs/heads/main', oid('b'), oid('a'))], commits)[0].type).toBe('rebase');
   });
 
+  it('records the exact removed range only for a proven backward reset', () => {
+    const chain = [
+      commit('a', [], 1),
+      commit('b', [oid('a')], 2),
+      commit('c', [oid('b')], 3),
+      commit('d', [oid('c')], 4),
+    ];
+    const backward = resolveHistoryEvents([
+      entry('reset: moving to HEAD~3', oid('d'), oid('a'), 'refs/heads/main', 'main@{0}', 5),
+    ], chain)[0];
+    expect(backward).toMatchObject({
+      type: 'reset',
+      removedCommitCount: 3,
+      removedRangeStartOid: oid('b'),
+      removedRangeEndOid: oid('d'),
+    });
+
+    const forward = resolveHistoryEvents([
+      entry('reset: moving to d', oid('a'), oid('d'), 'refs/heads/main', 'main@{0}', 6),
+    ], chain)[0];
+    expect(forward).toBeDefined();
+    expect(forward?.removedCommitCount).toBeUndefined();
+    expect(forward?.removedRangeStartOid).toBeUndefined();
+    expect(forward?.removedRangeEndOid).toBeUndefined();
+  });
+
+  it('uses reflog selector order to break same-timestamp event ties', () => {
+    const events = resolveHistoryEvents([
+      entry('reset: moving to a', oid('b'), oid('a'), 'refs/heads/main', 'main@{1}', 5),
+      entry('branch: move to b', oid('a'), oid('b'), 'refs/heads/main', 'main@{0}', 5),
+    ], commits);
+    expect(events.map((event) => event.type)).toEqual(['branch-move', 'reset']);
+    expect(events.map((event) => event.reflogIndex)).toEqual([0, 1]);
+  });
+
   it('keeps only the completed branch rebase movement and drops internal HEAD entries', () => {
     const oldTip = commit('o', [oid('a')], 2);
     const replayBase = commit('c', [oid('a')], 3);

@@ -81,4 +81,31 @@ describe('event detail presentation', () => {
     expect(eventDetailFields(reset).find((field) => field.label === 'Operation')?.value).toBe('Reset');
     expect(eventDetailFields(reset).find((field) => field.label === 'Raw reflog message')?.value).toContain('reset: moving to HEAD~2');
   });
+
+  it('shows branch-move endpoints and a proven reset removal range in detail', () => {
+    const move: HistoryEvent = {
+      ...event,
+      id: 'history:branch-move:10:new',
+      type: 'branch-move',
+      rawReflogMessage: 'branch: move to new',
+    };
+    expect(eventDetailFields(move).map((field) => field.label)).toEqual(['Operation', 'Branch / Ref', 'From', 'To', 'Timestamp', 'Raw reflog message']);
+    expect(eventDetailFields(move).find((field) => field.label === 'Operation')?.value).toBe('Branch move');
+
+    const reset: HistoryEvent = {
+      ...event,
+      id: 'history:reset:10:new',
+      type: 'reset',
+      fromOid: 'd'.repeat(40),
+      toOid: 'a'.repeat(40),
+      removedCommitCount: 3,
+      removedRangeStartOid: 'b'.repeat(40),
+      removedRangeEndOid: 'd'.repeat(40),
+      rawReflogMessage: 'reset: moving to a',
+    };
+    const fields = eventDetailFields(reset);
+    expect(fields.map((field) => field.label)).toEqual(['Operation', 'Branch / Ref', 'From', 'To', 'Removed commits', 'Removed range', 'Timestamp', 'Raw reflog message']);
+    expect(fields.find((field) => field.label === 'Removed commits')?.value).toBe('3');
+    expect(fields.find((field) => field.label === 'Removed range')).toMatchObject({ value: 'bbbbbbbbbbbb … dddddddddddd (3 commits)', title: `${'b'.repeat(40)} … ${'d'.repeat(40)}` });
+  });
 });

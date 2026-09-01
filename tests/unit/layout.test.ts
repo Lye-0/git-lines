@@ -769,6 +769,108 @@ describe('graph layout', () => {
     expect(routeEdges(withEvent.nodes, withEvent.edges).filter((path) => path.annotation === 'ref-event')).toHaveLength(1);
   });
 
+  it('places ref-only operations after Working Tree and before the DAG', () => {
+    const initial = { ...commitNode('i', 1), refIds: ['main'] };
+    const mainOne = { ...commitNode('a', 2), refIds: ['main'] };
+    const mainTwo = { ...commitNode('b', 3), refIds: ['main'] };
+    const feature = { ...commitNode('c', 4), refIds: ['feature'] };
+    const working: GraphNode = {
+      id: 'working:main',
+      kind: 'working-tree',
+      oid: mainTwo.oid,
+      refIds: [],
+      timestamp: Number.MAX_SAFE_INTEGER,
+      workingTree: {
+        worktreeId: 'main',
+        path: 'C:/repo',
+        headOid: mainTwo.oid,
+        branch: 'main',
+        detached: false,
+        staged: 0,
+        unstaged: 0,
+        untracked: 0,
+        conflicted: 0,
+        clean: true,
+        mainWorktree: true,
+      },
+    };
+    const branchMove: GraphNode = {
+      id: 'event:branch-move',
+      kind: 'history-event',
+      refIds: [],
+      timestamp: 6,
+      refOnly: true,
+      anchorCommitId: mainTwo.id,
+      targetRef: 'refs/heads/main',
+      event: {
+        id: 'event:branch-move',
+        type: 'branch-move',
+        refName: 'refs/heads/main',
+        fromOid: mainOne.oid,
+        toOid: mainTwo.oid!,
+        timestamp: 6,
+        reflogIndex: 0,
+      },
+    };
+    const reset: GraphNode = {
+      id: 'event:reset',
+      kind: 'history-event',
+      refIds: [],
+      timestamp: 5,
+      refOnly: true,
+      anchorCommitId: mainOne.id,
+      targetRef: 'refs/heads/main',
+      event: {
+        id: 'event:reset',
+        type: 'reset',
+        refName: 'refs/heads/main',
+        fromOid: mainTwo.oid,
+        toOid: mainOne.oid!,
+        timestamp: 5,
+        reflogIndex: 1,
+      },
+    };
+    const commits = [
+      testCommit('c', ['b'], 4, 'feature'),
+      testCommit('b', ['a'], 3, 'main two'),
+      testCommit('a', ['i'], 2, 'main one'),
+      testCommit('i', [], 1, 'initial'),
+    ];
+    const facts: GraphFactModel = {
+      nodes: [working, feature, mainTwo, mainOne, initial, branchMove, reset],
+      edges: [
+        { id: 'working:main:head', type: 'working-tree', fromNodeId: working.id, toNodeId: mainTwo.id },
+        { id: 'parent:c:b', type: 'parent', fromNodeId: feature.id, toNodeId: mainTwo.id },
+        { id: 'parent:b:a', type: 'parent', fromNodeId: mainTwo.id, toNodeId: mainOne.id },
+        { id: 'parent:a:i', type: 'parent', fromNodeId: mainOne.id, toNodeId: initial.id },
+        { id: 'event:branch-move:annotation', type: 'history-event', fromNodeId: mainTwo.id, toNodeId: branchMove.id, annotation: 'ref-event' },
+        { id: 'event:reset:annotation', type: 'history-event', fromNodeId: mainOne.id, toNodeId: reset.id, annotation: 'ref-event' },
+      ],
+      refs: [
+        { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: mainTwo.oid! },
+        { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: feature.oid! },
+      ],
+      commits,
+      workingTrees: [working.workingTree!],
+      operations: [],
+      events: [branchMove.event!, reset.event!],
+      primaryBranch: 'main',
+      shallowBoundaryOids: [],
+    };
+    const layout = createGraphLayout(facts, { visibleCommitCount: commits.length, hasMore: false });
+    const row = (id: string) => layout.nodes.find((node) => node.id === id)?.row ?? Number.MAX_SAFE_INTEGER;
+    expect(row(working.id)).toBe(0);
+    expect(row(branchMove.id)).toBe(1);
+    expect(row(reset.id)).toBe(2);
+    expect(row(branchMove.id)).toBeLessThan(row(feature.id));
+    expect(row(reset.id)).toBeLessThan(row(feature.id));
+    expect(row(mainTwo.id)).toBeLessThan(row(mainOne.id));
+    expect(layout.edgePaths?.some((path) => path.id === 'event:branch-move:annotation')).toBe(false);
+    expect(layout.edgePaths?.some((path) => path.id === 'event:reset:annotation')).toBe(false);
+    expect(layout.edgePaths).toContainEqual(expect.objectContaining({ id: 'working:main:head', type: 'working-tree' }));
+    assertRowInvariants(layout.nodes, layout.edges);
+  });
+
   it('places a completed operation event between the new commit and its parent boundary', () => {
     const base = commitNode('a', 1);
     const parent = { ...commitNode('b', 2), refIds: ['main'] };

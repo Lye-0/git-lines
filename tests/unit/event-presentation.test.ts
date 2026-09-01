@@ -49,6 +49,37 @@ describe('ref event presentation', () => {
     expect(eventMainLabel(amend)).toBe('Amend · main: aaaaaaaa → bbbbbbbb');
   });
 
+  it('shows branch moves with their proven old and new OIDs', () => {
+    const move = eventNode({
+      id: 'history:branch-move:1:b',
+      type: 'branch-move',
+      fromOid: oid('a'),
+      toOid: oid('b'),
+    });
+    move.kind = 'history-event';
+    expect(eventMainLabel(move)).toBe('Branch move · main: aaaaaaaa → bbbbbbbb');
+  });
+
+  it('shows and marks the proven backward-reset range', () => {
+    const reset = eventNode({
+      id: 'history:reset:1:a',
+      type: 'reset',
+      fromOid: oid('d'),
+      toOid: oid('a'),
+      removedCommitCount: 3,
+      removedRangeStartOid: oid('b'),
+      removedRangeEndOid: oid('d'),
+    });
+    reset.kind = 'history-event';
+    const label = eventMainLabel(reset);
+    expect(label).toBe('Reset · main: bbbbbbbb … dddddddd (3 commits) → aaaaaaaa');
+    expect(eventLabelParts(reset, label)).toEqual([
+      { text: 'Reset · main: ' },
+      { text: 'bbbbbbbb … dddddddd (3 commits)', className: 'event-reset-removed' },
+      { text: ' → aaaaaaaa' },
+    ]);
+  });
+
   it('shows completed rebase movement in the single event row', () => {
     const rebase = eventNode({ id: 'history:rebase:1:b', type: 'rebase', operation: undefined });
     rebase.kind = 'history-event';

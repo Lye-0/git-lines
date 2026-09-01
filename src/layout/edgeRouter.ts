@@ -1,4 +1,5 @@
 import type { GraphEdge, GraphNode } from '../model/graphModel.js';
+import { normalizeRefName } from '../model/refDisplay.js';
 import type { EdgePath } from './layoutTypes.js';
 
 export interface EdgeRouterOptions {
@@ -108,6 +109,11 @@ interface RebaseVisualSplit {
   parentEdge: GraphEdge;
 }
 
+interface BranchRenameVisualSplit {
+  event: GraphNode;
+  workingEdge: GraphEdge;
+}
+
 function findRebaseVisualSplits(nodes: GraphNode[], edges: GraphEdge[]): { byParentId: Map<string, RebaseVisualSplit>; byAnnotationId: Map<string, RebaseVisualSplit> } {
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const byParentId = new Map<string, RebaseVisualSplit>();
@@ -128,6 +134,37 @@ function findRebaseVisualSplits(nodes: GraphNode[], edges: GraphEdge[]): { byPar
     byAnnotationId.set(annotation.id, split);
   }
   return { byParentId, byAnnotationId };
+}
+
+function findBranchRenameVisualSplits(nodes: GraphNode[], edges: GraphEdge[]): { byWorkingId: Map<string, BranchRenameVisualSplit>; byAnnotationId: Map<string, BranchRenameVisualSplit> } {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const byWorkingId = new Map<string, BranchRenameVisualSplit>();
+  const byAnnotationId = new Map<string, BranchRenameVisualSplit>();
+  for (const annotation of edges) {
+    if (annotation.annotation !== 'ref-event') continue;
+    const event = byId.get(annotation.toNodeId);
+    if (event?.event?.type !== 'branch-rename') continue;
+    const headId = event.anchorCommitId ?? annotation.fromNodeId;
+    const workingEdges = edges.filter((candidate) => candidate.type === 'working-tree'
+      && candidate.toNodeId === headId
+      && byId.get(candidate.fromNodeId)?.kind === 'working-tree');
+    if (workingEdges.length === 0) continue;
+    const targetRef = event.targetRef ?? event.event.toRef ?? event.event.refName;
+    const matchingWorkingEdges = workingEdges.filter((candidate) => {
+      const branch = byId.get(candidate.fromNodeId)?.workingTree?.branch;
+      return Boolean(branch && targetRef && normalizeRefName(branch) === normalizeRefName(targetRef));
+    });
+    const workingEdge = matchingWorkingEdges.length === 1
+      ? matchingWorkingEdges[0]
+      : workingEdges.length === 1
+        ? workingEdges[0]
+        : undefined;
+    if (!workingEdge) continue;
+    const split = { event, workingEdge };
+    byWorkingId.set(workingEdge.id, split);
+    byAnnotationId.set(annotation.id, split);
+  }
+  return { byWorkingId, byAnnotationId };
 }
 
 /**
@@ -156,6 +193,29 @@ export function placeRebaseEventsOnParentCurves(nodes: GraphNode[], edges: Graph
   });
 }
 
+/**
+ * Places a branch-rename glyph on the existing Working Tree -> HEAD curve.
+ * The rename is a ref-name annotation, so its presentation must not create a
+ * lane or a second commit-like connector.
+ */
+export function placeBranchRenameEventsOnWorkingTreeCurves(nodes: GraphNode[], edges: GraphEdge[], options: EdgeRouterOptions = {}): GraphNode[] {
+  const rowHeight = options.rowHeight ?? 38;
+  const laneWidth = options.laneWidth ?? 34;
+  const splits = findBranchRenameVisualSplits(nodes, edges).byAnnotationId;
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return nodes.map((node) => {
+    const split = [...splits.values()].find((candidate) => candidate.event.id === node.id);
+    if (!split) return node;
+    const working = byId.get(split.workingEdge.fromNodeId);
+    const head = byId.get(split.workingEdge.toNodeId);
+    if (!working || !head) return node;
+    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, { rowHeight, laneWidth, leftPadding: options.leftPadding }), pointForNode(head, { rowHeight, laneWidth, leftPadding: options.leftPadding }), laneWidth);
+    const eventPoint = pointForNode(node, { rowHeight, laneWidth, leftPadding: options.leftPadding });
+    const point = cubicPoint(curve, parameterAtY(curve, eventPoint.y));
+    return { ...node, visualX: point.x };
+  });
+}
+
 function hasIntermediateNodeOnLane(nodes: GraphNode[], from: GraphNode, to: GraphNode): boolean {
   const fromRow = from.row ?? 0;
   const toRow = to.row ?? 0;
@@ -163,12 +223,13 @@ function hasIntermediateNodeOnLane(nodes: GraphNode[], from: GraphNode, to: Grap
   const lastRow = Math.max(fromRow, toRow);
   const lane = from.lane;
   return nodes.some((node) => node.id !== from.id && node.id !== to.id
+    && (node.kind === 'commit' || node.kind === 'reflog-commit' || node.kind === 'history-boundary')
     && node.lane === lane
     && (node.row ?? 0) > firstRow
     && (node.row ?? 0) < lastRow);
 }
 
-function routeWorkingTreeEdge(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: { x: number; y: number }, b: { x: number; y: number }, laneWidth: number): string {
+function workingTreeCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: Point, b: Point, laneWidth: number): CubicCurve {
   const delta = Math.min(32, Math.max(8, Math.abs(b.y - a.y) * 0.16));
   // A remote-ahead chain can place several commits between the Working Tree
   // row and the checked-out local HEAD on the same branch lane.  Keep the
@@ -178,9 +239,23 @@ function routeWorkingTreeEdge(nodes: GraphNode[], from: GraphNode, to: GraphNode
   if (from.lane === to.lane && hasIntermediateNodeOnLane(nodes, from, to)) {
     const offset = Math.max(10, Math.min(18, laneWidth * 0.45));
     const railX = a.x + offset;
-    return `M ${a.x} ${a.y} C ${railX} ${a.y + delta}, ${railX} ${b.y - delta}, ${b.x} ${b.y}`;
+    return {
+      p0: a,
+      p1: { x: railX, y: a.y + delta },
+      p2: { x: railX, y: b.y - delta },
+      p3: b,
+    };
   }
-  return `M ${a.x} ${a.y} C ${a.x} ${a.y + delta}, ${b.x} ${b.y - delta}, ${b.x} ${b.y}`;
+  return {
+    p0: a,
+    p1: { x: a.x, y: a.y + delta },
+    p2: { x: b.x, y: b.y - delta },
+    p3: b,
+  };
+}
+
+function routeWorkingTreeEdge(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: { x: number; y: number }, b: { x: number; y: number }, laneWidth: number): string {
+  return curvePath(workingTreeCurve(nodes, from, to, a, b, laneWidth));
 }
 
 export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: EdgeRouterOptions = {}): EdgePath[] {
@@ -188,9 +263,13 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
   const laneWidth = options.laneWidth ?? 34;
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const rebaseSplits = findRebaseVisualSplits(nodes, edges);
+  const branchRenameSplits = findBranchRenameVisualSplits(nodes, edges);
   return edges.flatMap<EdgePath>((edge) => {
     const parentSplit = rebaseSplits.byParentId.get(edge.id);
     if (parentSplit) return [];
+
+    const branchRenameWorkingSplit = branchRenameSplits.byWorkingId.get(edge.id);
+    if (branchRenameWorkingSplit) return [];
 
     const annotationSplit = rebaseSplits.byAnnotationId.get(edge.id);
     if (annotationSplit) {
@@ -224,6 +303,49 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
         },
       ];
     }
+
+    const branchRenameSplit = branchRenameSplits.byAnnotationId.get(edge.id);
+    if (branchRenameSplit) {
+      const working = byId.get(branchRenameSplit.workingEdge.fromNodeId);
+      const head = byId.get(branchRenameSplit.workingEdge.toNodeId);
+      if (!working || !head) return [];
+      const curve = workingTreeCurve(
+        nodes,
+        working,
+        head,
+        pointForNode(working, { rowHeight, laneWidth, leftPadding: options.leftPadding }),
+        pointForNode(head, { rowHeight, laneWidth, leftPadding: options.leftPadding }),
+        laneWidth,
+      );
+      const eventPoint = pointForNode(branchRenameSplit.event, { rowHeight, laneWidth, leftPadding: options.leftPadding });
+      const parameter = parameterAtY(curve, eventPoint.y);
+      const splitPoint = cubicPoint(curve, parameter);
+      const [before, after] = splitCubic(curve, parameter, { x: splitPoint.x, y: eventPoint.y });
+      return [
+        {
+          id: `${branchRenameSplit.event.id}:branch-rename:before`,
+          type: 'working-tree',
+          d: curvePath(before),
+          edgeId: branchRenameSplit.workingEdge.id,
+          fromNodeId: branchRenameSplit.workingEdge.fromNodeId,
+          toNodeId: branchRenameSplit.event.id,
+        },
+        {
+          id: `${branchRenameSplit.event.id}:branch-rename:after`,
+          type: 'working-tree',
+          d: curvePath(after),
+          edgeId: branchRenameSplit.workingEdge.id,
+          fromNodeId: branchRenameSplit.event.id,
+          toNodeId: branchRenameSplit.workingEdge.toNodeId,
+        },
+      ];
+    }
+
+    // Ref-only operations live in the post-Working-Tree timeline. Their
+    // annotation edge points back to an existing commit only as model
+    // metadata; rendering it would create a commit-like stub from the DAG to
+    // the operation row. The Working Tree/HEAD visual edge remains intact.
+    if (edge.annotation === 'ref-event' && byId.get(edge.toNodeId)?.refOnly === true) return [];
 
     const from = byId.get(edge.fromNodeId);
     const to = byId.get(edge.toNodeId);

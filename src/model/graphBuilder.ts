@@ -187,6 +187,13 @@ function eventLabel(event: HistoryEvent): string {
   return `${event.type[0].toUpperCase()}${event.type.slice(1)} · ${ref}`;
 }
 
+function isRefOnlyEvent(event: HistoryEvent): boolean {
+  return event.type === 'reset'
+    || event.type === 'branch-move'
+    || event.type === 'force-update'
+    || event.type === 'generic-ref-move';
+}
+
 function primaryBranch(snapshot: RepositorySnapshot, configured?: string | null): string | undefined {
   if (configured) {
     const configuredRef = snapshot.refs.find((ref) => ref.shortName === configured || ref.fullName === configured || normalizeRefName(ref.fullName) === configured);
@@ -302,13 +309,14 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   }
   const events = options.showReflog === false
     ? []
-    : snapshot.historyEvents.filter((event) => event.type !== 'reset' && event.type !== 'amend' || previousRoute.eventIds.has(event.id));
+    : snapshot.historyEvents.filter((event) => event.type !== 'amend' || previousRoute.eventIds.has(event.id));
   for (const event of events) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
     const eventStart = event.eventStartOid ? nodeByOid.get(event.eventStartOid) : undefined;
     const annotationSource = eventStart ?? target;
     const isFastForward = event.type === 'fast-forward';
+    const historicalRouteEvent = previousRoute.eventIds.has(event.id);
     const label = eventLabel(event);
     const affectedRefs = event.affectedRefs?.length ? event.affectedRefs : [event.refName];
     const refBadges = uniqueGraphRefBadges(affectedRefs.map((refName) => {
@@ -325,6 +333,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       subject: event.subject,
       event,
       historicalEvent: (event.type === 'reset' || event.type === 'amend' || event.type === 'rebase') && previousRouteOids.has(event.toOid),
+      refOnly: isRefOnlyEvent(event) && !historicalRouteEvent,
       anchorCommitId: target.id,
       eventBoundaryCommitId: event.boundaryOid ? nodeByOid.get(event.boundaryOid)?.id : undefined,
       eventStartCommitId: annotationSource.id,

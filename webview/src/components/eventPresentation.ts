@@ -64,6 +64,12 @@ function compactEventKind(node: GraphNode): string {
 /** Shows the ref movement without expanding the event row's height. */
 export function eventMovementLabel(node: GraphNode): string | undefined {
   const event = node.event;
+  if (event?.type === 'branch-move') {
+    const branch = normalizeRefName(node.targetRef ?? event.refName);
+    const from = shortOid(event.fromOid);
+    const to = shortOid(event.toOid);
+    return branch && from && to ? `Branch move · ${branch}: ${from} → ${to}` : `Branch move · ${branch}`;
+  }
   if (event?.type === 'branch-rename') {
     const from = event.fromRef ? normalizeRefName(event.fromRef) : undefined;
     const to = normalizeRefName(event.toRef ?? event.refName);
@@ -81,10 +87,26 @@ export function eventMovementLabel(node: GraphNode): string | undefined {
     return target ? 'Revert · ' + target : 'Revert';
   }
   const branch = normalizeRefName(node.targetRef ?? event.refName);
-  const from = shortOid(event.fromOid);
+  const from = event.type === 'reset' ? resetFromLabel(event) : shortOid(event.fromOid);
   const to = shortOid(event.toOid);
   if (!branch || !from || !to) return undefined;
-  return `${compactEventKind(node)} · ${branch}: ${from} → ${to}`;
+  const operation = event.type === 'reset' && event.resetMode ? `Reset --${event.resetMode}` : compactEventKind(node);
+  return `${operation} · ${branch}: ${from} → ${to}`;
+}
+
+function resetFromLabel(event: NonNullable<GraphNode['event']>): string | undefined {
+  if (event.type !== 'reset') return shortOid(event.fromOid);
+  const removedRange = resetRemovedRangeLabel(event);
+  return removedRange ?? shortOid(event.fromOid);
+}
+
+function resetRemovedRangeLabel(event: NonNullable<GraphNode['event']>): string | undefined {
+  if (event.type !== 'reset' || !Number.isInteger(event.removedCommitCount) || (event.removedCommitCount as number) < 1) return undefined;
+  const count = event.removedCommitCount as number;
+  const end = shortOid(event.removedRangeEndOid ?? event.fromOid);
+  const start = shortOid(event.removedRangeStartOid) ?? (count === 1 ? end : undefined);
+  if (!start || !end) return undefined;
+  return count === 1 ? end : `${start} … ${end} (${count} commits)`;
 }
 
 function textUnits(value: string): number {
@@ -114,12 +136,31 @@ export interface EventLabelPart {
 
 /** Splits semantic event text so target hashes can receive their visual affordance. */
 export function eventLabelParts(node: GraphNode, renderedLabel: string): EventLabelPart[] {
+  const resetParts = resetEventLabelParts(node, renderedLabel);
+  if (resetParts) return resetParts;
   const target = shortOid(node.event?.targetOid);
   const fullLabel = target ? 'Revert · ' + target : undefined;
   if (node.event?.type !== 'revert' || !target || renderedLabel !== fullLabel) return [{ text: renderedLabel }];
   return [
     { text: 'Revert · ' },
     { text: target, className: 'event-revert-target' },
+  ];
+}
+
+function resetEventLabelParts(node: GraphNode, renderedLabel: string): EventLabelPart[] | undefined {
+  const event = node.event;
+  if (event?.type !== 'reset' || !resetRemovedRangeLabel(event)) return undefined;
+  const branch = normalizeRefName(node.targetRef ?? event.refName);
+  const to = shortOid(event.toOid);
+  const removed = resetRemovedRangeLabel(event);
+  if (!branch || !to || !removed) return undefined;
+  const operation = event.resetMode ? `Reset --${event.resetMode}` : 'Reset';
+  const fullLabel = `${operation} · ${branch}: ${removed} → ${to}`;
+  if (renderedLabel !== fullLabel) return undefined;
+  return [
+    { text: `${operation} · ${branch}: ` },
+    { text: removed, className: 'event-reset-removed' },
+    { text: ` → ${to}` },
   ];
 }
 
@@ -157,6 +198,14 @@ export function eventTooltip(node: GraphNode): string {
   const from = shortOid(event.fromOid);
   const to = shortOid(event.toOid);
   if (event.type !== 'branch-rename' && from && to) lines.push(`Moved\n${from} → ${to}`);
+  if (event.type === 'reset') {
+    const removedRange = resetRemovedRangeLabel(event);
+    if (event.removedCommitCount && removedRange) {
+      lines.push(`Removed commits\n${event.removedCommitCount}`);
+      lines.push(`Removed range\n${removedRange}`);
+    }
+    if (event.resetMode) lines.push(`Reset mode\n${event.resetMode}`);
+  }
   if (event.type === 'cherry-pick') lines.push('Source\n' + (event.sourceOid ?? 'Unknown'));
   if (event.type === 'revert') lines.push('Target\n' + (event.targetOid ?? 'Unknown'));
   if (event.type === 'cherry-pick' || event.type === 'revert') {
