@@ -77,6 +77,63 @@ function dagFacts(commits: GraphFactModel['commits'], refs: GraphFactModel['refs
   return { nodes, edges, refs, commits, workingTrees: [], operations: [], events: [], primaryBranch: 'main', shallowBoundaryOids: [] };
 }
 
+function rebaseFacts(multiCommit = false): GraphFactModel {
+  const base = { ...commitNode('a', 1), refIds: ['main'] };
+  const first = { ...commitNode('b', 2), refIds: ['feature'] };
+  const tip = multiCommit ? { ...commitNode('c', 3), refIds: ['feature'] } : first;
+  const eventId = multiCommit ? 'event:rebase:multi' : 'event:rebase:single';
+  const event: GraphNode = {
+    id: eventId,
+    kind: 'history-event',
+    refIds: ['feature'],
+    label: 'Rebase · feature',
+    anchorCommitId: tip.id,
+    eventBoundaryCommitId: base.id,
+    eventStartCommitId: first.id,
+    targetRef: 'refs/heads/feature',
+    event: {
+      id: eventId,
+      type: 'rebase',
+      refName: 'refs/heads/feature',
+      fromOid: oid('o'),
+      toOid: tip.oid!,
+      boundaryOid: base.oid,
+      eventStartOid: first.oid,
+      timestamp: 4,
+    },
+  };
+  const commits = multiCommit
+    ? [
+      { oid: tip.oid!, parentOids: [first.oid!], subject: 'new tip', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      { oid: first.oid!, parentOids: [base.oid!], subject: 'new first', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: base.oid!, parentOids: [], subject: 'new base', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ]
+    : [
+      { oid: tip.oid!, parentOids: [base.oid!], subject: 'new tip', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: base.oid!, parentOids: [], subject: 'new base', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+  const parentEdges = multiCommit
+    ? [
+      { id: 'parent:c:b', type: 'parent' as const, fromNodeId: tip.id, toNodeId: first.id },
+      { id: 'parent:b:a', type: 'parent' as const, fromNodeId: first.id, toNodeId: base.id },
+    ]
+    : [{ id: 'parent:b:a', type: 'parent' as const, fromNodeId: tip.id, toNodeId: base.id }];
+  return {
+    nodes: multiCommit ? [tip, first, base, event] : [tip, base, event],
+    edges: [...parentEdges, { id: `${eventId}:annotation`, type: 'history-event', fromNodeId: first.id, toNodeId: event.id, annotation: 'ref-event' }],
+    refs: [
+      { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: base.oid },
+      { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: tip.oid! },
+    ],
+    commits,
+    workingTrees: [],
+    operations: [],
+    events: [event.event!],
+    primaryBranch: 'main',
+    shallowBoundaryOids: [],
+  };
+}
+
 describe('graph layout', () => {
   it('reuses a lane for non-overlapping branch segments', () => {
     const lanes = assignBranchSegmentLanes([
@@ -769,6 +826,72 @@ describe('graph layout', () => {
     const annotation = layout.edgePaths?.find((path) => path.annotation === 'ref-event');
     expect(annotation?.d).toBe(`M ${pointForNode(laidOutNew).x} ${pointForNode(laidOutNew).y} L ${pointForNode(laidOutEvent).x} ${pointForNode(laidOutEvent).y}`);
     assertRowInvariants(layout.nodes, layout.edges);
+  });
+
+  it('splits a completed single-commit Rebase parent path through the event', () => {
+    const facts = rebaseFacts();
+    const layout = createGraphLayout(facts, { visibleCommitCount: facts.commits.length, hasMore: false });
+    const event = layout.nodes.find((node) => node.event?.type === 'rebase')!;
+    const newTip = layout.nodes.find((node) => node.oid === oid('b'))!;
+    const newBase = layout.nodes.find((node) => node.oid === oid('a'))!;
+    const parentEdge = facts.edges.find((edge) => edge.type === 'parent')!;
+    const before = layout.edgePaths?.find((path) => path.id === `${event.id}:rebase:before`);
+    const after = layout.edgePaths?.find((path) => path.id === `${event.id}:rebase:after`);
+
+    expect(layout.edges).toContainEqual(parentEdge);
+    expect(layout.edgePaths?.some((path) => path.id === parentEdge.id)).toBe(false);
+    expect(before).toMatchObject({ type: 'parent', edgeId: parentEdge.id, fromNodeId: newTip.id, toNodeId: event.id });
+    expect(after).toMatchObject({ type: 'parent', edgeId: parentEdge.id, fromNodeId: event.id, toNodeId: newBase.id });
+    expect(layout.edgePaths?.filter((path) => path.edgeId === parentEdge.id)).toHaveLength(2);
+    expect(before?.d.endsWith(`${pointForNode(event).x} ${pointForNode(event).y}`)).toBe(true);
+    expect(after?.d.startsWith(`M ${pointForNode(event).x} ${pointForNode(event).y}`)).toBe(true);
+    expect(pointForNode(event).x).not.toBe(pointForNode(newTip).x);
+    expect(pointForNode(event).x).not.toBe(pointForNode(newBase).x);
+    expect(newTip.row).toBeLessThan(event.row!);
+    expect(event.row).toBeLessThan(newBase.row!);
+  });
+
+  it('splits only the bottom edge of a multi-commit Rebase range', () => {
+    const facts = rebaseFacts(true);
+    const layout = createGraphLayout(facts, { visibleCommitCount: facts.commits.length, hasMore: false });
+    const event = layout.nodes.find((node) => node.event?.type === 'rebase')!;
+    const first = layout.nodes.find((node) => node.oid === oid('b'))!;
+    const tip = layout.nodes.find((node) => node.oid === oid('c'))!;
+    const parentEdges = facts.edges.filter((edge) => edge.type === 'parent');
+    const upperEdge = parentEdges.find((edge) => edge.fromNodeId === tip.id)!;
+    const bottomEdge = parentEdges.find((edge) => edge.fromNodeId === first.id)!;
+
+    expect(layout.edgePaths?.some((path) => path.id === upperEdge.id)).toBe(true);
+    expect(layout.edgePaths?.some((path) => path.id === bottomEdge.id)).toBe(false);
+    expect(layout.edgePaths?.filter((path) => path.edgeId === bottomEdge.id)).toHaveLength(2);
+    expect(layout.edgePaths).toContainEqual(expect.objectContaining({
+      id: `${event.id}:rebase:before`,
+      fromNodeId: first.id,
+      toNodeId: event.id,
+    }));
+    expect(layout.edgePaths).toContainEqual(expect.objectContaining({
+      id: `${event.id}:rebase:after`,
+      fromNodeId: event.id,
+      toNodeId: `commit:${oid('a')}`,
+    }));
+    expect(tip.row).toBeLessThan(first.row!);
+    expect(first.row).toBeLessThan(event.row!);
+  });
+
+  it('restores the direct Rebase parent path when the event is not present', () => {
+    const facts = rebaseFacts();
+    const event = facts.nodes.find((node) => node.event?.type === 'rebase')!;
+    const parentEdge = facts.edges.find((edge) => edge.type === 'parent')!;
+    const withoutReflog = {
+      ...facts,
+      nodes: facts.nodes.filter((node) => node.id !== event.id),
+      edges: facts.edges.filter((edge) => edge.id !== `${event.id}:annotation`),
+      events: [],
+    };
+    const layout = createGraphLayout(withoutReflog, { visibleCommitCount: withoutReflog.commits.length, hasMore: false });
+
+    expect(layout.edgePaths).toContainEqual(expect.objectContaining({ id: parentEdge.id, type: 'parent' }));
+    expect(layout.edgePaths?.filter((path) => path.edgeId === parentEdge.id)).toHaveLength(0);
   });
 
   it('keeps adjacent parent paths joined at the same-lane node center', () => {

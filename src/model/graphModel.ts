@@ -18,6 +18,8 @@ export interface GraphNode {
   kind: GraphNodeKind;
   row?: number;
   lane?: number;
+  /** Optional SVG X override for an annotation inserted on an existing edge. */
+  visualX?: number;
   oid?: string;
   label?: string;
   refIds: string[];

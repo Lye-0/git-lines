@@ -33,7 +33,7 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree 
   const paths = layout.edgePaths ?? routeEdges(layout.nodes, layout.edges, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth });
   const visiblePaths = filterRenderableEdgePaths(paths, layout.edges, layout.nodes);
   const gradients = visiblePaths.flatMap((edge, index) => {
-    const definition = edgeById.get(edge.id);
+    const definition = edgeById.get(edge.edgeId ?? edge.id);
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
     const target = definition ? byId.get(definition.toNodeId) : undefined;
     if (!definition || !source || !target) return [];
@@ -57,7 +57,7 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree 
   });
   const gradientByEdgeId = new Map(gradients.map((gradient) => [gradient.edgeId, gradient]));
   const renderEdge = (edge: (typeof visiblePaths)[number]) => {
-    const definition = edgeById.get(edge.id);
+    const definition = edgeById.get(edge.edgeId ?? edge.id);
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
     const target = definition ? byId.get(definition.toNodeId) : undefined;
     const annotation = definition?.annotation === 'ref-event' || edge.annotation === 'ref-event';

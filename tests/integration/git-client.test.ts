@@ -193,6 +193,22 @@ describe('GitClient integration fixture', () => {
     expect(layoutEvent?.trackId).toBe(newLayoutNode?.trackId);
     expect(rebaseEvents[0]?.boundaryOid).toBe(newBase);
     assertEventBoundary(layout, event?.id ?? '', newTip, newBase);
+    const singleRebaseParent = layout.edges.find((edge) => edge.type === 'parent'
+      && edge.fromNodeId === newLayoutNode?.id
+      && edge.toNodeId === layout.nodes.find((node) => node.oid === newBase)?.id);
+    expect(singleRebaseParent).toBeDefined();
+    expect(layout.edgePaths?.some((path) => path.id === singleRebaseParent?.id)).toBe(false);
+    expect(layout.edgePaths?.filter((path) => path.edgeId === singleRebaseParent?.id)).toHaveLength(2);
+    expect(layout.edgePaths).toContainEqual(expect.objectContaining({
+      id: `${event?.id}:rebase:before`,
+      fromNodeId: newLayoutNode?.id,
+      toNodeId: layoutEvent?.id,
+    }));
+    expect(layout.edgePaths).toContainEqual(expect.objectContaining({
+      id: `${event?.id}:rebase:after`,
+      fromNodeId: layoutEvent?.id,
+      toNodeId: layout.nodes.find((node) => node.oid === newBase)?.id,
+    }));
     expect(working?.workingTree).toMatchObject({ branch: 'feature', headOid: newTip, clean: true });
     expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'working-tree', fromNodeId: working?.id, toNodeId: newLayoutNode?.id }));
   });
@@ -339,6 +355,16 @@ describe('GitClient integration fixture', () => {
     const eventNode = layout.nodes.find((node) => node.id === events[0]?.id)!;
     expect(newTipNode.row).toBeLessThan(newFirstNode.row!);
     expect(newFirstNode.row).toBeLessThan(eventNode.row!);
+    const bottomRebaseParent = layout.edges.find((edge) => edge.type === 'parent'
+      && edge.fromNodeId === newFirstNode.id
+      && edge.toNodeId === layout.nodes.find((node) => node.oid === newBase)?.id);
+    const upperRebaseParent = layout.edges.find((edge) => edge.type === 'parent'
+      && edge.fromNodeId === newTipNode.id
+      && edge.toNodeId === newFirstNode.id);
+    expect(bottomRebaseParent).toBeDefined();
+    expect(layout.edgePaths?.some((path) => path.id === bottomRebaseParent?.id)).toBe(false);
+    expect(layout.edgePaths?.filter((path) => path.edgeId === bottomRebaseParent?.id)).toHaveLength(2);
+    expect(layout.edgePaths?.some((path) => path.id === upperRebaseParent?.id)).toBe(true);
     expect(layout.nodes.find((node) => node.oid === oldFirst)).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
     expect(layout.nodes.find((node) => node.oid === oldTip)).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
   });

@@ -30,6 +30,8 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 実在のparent関係は`GraphEdge.type = "parent"`で表し、`GitCommit.parentOids`の各要素から1本ずつ生成する。laneや表示都合でparent edgeを削除・統合しない。Working Treeと未完了operationは同じ`working-tree` nodeにまとめ、HEADへは`working-tree` edge、operationのsource commitへは`operation` edgeをWorking Treeから直接張る。ref移動は`history-event`で表す。Ref Eventには、移動先を保持する`anchorCommitId`、行配置の意味的な下側境界を保持する`eventBoundaryCommitId`、注釈線の上側接続元を保持する`eventStartCommitId`を使う。annotation edgeには`annotation: "ref-event"`を付け、Cherry-pick / Amend / Revertは生成commitのparent直上、複数commit Rebaseは再構築区間の最下端（onto commitの直上）、Resetは移動先commitの直上へevent rowを挿入する。eventのために偽のparent edgeは作らず、Rebaseの長い区間では最古の再構築commitからglyphへ補助接続する。patchが似ているだけのsquash/cherry-pick/rebase前後をparent edgeへ変換しない。
 
+完了Rebaseの描画時だけ、実DAG factsのparent edgeは変更せず、再構築区間の最下端からonto commitまでのvisual pathをRebase event位置で同じBezier曲線の2区間へ分割する。直接のparent pathは同時に描画せず、event glyphはその曲線上の補間Xへ置く。Reflog OFFまたは境界情報が不足する場合は通常の直接parent pathへ戻す。
+
 ## Rowとlaneの不変条件
 
 1. rowは全可視nodeで一意である。
