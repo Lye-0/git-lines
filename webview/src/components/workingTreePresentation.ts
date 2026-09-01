@@ -1,4 +1,4 @@
-import type { WorkingTreeState } from '../../../src/git/gitTypes';
+import type { OperationState, WorkingTreeState } from '../../../src/git/gitTypes';
 
 export interface WorkingTreeSummary {
   files: number;
@@ -20,6 +20,18 @@ export function summarizeWorkingTree(tree: WorkingTreeState): WorkingTreeSummary
 
 export function workingTreeStateLabel(tree: WorkingTreeState): string {
   if (tree.inaccessible) return 'Status unavailable';
-  if (tree.conflicted > 0) return `${tree.conflicted} conflict${tree.conflicted === 1 ? '' : 's'}`;
+  if (tree.conflicted > 0) {
+    const conflicts = `${tree.conflicted} conflict${tree.conflicted === 1 ? '' : 's'}`;
+    const additionalChanges = tree.staged + tree.unstaged + tree.untracked > 0
+      || (tree.changedFiles !== undefined && tree.changedFiles > tree.conflicted);
+    return additionalChanges ? `${conflicts} · Changes` : conflicts;
+  }
   return tree.clean ? 'Clean' : 'Changes';
+}
+
+export function operationInProgressLabel(operation: Pick<OperationState, 'type'>): string {
+  const name = operation.type === 'cherry-pick'
+    ? 'Cherry-pick'
+    : operation.type[0].toUpperCase() + operation.type.slice(1);
+  return `${name} in progress`;
 }

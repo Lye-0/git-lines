@@ -58,7 +58,7 @@ function compactEventKind(node: GraphNode): string {
 /** Shows the ref movement without expanding the event row's height. */
 export function eventMovementLabel(node: GraphNode): string | undefined {
   const event = node.event;
-  if (!event || (event.type !== 'reset' && event.type !== 'amend')) return undefined;
+  if (!event || (event.type !== 'reset' && event.type !== 'amend' && event.type !== 'rebase')) return undefined;
   const branch = normalizeRefName(node.targetRef ?? event.refName);
   const from = shortOid(event.fromOid);
   const to = shortOid(event.toOid);

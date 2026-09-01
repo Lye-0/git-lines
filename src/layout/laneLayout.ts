@@ -255,10 +255,10 @@ interface PreviousRoute {
 }
 
 /**
- * Reset and amend move a ref away from a commit that may remain reachable
- * only through its reflog.  Keep that old first-parent path as an explicit
- * historical route so it gets its own side lane instead of being claimed by
- * the current branch's ancestry fallback.
+ * Reset, amend, and completed rebase move a ref away from a commit that may
+ * remain reachable only through its reflog. Keep that old first-parent path
+ * as an explicit historical route so it gets its own side lane instead of
+ * being claimed by the current branch's ancestry fallback.
  */
 function previousRoutesFor(events: HistoryEvent[], nodes: GraphNode[], commits: Map<string, GitCommit>): PreviousRoute[] {
   const reflogOids = new Set(nodes
@@ -267,7 +267,7 @@ function previousRoutesFor(events: HistoryEvent[], nodes: GraphNode[], commits: 
   const seenRoots = new Set<string>();
   const routes: PreviousRoute[] = [];
   for (const event of events) {
-    if (event.type !== 'reset' && event.type !== 'amend') continue;
+    if (event.type !== 'reset' && event.type !== 'amend' && event.type !== 'rebase') continue;
     const rootOid = event.fromOid;
     if (!rootOid || !reflogOids.has(rootOid) || seenRoots.has(rootOid)) continue;
     seenRoots.add(rootOid);
@@ -497,7 +497,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     ?.trackId;
   const historicalEventTrackForNode = (node: GraphNode): string | undefined => {
     const event = node.event;
-    if (!event || (event.type !== 'reset' && event.type !== 'amend')) return undefined;
+    if (!event || (event.type !== 'reset' && event.type !== 'amend' && event.type !== 'rebase')) return undefined;
     const destination = nodeByOid.get(event.toOid);
     const historicalRoute = previousRoutes.find((route) => route.oids.has(event.toOid));
     const destinationTrackId = trackByOid.get(event.toOid) ?? historicalRoute?.candidate.id;

@@ -192,11 +192,39 @@ describe('graph fact builder', () => {
     expect(oldNode?.previousRoute).toBe(false);
   });
 
-  it('keeps operation relationships separate from parent edges', () => {
+  it('marks the old tip of a completed rebase as PREVIOUS without graying the new route', () => {
+    const facts = buildGraphFacts({
+      ...snapshot,
+      commits: [
+        { oid: oid('n'), parentOids: [oid('b')], subject: 'rebased feature', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        ...snapshot.commits,
+        { oid: oid('o'), parentOids: [oid('a')], subject: 'old feature', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      ],
+      refs: [
+        { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('b') },
+        { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: oid('n') },
+      ],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('n'), branch: 'feature' }],
+      historyEvents: [{ id: 'history:rebase:5:n', type: 'rebase', refName: 'refs/heads/feature', fromOid: oid('o'), toOid: oid('n'), timestamp: 5, subject: 'rebase (finish): refs/heads/feature onto ' + oid('b') }],
+      visibleCommitCount: 4,
+    });
+    const oldNode = facts.nodes.find((node) => node.oid === oid('o'));
+    const newNode = facts.nodes.find((node) => node.oid === oid('n'));
+    const eventNode = facts.nodes.find((node) => node.id === 'history:rebase:5:n');
+
+    expect(oldNode).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
+    expect(newNode).toMatchObject({ kind: 'commit', previousRoute: false });
+    expect(eventNode).toMatchObject({ kind: 'history-event', historicalEvent: false, anchorCommitId: `commit:${oid('n')}` });
+  });
+
+  it('attaches an in-progress operation to Working Tree and keeps source edges separate from parents', () => {
     const operationSnapshot = { ...snapshot, operations: [{ type: 'cherry-pick' as const, headOid: oid('b'), sourceOids: [oid('a')] }] };
     const facts = buildGraphFacts(operationSnapshot);
-    expect(facts.nodes.some((node) => node.kind === 'operation')).toBe(true);
-    expect(facts.edges.some((edge) => edge.type === 'operation')).toBe(true);
+    const working = facts.nodes.find((node) => node.kind === 'working-tree');
+    expect(facts.nodes.some((node) => node.kind === 'operation')).toBe(false);
+    expect(working?.operation).toEqual(operationSnapshot.operations[0]);
+    expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'working-tree', fromNodeId: working?.id, toNodeId: `commit:${oid('b')}` }));
+    expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'operation', fromNodeId: working?.id, toNodeId: `commit:${oid('a')}` }));
     expect(facts.edges.filter((edge) => edge.type === 'parent')).toHaveLength(1);
   });
 

@@ -1,12 +1,36 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import type { OperationType, RepositorySnapshot } from '../../src/git/gitTypes.js';
 import { GitClient } from '../../src/git/gitClient.js';
 import { buildGraphFacts } from '../../src/model/graphBuilder.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { HISTORICAL_ROUTE_COLOR } from '../../src/utils/color.js';
 import { createGraphColorResolver } from '../../webview/src/components/graphColor';
 import { commitFixture, createGitFixture } from '../fixtures/gitFixture.js';
+
+function commitText(fixture: ReturnType<typeof createGitFixture>, file: string, contents: string, message: string, date: string): void {
+  fs.writeFileSync(path.join(fixture.root, file), contents);
+  fixture.run(['add', file]);
+  fixture.run(['commit', '-m', message], { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
+}
+
+function assertWorkingTreeOperation(snapshot: RepositorySnapshot, type: OperationType): void {
+  const facts = buildGraphFacts(snapshot, { showReflog: false });
+  const workingNodes = facts.nodes.filter((node) => node.kind === 'working-tree');
+  expect(workingNodes).toHaveLength(1);
+  expect(facts.nodes.filter((node) => node.kind === 'operation')).toHaveLength(0);
+  const working = workingNodes[0];
+  expect(working?.operation?.type).toBe(type);
+  const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+  expect(layout.nodes.filter((node) => node.kind === 'working-tree')).toHaveLength(1);
+  expect(layout.nodes.filter((node) => node.kind === 'operation')).toHaveLength(0);
+  for (const sourceOid of working?.operation?.sourceOids ?? []) {
+    const source = facts.nodes.find((node) => node.oid === sourceOid);
+    if (!source) continue;
+    expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'operation', fromNodeId: working?.id, toNodeId: source.id }));
+  }
+}
 
 describe('GitClient integration fixture', () => {
   let fixture: ReturnType<typeof createGitFixture> | undefined;
@@ -67,6 +91,106 @@ describe('GitClient integration fixture', () => {
     snapshot = await new GitClient().readSnapshot(fixture.root, 30, false);
     expect(snapshot.operations.some((operation) => operation.type === 'merge')).toBe(true);
     expect(snapshot.workingTrees[0]?.conflicted).toBeGreaterThan(0);
+    assertWorkingTreeOperation(snapshot, 'merge');
+  });
+
+  it('represents a conflicted cherry-pick as one Working Tree with a direct source edge', async () => {
+    fixture = createGitFixture();
+    commitText(fixture, 'conflict.txt', 'base\n', 'base', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'source']);
+    commitText(fixture, 'conflict.txt', 'source\n', 'source change', '2026-08-27T10:00:00+09:00');
+    const sourceOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['switch', 'main']);
+    commitText(fixture, 'conflict.txt', 'main\n', 'main change', '2026-08-27T11:00:00+09:00');
+    try { fixture.run(['cherry-pick', sourceOid]); } catch { /* expected conflict exit */ }
+
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 30, false);
+    expect(snapshot.operations).toContainEqual(expect.objectContaining({ type: 'cherry-pick', sourceOids: [sourceOid] }));
+    expect(snapshot.workingTrees[0]?.conflicted).toBeGreaterThan(0);
+    assertWorkingTreeOperation(snapshot, 'cherry-pick');
+  });
+
+  it('represents a conflicted rebase as one detached Working Tree', async () => {
+    fixture = createGitFixture();
+    commitText(fixture, 'conflict.txt', 'base\n', 'base', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'feature']);
+    commitText(fixture, 'conflict.txt', 'feature\n', 'feature change', '2026-08-27T10:00:00+09:00');
+    fixture.run(['switch', 'main']);
+    commitText(fixture, 'conflict.txt', 'main\n', 'main change', '2026-08-27T11:00:00+09:00');
+    fixture.run(['switch', 'feature']);
+    try { fixture.run(['rebase', 'main']); } catch { /* expected conflict exit */ }
+
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 30, false);
+    expect(snapshot.operations.some((operation) => operation.type === 'rebase')).toBe(true);
+    expect(snapshot.workingTrees[0]).toMatchObject({ detached: true, conflicted: expect.any(Number) });
+    expect(snapshot.workingTrees[0]?.conflicted).toBeGreaterThan(0);
+    assertWorkingTreeOperation(snapshot, 'rebase');
+  });
+
+  it('coalesces completed rebase reflogs into one branch event and a historical old route', async () => {
+    fixture = createGitFixture();
+    commitText(fixture, 'conflict.txt', 'base\n', 'base', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'feature']);
+    commitText(fixture, 'conflict.txt', 'feature\n', 'feature change', '2026-08-27T10:00:00+09:00');
+    const oldTip = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['switch', 'main']);
+    commitText(fixture, 'conflict.txt', 'main\n', 'main change', '2026-08-27T11:00:00+09:00');
+    fixture.run(['switch', 'feature']);
+    try { fixture.run(['rebase', 'main']); } catch { /* expected conflict exit */ }
+
+    let snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    expect(snapshot.operations.some((operation) => operation.type === 'rebase')).toBe(true);
+    expect(snapshot.historyEvents.filter((event) => event.type === 'rebase')).toEqual([]);
+
+    fs.writeFileSync(path.join(fixture.root, 'conflict.txt'), 'resolved\n');
+    fixture.run(['add', 'conflict.txt']);
+    fixture.run(['rebase', '--continue'], { GIT_EDITOR: 'true' });
+    const newTip = fixture.run(['rev-parse', 'HEAD']).trim();
+    expect(newTip).not.toBe(oldTip);
+
+    snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    const rebaseEvents = snapshot.historyEvents.filter((event) => event.type === 'rebase');
+    expect(rebaseEvents).toHaveLength(1);
+    expect(rebaseEvents[0]).toMatchObject({ refName: 'refs/heads/feature', fromOid: oldTip, toOid: newTip });
+    expect(rebaseEvents.some((event) => event.refName === 'HEAD')).toBe(false);
+
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    const oldNode = facts.nodes.find((node) => node.oid === oldTip);
+    const newNode = facts.nodes.find((node) => node.oid === newTip);
+    const event = rebaseEvents[0];
+    const eventNode = event ? facts.nodes.find((node) => node.id === event.id) : undefined;
+    expect(oldNode).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
+    expect(newNode).toMatchObject({ kind: 'commit', previousRoute: false });
+    expect(eventNode).toMatchObject({ kind: 'history-event', historicalEvent: false, targetRef: 'refs/heads/feature' });
+
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    const oldLayoutNode = layout.nodes.find((node) => node.oid === oldTip);
+    const newLayoutNode = layout.nodes.find((node) => node.oid === newTip);
+    const working = layout.nodes.find((node) => node.kind === 'working-tree');
+    const oldTrack = layout.tracks.find((track) => track.id === oldLayoutNode?.trackId);
+    const newTrack = layout.tracks.find((track) => track.id === newLayoutNode?.trackId);
+    const layoutEvent = event ? layout.nodes.find((node) => node.id === event.id) : undefined;
+    expect(oldTrack?.family).toBe('historical');
+    expect(newTrack?.family).toBe('feature');
+    expect(oldTrack?.color).toBe(HISTORICAL_ROUTE_COLOR);
+    expect(newTrack?.color).not.toBe(HISTORICAL_ROUTE_COLOR);
+    expect(layoutEvent?.trackId).toBe(newLayoutNode?.trackId);
+    expect(working?.workingTree).toMatchObject({ branch: 'feature', headOid: newTip, clean: true });
+    expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'working-tree', fromNodeId: working?.id, toNodeId: newLayoutNode?.id }));
+  });
+
+  it('represents a conflicted revert as one Working Tree with the operation attached', async () => {
+    fixture = createGitFixture();
+    commitText(fixture, 'conflict.txt', 'base\n', 'base', '2026-08-27T09:00:00+09:00');
+    commitText(fixture, 'conflict.txt', 'target\n', 'commit to revert', '2026-08-27T10:00:00+09:00');
+    const targetOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    commitText(fixture, 'conflict.txt', 'later\n', 'later change', '2026-08-27T11:00:00+09:00');
+    try { fixture.run(['revert', targetOid]); } catch { /* expected conflict exit */ }
+
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 30, false);
+    expect(snapshot.operations.some((operation) => operation.type === 'revert')).toBe(true);
+    expect(snapshot.workingTrees[0]?.conflicted).toBeGreaterThan(0);
+    assertWorkingTreeOperation(snapshot, 'revert');
   });
 
   it('keeps an object-backed reset tip as a reflog-only commit with real parents', async () => {

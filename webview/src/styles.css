@@ -121,6 +121,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .row-history-event .row-kind, .row-fast-forward-event .row-kind { color: var(--graph-accent); }
 .row-history-event .event-subject, .row-fast-forward-event .event-subject { color: var(--row-track-color, var(--graph-accent)); font-weight: 500; }
 .row-working-tree .subject, .row-operation .subject { color: #e3a86b; font-weight: 600; }
+.working-operation { min-width: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: color-mix(in srgb, #e3a86b 58%, var(--graph-muted)); font-size: 12px; font-weight: 500; }
 .row-working-tree .row-content, .row-operation .row-content { width: fit-content; max-width: 100%; background: color-mix(in srgb, #e3a86b 4%, transparent); }
 .row-working-tree .row-content.has-change-stats { width: min(100%, var(--changes-column-content-width, 1413px)); }
 .secondary-worktree { opacity: .78; }
@@ -134,6 +135,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .detail-heading { min-width: 0; }
 .eyebrow { text-transform: uppercase; letter-spacing: .08em; color: var(--graph-muted); font-size: 10px; }
 .detail-header h2 { margin-top: 6px; font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
+.working-operation-detail { margin-top: 7px; color: color-mix(in srgb, #e3a86b 62%, var(--graph-muted)); font-size: 12px; }
 .detail-hash-row { display: flex; align-items: center; gap: 9px; margin-top: 8px; }
 .detail-hash-row code { color: var(--graph-muted); }
 .copy-button { color: var(--graph-accent); border: 0; background: transparent; padding: 2px 0; cursor: pointer; font-size: 11px; }
@@ -156,6 +158,12 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .detail-parent-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .detail-parent-list code { color: var(--graph-muted); }
 .detail-section { border-top: 1px solid var(--graph-border); margin-top: 18px; padding-top: 15px; }
+.detail-source-section { flex: 0 0 auto; min-height: 0; }
+.detail-source-commits { display: grid; gap: 3px; list-style: none; margin: 10px 0 0; padding: 0; max-height: 180px; overflow: auto; }
+.detail-source-commit { display: flex; min-width: 0; align-items: baseline; gap: 8px; padding: 4px 0; }
+.detail-source-commit code { flex: 0 0 auto; color: var(--graph-muted); }
+.detail-source-commit span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-operation-detail { margin-top: 10px; color: var(--graph-muted); font-size: 11px; overflow-wrap: anywhere; }
 .detail-files-section { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .detail-description { flex: 0 0 auto; }
 .detail-section-header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }

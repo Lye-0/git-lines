@@ -29,7 +29,7 @@ export interface GraphNode {
   syncState?: GraphSyncState;
   /** Commit belongs to the old route produced by a reset or amend event. */
   previousRoute?: boolean;
-  /** A reset/amend event whose destination is currently on a historical route. */
+  /** A ref-move event whose destination is currently on a historical route. */
   historicalEvent?: boolean;
   event?: HistoryEvent;
   /** Commit node reached by a ref event. Ref events do not participate in the commit DAG. */

@@ -1,4 +1,4 @@
-import type { RepositorySnapshot } from '../git/gitTypes.js';
+import type { OperationState, RepositorySnapshot } from '../git/gitTypes.js';
 import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState } from './graphModel.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
@@ -56,7 +56,7 @@ function previousRouteSelection(snapshot: RepositorySnapshot, commits: Map<strin
   const commitOids = new Set<string>();
   const eventIds = new Set<string>();
   for (const event of snapshot.historyEvents) {
-    if (event.type !== 'reset' && event.type !== 'amend') continue;
+    if (event.type !== 'reset' && event.type !== 'amend' && event.type !== 'rebase') continue;
     const routeOids = new Set<string>();
     let current = event.fromOid;
     const visited = new Set<string>();
@@ -100,6 +100,14 @@ function primaryBranch(snapshot: RepositorySnapshot, configured?: string | null)
   const current = snapshot.workingTrees.find((tree) => !tree.inaccessible && tree.branch)?.branch;
   if (current && snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === current)) return current;
   return snapshot.refs.filter((ref) => ref.type === 'local').map((ref) => normalizeRefName(ref.fullName)).sort()[0];
+}
+
+function operationForWorkingTree(tree: RepositorySnapshot['workingTrees'][number], index: number, operations: OperationState[]): OperationState | undefined {
+  const sameHead = tree.headOid ? operations.find((operation) => operation.headOid === tree.headOid) : undefined;
+  // OperationStateReader currently reads the repository's active operation
+  // files, so the main worktree is the only safe fallback when Git cannot
+  // provide a matching HEAD (for example during an unborn/rebase state).
+  return sameHead ?? (index === 0 ? operations[0] : undefined);
 }
 
 export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuilderOptions = {}): GraphFactModel {
@@ -153,6 +161,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     }
   }
   for (const [index, tree] of snapshot.workingTrees.entries()) {
+    const operation = operationForWorkingTree(tree, index, snapshot.operations);
     const node: GraphNode = {
       id: `working:${tree.worktreeId}`,
       kind: 'working-tree',
@@ -162,27 +171,18 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       oid: tree.headOid,
       timestamp: Number.MAX_SAFE_INTEGER - index,
       workingTree: tree,
+      operation,
     };
     addNode(node);
     const headNode = tree.headOid ? nodeByOid.get(tree.headOid) : undefined;
     if (headNode) edges.push({ id: `working:${tree.worktreeId}:${headNode.id}`, type: 'working-tree', fromNodeId: node.id, toNodeId: headNode.id });
-  }
-  for (const [index, operation] of snapshot.operations.entries()) {
-    const node: GraphNode = {
-      id: `operation:${operation.type}:${index}`,
-      kind: 'operation',
-      label: `${operation.type[0].toUpperCase()}${operation.type.slice(1)} in progress`,
-      refIds: [],
-      refBadges: [],
-      oid: operation.headOid,
-      timestamp: Number.MAX_SAFE_INTEGER - 100 - index,
-      operation,
-    };
-    addNode(node);
-    if (operation.headOid && nodeByOid.has(operation.headOid)) edges.push({ id: `${node.id}:head`, type: 'operation', fromNodeId: node.id, toNodeId: nodeByOid.get(operation.headOid)!.id, label: 'current HEAD' });
-    for (const sourceOid of operation.sourceOids) {
+    if (!operation) continue;
+    // The in-progress operation is an aspect of this Working Tree, not a
+    // second current-state node. Keep each source relationship visible as a
+    // dotted edge, but make the Working Tree the direct source of that edge.
+    for (const sourceOid of operation?.sourceOids ?? []) {
       const source = nodeByOid.get(sourceOid);
-      if (source) edges.push({ id: `${node.id}:source:${sourceOid}`, type: 'operation', fromNodeId: node.id, toNodeId: source.id, label: 'source' });
+      if (source) edges.push({ id: `${node.id}:operation:${operation.type}:source:${sourceOid}`, type: 'operation', fromNodeId: node.id, toNodeId: source.id, label: 'operation source' });
     }
   }
   const events = options.showReflog === false
@@ -207,7 +207,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       timestamp: event.timestamp,
       subject: event.subject,
       event,
-      historicalEvent: (event.type === 'reset' || event.type === 'amend') && previousRouteOids.has(event.toOid),
+      historicalEvent: (event.type === 'reset' || event.type === 'amend' || event.type === 'rebase') && previousRouteOids.has(event.toOid),
       anchorCommitId: target.id,
       targetRef: event.refName,
     };

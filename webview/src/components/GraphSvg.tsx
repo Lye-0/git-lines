@@ -18,7 +18,7 @@ function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): Re
   return <text className="node-symbol node-symbol-text" x="0" y="1" textAnchor="middle" fill="currentColor">{symbol}</text>;
 }
 
-export function GraphSvg({ layout, width, height, selected }: { layout: GraphLayout; width: number; height?: number; selected?: string }) {
+export function GraphSvg({ layout, width, height, selected, selectedWorkingTree }: { layout: GraphLayout; width: number; height?: number; selected?: string; selectedWorkingTree?: string }) {
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
   const edgeById = new Map(layout.edges.map((edge) => [edge.id, edge]));
   const colorResolver = createGraphColorResolver(layout);
@@ -77,7 +77,7 @@ export function GraphSvg({ layout, width, height, selected }: { layout: GraphLay
     const track = colorResolver.colorForNode(node);
     const refEvent = isRefEvent(node);
     const title = refEvent ? eventTooltip(node) : node.label ?? node.subject;
-    const isSelected = isSelectedCommit(node, selected);
+    const isSelected = isSelectedCommit(node, selected) || node.id === selectedWorkingTree;
     const usesVectorSymbol = node.kind === 'commit' || node.kind === 'working-tree' || node.kind === 'operation' || refEvent;
     const nodeMaskRadius = node.kind === 'reflog-commit' ? 8 : 6;
     const syncGradient = unsyncedGradientByNodeId.get(node.id);

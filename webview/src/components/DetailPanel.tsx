@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import type { GitCommit, OperationState, WorkingTreeState } from '../../../src/git/gitTypes';
 import type { DetailMessage } from '../types';
 import { commitDescription, detailFileChanges, shortHash } from './detailPresentation';
 import type { DetailRefBadge } from './detailPresentation';
+import { operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import type { HistoryEvent } from '../../../src/git/gitTypes';
 import { eventDetailFields, eventDetailTitle } from './eventDetailPresentation';
 
@@ -10,8 +12,66 @@ function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'unknown';
 }
 
-export function DetailPanel({ detail, event, title, routeName, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; title?: string; routeName?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
+export function DetailPanel({ detail, event, workingTree, operation, sourceCommits = [], title, routeName, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; workingTree?: WorkingTreeState; operation?: OperationState; sourceCommits?: GitCommit[]; title?: string; routeName?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  if (workingTree) {
+    const summary = summarizeWorkingTree(workingTree);
+    const operationLabel = operation ? operationInProgressLabel(operation) : undefined;
+    const location = workingTree.detached ? 'HEAD (detached)' : workingTree.branch ?? 'No branch';
+    return <aside className="detail-panel" aria-label="Working Tree details">
+      <div className="detail-header">
+        <div className="detail-heading">
+          <span className="eyebrow">Working Tree</span>
+          <h2>Working Tree</h2>
+          {operationLabel && <div className="working-operation-detail" title={operationLabel}>{`(+ ${operationLabel})`}</div>}
+        </div>
+        <button type="button" className="close-button" onClick={onClose} aria-label="Close Working Tree details">×</button>
+      </div>
+
+      <section className="detail-change-summary" aria-label="Working Tree changes">
+        <div className="detail-change-stat additions"><strong>+{summary.additions}</strong><span>additions</span></div>
+        <div className="detail-change-stat deletions"><strong>−{summary.deletions}</strong><span>deletions</span></div>
+        <div className="detail-change-stat files"><strong>{summary.files}</strong><span>files</span></div>
+      </section>
+
+      <dl className="detail-meta">
+        <div>
+          <dt>Branch / Ref</dt>
+          <dd className="detail-route-value" title={workingTree.branch}>{location}</dd>
+        </div>
+        <div>
+          <dt>Status</dt>
+          <dd>{workingTreeStateLabel(workingTree)}</dd>
+        </div>
+        <div>
+          <dt>HEAD</dt>
+          <dd>{workingTree.headOid ? <code title={workingTree.headOid}>{shortHash(workingTree.headOid, 12)}</code> : 'No commit'}</dd>
+        </div>
+        <div>
+          <dt>Path</dt>
+          <dd className="detail-route-value" title={workingTree.path}>{workingTree.path}</dd>
+        </div>
+        {operationLabel && <div>
+          <dt>Operation</dt>
+          <dd className="working-operation-detail" title={operationLabel}>{operationLabel}</dd>
+        </div>}
+      </dl>
+
+      {operation && <section className="detail-section detail-source-section" aria-labelledby="operation-source-heading">
+        <div className="detail-section-header"><h3 id="operation-source-heading">Source commits</h3><span>{operation.sourceOids.length}</span></div>
+        {operation.sourceOids.length ? <ul className="detail-source-commits">
+          {operation.sourceOids.map((oid) => {
+            const source = sourceCommits.find((commit) => commit.oid === oid);
+            return <li className="detail-source-commit" key={oid}>
+              <code title={oid}>{shortHash(oid, 12)}</code>
+              {source && <span title={source.subject}>{source.subject}</span>}
+            </li>;
+          })}
+        </ul> : <p className="detail-empty">No source commit recorded</p>}
+        {operation.detail && <p className="detail-operation-detail" title={operation.detail}>{operation.detail}</p>}
+      </section>}
+    </aside>;
+  }
   if (event) {
     const fields = eventDetailFields(event);
     return <aside className="detail-panel" aria-label="Git operation details">

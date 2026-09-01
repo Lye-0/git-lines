@@ -49,6 +49,15 @@ describe('ref event presentation', () => {
     expect(eventMainLabel(amend)).toBe('Amend · main: aaaaaaaa → bbbbbbbb');
   });
 
+  it('shows completed rebase movement in the single event row', () => {
+    const rebase = eventNode({ id: 'history:rebase:1:b', type: 'rebase', operation: undefined });
+    rebase.kind = 'history-event';
+    rebase.label = 'Rebase · feature';
+    rebase.targetRef = 'refs/heads/feature';
+    expect(eventMovementLabel(rebase)).toBe('Rebase · feature: aaaaaaaa → bbbbbbbb');
+    expect(eventMainLabel(rebase)).toBe('Rebase · feature: aaaaaaaa → bbbbbbbb');
+  });
+
   it('compacts only the event label when the graph area is narrow', () => {
     const node = eventNode();
     expect(eventLabelForWidth(node, 120, 24)).toBe('FF · +3');

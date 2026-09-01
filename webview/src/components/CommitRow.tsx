@@ -2,7 +2,7 @@ import React, { type CSSProperties } from 'react';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
-import { summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
+import { operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import { commitChangeStats } from './commitStatsPresentation';
 import { commitMetaText, commitRowPresentation } from './commitRowPresentation';
 import { ChangeStatsGrid } from './ChangeStatsGrid';
@@ -24,14 +24,15 @@ function relativeTime(timestamp: number | undefined): string | undefined {
   return future ? `in ${value}` : `${value} ago`;
 }
 
-function workingSummary(node: GraphNode): { title: string; detail: string } | undefined {
+function workingSummary(node: GraphNode): { title: string; detail: string; operation?: string } | undefined {
   const tree = node.workingTree;
   if (!tree) return undefined;
   const location = tree.detached ? 'HEAD (detached)' : tree.branch ? `${tree.branch} ★` : 'No branch';
   const state = workingTreeStateLabel(tree);
   const title = tree.mainWorktree === false ? 'Worktree' : 'Working Tree';
   const pathDetail = tree.mainWorktree === false ? ` · ${tree.path}` : '';
-  return { title, detail: `${location} · ${state}${pathDetail}` };
+  const operation = node.operation ? operationInProgressLabel(node.operation) : undefined;
+  return { title, detail: `${location} · ${state}${pathDetail}`, operation };
 }
 
 function operationSummary(node: GraphNode): string | undefined {
@@ -39,8 +40,9 @@ function operationSummary(node: GraphNode): string | undefined {
   return node.operation.detail || (node.operation.sourceOids.length ? `${node.operation.sourceOids.length} source commit${node.operation.sourceOids.length === 1 ? '' : 's'}` : 'Waiting for Git to finish');
 }
 
-export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true }: { node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean }) {
+export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, onSelectWorkingTree, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true }: { node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; onSelectWorkingTree?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean }) {
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
+  const isSelectableWorkingTree = node.kind === 'working-tree' && Boolean(onSelectWorkingTree);
   const working = workingSummary(node);
   const operation = operationSummary(node);
   const refEvent = isRefEvent(node);
@@ -59,6 +61,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
   const commitMeta = node.commit
     ? commitMetaText(node.commit.oid, routeName, relativeTime(node.commit.committerDate))
     : undefined;
+  const ariaLabel = [title, working?.operation ? `+ ${working.operation}` : undefined, subtitle, commitMeta].filter(Boolean).join(', ');
   const workingStats = node.kind === 'working-tree' && showWorkingTreeStats && node.workingTree && node.workingTree.mainWorktree !== false
     ? summarizeWorkingTree(node.workingTree)
     : undefined;
@@ -96,6 +99,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
           <div className="row-heading">
             {rowPresentation.previousBadgeLabel && <span className="previous-badge" title="Previous route">{rowPresentation.previousBadgeLabel}</span>}
             <span className={`subject${previousRoute ? ' previous-subject' : ''}`} title={node.subject ?? node.label}>{title}</span>
+            {working?.operation && <span className="working-operation" title={working.operation}>{`(+ ${working.operation})`}</span>}
             {badges.length > 0 && <div className="row-meta">
               {badges.map((badge) => {
                 const track = tracks.find((candidate) => candidate.refNames.includes(badge.fullName));
@@ -114,6 +118,6 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
   const secondaryWorktree = node.workingTree?.mainWorktree === false;
   const compact = rowHeight <= 32;
   return <div className={`commit-row row-${node.kind}${previousRoute ? ' previous-row' : ''}${compact ? ' compact-row' : ''}${secondaryWorktree ? ' secondary-worktree' : ''}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
-    {isSelectable ? <button type="button" className="row-button" aria-label={`${title}${commitMeta ? `, ${commitMeta}` : ''}`} aria-pressed={selected} onClick={() => onSelect(node.oid!)}>{content}</button> : content}
+    {isSelectableWorkingTree ? <button type="button" className="row-button" aria-label={ariaLabel} aria-pressed={selected} onClick={() => onSelectWorkingTree!(node.id)}>{content}</button> : isSelectable ? <button type="button" className="row-button" aria-label={ariaLabel} aria-pressed={selected} onClick={() => onSelect(node.oid!)}>{content}</button> : content}
   </div>;
 }

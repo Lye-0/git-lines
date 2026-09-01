@@ -43,6 +43,15 @@ function isExplicitRebase(subject: string): boolean {
   return /^rebase(?:\s|\(|:|$)/i.test(subject.trim());
 }
 
+function isCompletedRebase(subject: string, refName: string): boolean {
+  // A completed rebase writes the authoritative old-tip -> new-tip movement
+  // to the rebased local branch.  HEAD also receives start/continue/finish
+  // entries while Git replays commits; those are implementation details and
+  // must not become separate user-facing events.
+  return refName.startsWith('refs/heads/')
+    && /^rebase\s+\(finish\):\s+refs\/heads\/\S+(?:\s|$)/i.test(subject.trim());
+}
+
 function isExplicitForceUpdate(subject: string): boolean {
   const trimmed = subject.trim();
   return !/^commit\b/i.test(trimmed) && /\bforced?[- ]update\b|\bforce[- ]update\b/i.test(trimmed);
@@ -61,7 +70,7 @@ function classify(subject: string, fromOid: string | undefined, toOid: string, r
   if (isExplicitFastForward(subject) && fromOid && commits.get(toOid)?.parentOids.length === 1 && isAncestor(fromOid, toOid, commits)) return 'fast-forward';
   if (isExplicitReset(subject)) return 'reset';
   if (isExplicitAmend(subject)) return 'amend';
-  if (isExplicitRebase(subject)) return 'rebase';
+  if (isExplicitRebase(subject) && isCompletedRebase(subject, refName)) return 'rebase';
   if (isExplicitForceUpdate(subject)) return 'force-update';
   if (isExplicitBranchMove(subject) && refName.startsWith('refs/heads/')) return 'branch-move';
   return undefined;

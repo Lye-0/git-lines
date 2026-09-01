@@ -80,6 +80,34 @@ describe('history event resolver', () => {
     expect(resolveHistoryEvents([entry('rebase (finish): refs/heads/main', oid('b'), oid('a'))], commits)[0].type).toBe('rebase');
   });
 
+  it('keeps only the completed branch rebase movement and drops internal HEAD entries', () => {
+    const oldTip = commit('o', [oid('a')], 2);
+    const replayBase = commit('c', [oid('a')], 3);
+    const newTip = commit('n', [replayBase.oid], 4);
+    const events = resolveHistoryEvents([
+      entry('rebase (finish): refs/heads/feature onto ' + replayBase.oid, oldTip.oid, newTip.oid, 'refs/heads/feature', 'feature@{0}', 5_000),
+      entry('rebase (finish): returning to refs/heads/feature', replayBase.oid, newTip.oid, 'HEAD', 'HEAD@{0}', 5_000),
+      entry('rebase (continue): feature change', replayBase.oid, newTip.oid, 'HEAD', 'HEAD@{1}', 4_999),
+      entry('rebase (start): checkout main', oldTip.oid, replayBase.oid, 'HEAD', 'HEAD@{2}', 4_998),
+    ], [...commits, oldTip, replayBase, newTip]);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'rebase',
+      refName: 'refs/heads/feature',
+      fromOid: oldTip.oid,
+      toOid: newTip.oid,
+      rawReflogMessage: 'rebase (finish): refs/heads/feature onto ' + replayBase.oid,
+    });
+  });
+
+  it('does not expose an unfinished rebase start as a user-facing history event', () => {
+    const events = resolveHistoryEvents([
+      entry('rebase (start): checkout main', oid('b'), oid('a'), 'HEAD'),
+    ], commits);
+    expect(events).toEqual([]);
+  });
+
   it('does not duplicate ordinary commit creation in the reflog overlay', () => {
     expect(resolveHistoryEvents([entry('commit: feature', oid('a'), oid('b'))], commits)).toEqual([]);
   });
