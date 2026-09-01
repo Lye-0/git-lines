@@ -120,6 +120,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .row-history-event .event-row-content:hover::before, .row-fast-forward-event .event-row-content:hover::before { background: color-mix(in srgb, var(--graph-text) 6%, transparent); }
 .row-history-event .row-kind, .row-fast-forward-event .row-kind { color: var(--graph-accent); }
 .row-history-event .event-subject, .row-fast-forward-event .event-subject { color: var(--row-track-color, var(--graph-accent)); font-weight: 500; }
+.event-revert-target { text-decoration: line-through; text-decoration-thickness: 1px; text-decoration-color: currentColor; }
 .row-working-tree .subject, .row-operation .subject { color: #e3a86b; font-weight: 600; }
 .working-operation { min-width: 0; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: color-mix(in srgb, #e3a86b 58%, var(--graph-muted)); font-size: 12px; font-weight: 500; }
 .row-working-tree .row-content, .row-operation .row-content { width: fit-content; max-width: 100%; background: color-mix(in srgb, #e3a86b 4%, transparent); }

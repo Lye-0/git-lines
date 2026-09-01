@@ -191,6 +191,8 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   for (const event of events) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
+    const eventStart = event.eventStartOid ? nodeByOid.get(event.eventStartOid) : undefined;
+    const annotationSource = eventStart ?? target;
     const isFastForward = event.type === 'fast-forward';
     const label = eventLabel(event.type, event.refName, event.sourceLabel);
     const affectedRefs = event.affectedRefs?.length ? event.affectedRefs : [event.refName];
@@ -209,12 +211,15 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       event,
       historicalEvent: (event.type === 'reset' || event.type === 'amend' || event.type === 'rebase') && previousRouteOids.has(event.toOid),
       anchorCommitId: target.id,
+      eventBoundaryCommitId: event.boundaryOid ? nodeByOid.get(event.boundaryOid)?.id : undefined,
+      eventStartCommitId: annotationSource.id,
       targetRef: event.refName,
     };
     addNode(node);
-    // A ref move is a timeline fact, not a commit relationship.  Keep one
-    // visual connector to the destination while leaving parent edges intact.
-    edges.push({ id: `${event.id}:annotation`, type: 'history-event', fromNodeId: target.id, toNodeId: node.id, label: event.sourceLabel, annotation: 'ref-event' });
+    // A ref move is a timeline fact, not a commit relationship. Keep one
+    // visual connector from the new-history side while leaving parent edges
+    // intact; a multi-commit rebase uses the oldest rebuilt commit here.
+    edges.push({ id: `${event.id}:annotation`, type: 'history-event', fromNodeId: annotationSource.id, toNodeId: node.id, label: event.sourceLabel, annotation: 'ref-event' });
   }
   const shallowNodes = snapshot.shallowBoundaryOids.map((oid) => nodeByOid.get(oid)).filter((node): node is GraphNode => Boolean(node));
   for (const node of shallowNodes) {

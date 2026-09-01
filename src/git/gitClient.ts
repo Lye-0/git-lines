@@ -74,7 +74,20 @@ export class GitClient {
         commits.push(commit);
       }
     }
-    const historyEvents = includeReflog ? resolveHistoryEvents(reflogs, commits) : [];
+    let historyEvents = includeReflog ? resolveHistoryEvents(reflogs, commits) : [];
+    if (includeReflog && historyEvents.length) {
+      const operationCommitOids = [...new Set(historyEvents
+        .filter((event) => event.type === 'cherry-pick' || event.type === 'revert')
+        .map((event) => event.toOid))];
+      const bodies = await this.readCommitBodies(repository.root, operationCommitOids);
+      if (bodies.size) {
+        for (const commit of commits) {
+          const body = bodies.get(commit.oid);
+          if (body !== undefined) commit.body = body;
+        }
+        historyEvents = resolveHistoryEvents(reflogs, commits);
+      }
+    }
     return {
       repository,
       commits,
@@ -161,6 +174,24 @@ export class GitClient {
       }
     }
     return commits;
+  }
+
+  private async readCommitBodies(root: string, oids: string[]): Promise<Map<string, string>> {
+    const validOids = [...new Set(oids)].filter((oid) => /^[0-9a-f]{7,64}$/i.test(oid));
+    if (!validOids.length) return new Map();
+    try {
+      const output = await this.runner.runChecked(['show', '-s', `--format=${gitLogFormat(true)}`, ...validOids], {
+        cwd: root,
+        timeoutMs: this.timeoutMs,
+      });
+      return new Map(parseGitLogNul(output)
+        .filter((commit): commit is GitCommit & { body: string } => commit.body !== undefined)
+        .map((commit) => [commit.oid, commit.body]));
+    } catch {
+      // Event detection must remain available when an object body cannot be
+      // loaded; source/target evidence is optional and never inferred.
+      return new Map();
+    }
   }
 
   private async readRefs(root: string): Promise<GitRef[]> {

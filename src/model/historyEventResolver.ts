@@ -52,6 +52,26 @@ function isCompletedRebase(subject: string, refName: string): boolean {
     && /^rebase\s+\(finish\):\s+refs\/heads\/\S+(?:\s|$)/i.test(subject.trim());
 }
 
+function isCompletedBranchOperation(subject: string, refName: string, operation: 'cherry-pick' | 'revert'): boolean {
+  // A completed operation updates the local branch ref. HEAD may also get a
+  // reflog entry while Git performs the operation, but that entry is an
+  // implementation detail and must not create a second event.
+  if (!refName.startsWith('refs/heads/')) return false;
+  const trimmed = subject.trim();
+  if (operation === 'cherry-pick') {
+    // Git records a completed conflicted cherry-pick as the explicit
+    // `commit (cherry-pick): ...` reflog action. Keep the shorter form for
+    // integrations that expose the action without the commit wrapper.
+    return /^(?:cherry-pick(?:\s|\(|:|$)|commit\s+\(cherry-pick\):)/i.test(trimmed);
+  }
+  // After `revert --continue`, Git 2.x records the branch update as
+  // `commit: Revert "..."`; unlike a broad commit-message search, this exact
+  // canonical reflog subject is restricted to the reflog action and its
+  // generated quoted revert subject. Some integrations expose `revert:` or
+  // `commit (revert):` directly, so accept those explicit forms as well.
+  return /^(?:revert(?:\s|\(|:|$)|commit\s+\(revert\):|commit:\s+Revert\s+["'])/i.test(trimmed);
+}
+
 function isExplicitForceUpdate(subject: string): boolean {
   const trimmed = subject.trim();
   return !/^commit\b/i.test(trimmed) && /\bforced?[- ]update\b|\bforce[- ]update\b/i.test(trimmed);
@@ -71,6 +91,8 @@ function classify(subject: string, fromOid: string | undefined, toOid: string, r
   if (isExplicitReset(subject)) return 'reset';
   if (isExplicitAmend(subject)) return 'amend';
   if (isExplicitRebase(subject) && isCompletedRebase(subject, refName)) return 'rebase';
+  if (isCompletedBranchOperation(subject, refName, 'cherry-pick')) return 'cherry-pick';
+  if (isCompletedBranchOperation(subject, refName, 'revert')) return 'revert';
   if (isExplicitForceUpdate(subject)) return 'force-update';
   if (isExplicitBranchMove(subject) && refName.startsWith('refs/heads/')) return 'branch-move';
   return undefined;
@@ -165,6 +187,107 @@ function bestSubject(entries: ReflogEntry[]): ReflogEntry {
   })[0];
 }
 
+function resolveKnownOid(value: string | undefined, commits: Map<string, GitCommit>): string | undefined {
+  if (!value) return undefined;
+  if (commits.has(value)) return value;
+  const matches = [...commits.keys()].filter((oid) => oid.startsWith(value));
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+function bodyOid(body: string | undefined, pattern: RegExp): string | undefined {
+  if (!body) return undefined;
+  const match = body.replace(/\r\n?/g, '\n').match(pattern);
+  const oid = match?.[1];
+  return oid && /^[0-9a-f]{40,64}$/i.test(oid) ? oid : undefined;
+}
+
+/**
+ * Cherry-pick -x records the source object in the commit body.  This is the
+ * only source evidence used here; subjects, patches, and similar changes are
+ * intentionally not treated as proof.
+ */
+function cherryPickSourceOid(body: string | undefined): string | undefined {
+  return bodyOid(body, /(?:^|\n)\(cherry picked from commit ([0-9a-f]{40,64})\)[ \t]*(?:\n|$)/i);
+}
+
+/** Git's generated Revert commit body contains the exact reverted object. */
+function revertTargetOid(body: string | undefined): string | undefined {
+  return bodyOid(body, /(?:^|\n)This reverts commit ([0-9a-f]{40,64})\.[ \t]*(?:\n|$)/);
+}
+
+function rebaseOntoOid(subject: string, commits: Map<string, GitCommit>): string | undefined {
+  // Git's branch reflog finish entry records the exact onto object.  Resolve
+  // an abbreviated value only when it identifies one known object.
+  const match = /\bonto\s+([0-9a-f]{7,64})\s*$/i.exec(subject.trim());
+  return resolveKnownOid(match?.[1], commits);
+}
+
+function firstParentCommonAncestor(fromOid: string | undefined, toOid: string, commits: Map<string, GitCommit>): string | undefined {
+  if (!fromOid) return undefined;
+  const oldPath = new Set<string>();
+  const oldVisited = new Set<string>();
+  let current: string | undefined = fromOid;
+  while (current && !oldVisited.has(current)) {
+    oldVisited.add(current);
+    const commit = commits.get(current);
+    if (!commit) break;
+    oldPath.add(current);
+    current = commit.parentOids[0];
+  }
+
+  const newVisited = new Set<string>();
+  current = toOid;
+  while (current && !newVisited.has(current)) {
+    newVisited.add(current);
+    if (oldPath.has(current) && current !== toOid) return current;
+    current = commits.get(current)?.parentOids[0];
+  }
+  return undefined;
+}
+
+/**
+ * Resolves the row boundary for an operation from the actual commit graph.
+ * The destination OID remains the ref movement target; this value is the
+ * commit immediately below the newly-created history interval.
+ */
+function boundaryOidFor(group: EventGroup, representative: ReflogEntry, commits: Map<string, GitCommit>): string | undefined {
+  switch (group.type) {
+    case 'reset':
+      return group.toOid;
+    case 'amend':
+    case 'cherry-pick':
+    case 'revert':
+      return commits.get(group.toOid)?.parentOids[0] ?? group.toOid;
+    case 'rebase':
+      return rebaseOntoOid(representative.subject, commits)
+        ?? firstParentCommonAncestor(group.fromOid, group.toOid, commits)
+        ?? group.toOid;
+    default:
+      return undefined;
+  }
+}
+
+function firstChildAboveBoundary(toOid: string, boundaryOid: string | undefined, commits: Map<string, GitCommit>): string | undefined {
+  if (!boundaryOid) return undefined;
+  let current: string | undefined = toOid;
+  const visited = new Set<string>();
+  while (current && !visited.has(current)) {
+    if (current === boundaryOid) return current === toOid ? toOid : undefined;
+    visited.add(current);
+    const parentOid: string | undefined = commits.get(current)?.parentOids[0];
+    if (!parentOid) return undefined;
+    if (parentOid === boundaryOid) return current;
+    current = parentOid;
+  }
+  return undefined;
+}
+
+function eventStartOidFor(group: EventGroup, boundaryOid: string | undefined, commits: Map<string, GitCommit>): string | undefined {
+  if (group.type === 'rebase') return firstChildAboveBoundary(group.toOid, boundaryOid, commits) ?? group.toOid;
+  if (group.type === 'reset' || group.type === 'amend' || group.type === 'cherry-pick' || group.type === 'revert') return group.toOid;
+  return undefined;
+}
+
 /**
  * Resolves only meaningful, Git-proven ref movements and coalesces the
  * duplicate HEAD/local/remote entries emitted by one operation.
@@ -201,14 +324,23 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
       const entriesForGroup = group.entries.slice().sort((a, b) => refPriority(a.refName) - refPriority(b.refName) || a.refName.localeCompare(b.refName));
       const representative = bestSubject(entriesForGroup);
       const affectedRefs = [...new Set(entriesForGroup.map((entry) => entry.refName))];
+      const boundaryOid = boundaryOidFor(group, representative, commitMap);
+      const eventStartOid = eventStartOidFor(group, boundaryOid, commitMap);
+      const operationCommit = commitMap.get(group.toOid);
+      const sourceOid = group.type === 'cherry-pick' ? cherryPickSourceOid(operationCommit?.body) : undefined;
+      const targetOid = group.type === 'revert' ? revertTargetOid(operationCommit?.body) : undefined;
       return {
         id: `history:${group.type}:${group.timestamp}:${group.toOid}`,
         type: group.type,
         refName: entriesForGroup[0].refName,
         fromOid: group.fromOid,
         toOid: group.toOid,
+        ...(boundaryOid ? { boundaryOid } : {}),
+        ...(eventStartOid ? { eventStartOid } : {}),
         timestamp: group.timestamp,
         ...(group.type === 'fast-forward' ? { commitCount: countCommitsBetween(group.fromOid, group.toOid, commitMap.values()), operation: operationName(representative.subject) } : {}),
+        ...(sourceOid ? { sourceOid } : {}),
+        ...(targetOid ? { targetOid } : {}),
         rawReflogMessage: representative.subject,
         sourceLabel: sourceLabel(representative.subject),
         subject: representative.subject,

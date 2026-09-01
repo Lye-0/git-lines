@@ -205,7 +205,7 @@ describe('graph fact builder', () => {
         { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: oid('n') },
       ],
       workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('n'), branch: 'feature' }],
-      historyEvents: [{ id: 'history:rebase:5:n', type: 'rebase', refName: 'refs/heads/feature', fromOid: oid('o'), toOid: oid('n'), timestamp: 5, subject: 'rebase (finish): refs/heads/feature onto ' + oid('b') }],
+      historyEvents: [{ id: 'history:rebase:5:n', type: 'rebase', refName: 'refs/heads/feature', fromOid: oid('o'), toOid: oid('n'), boundaryOid: oid('b'), eventStartOid: oid('n'), timestamp: 5, subject: 'rebase (finish): refs/heads/feature onto ' + oid('b') }],
       visibleCommitCount: 4,
     });
     const oldNode = facts.nodes.find((node) => node.oid === oid('o'));
@@ -214,7 +214,41 @@ describe('graph fact builder', () => {
 
     expect(oldNode).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
     expect(newNode).toMatchObject({ kind: 'commit', previousRoute: false });
-    expect(eventNode).toMatchObject({ kind: 'history-event', historicalEvent: false, anchorCommitId: `commit:${oid('n')}` });
+    expect(eventNode).toMatchObject({
+      kind: 'history-event',
+      historicalEvent: false,
+      anchorCommitId: `commit:${oid('n')}`,
+      eventBoundaryCommitId: `commit:${oid('b')}`,
+      eventStartCommitId: `commit:${oid('n')}`,
+    });
+  });
+
+  it('keeps a completed operation destination separate from its semantic row boundary', () => {
+    const newCommit = { oid: oid('n'), parentOids: [oid('b')], subject: 'new cherry-pick', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 };
+    const facts = buildGraphFacts({
+      ...snapshot,
+      commits: [newCommit, ...snapshot.commits],
+      historyEvents: [{
+        id: 'history:cherry-pick:5:n',
+        type: 'cherry-pick',
+        refName: 'refs/heads/main',
+        fromOid: oid('b'),
+        toOid: oid('n'),
+        boundaryOid: oid('b'),
+        eventStartOid: oid('n'),
+        timestamp: 5,
+        subject: 'cherry-pick: source change',
+      }],
+    });
+    const eventNode = facts.nodes.find((node) => node.id === 'history:cherry-pick:5:n');
+    expect(eventNode).toMatchObject({ anchorCommitId: `commit:${oid('n')}`, eventBoundaryCommitId: `commit:${oid('b')}` });
+    expect(facts.edges).toContainEqual(expect.objectContaining({
+      type: 'history-event',
+      fromNodeId: `commit:${oid('n')}`,
+      toNodeId: 'history:cherry-pick:5:n',
+      annotation: 'ref-event',
+    }));
+    expect(facts.edges.filter((edge) => edge.type === 'parent' && edge.fromNodeId === 'history:cherry-pick:5:n')).toHaveLength(0);
   });
 
   it('attaches an in-progress operation to Working Tree and keeps source edges separate from parents', () => {

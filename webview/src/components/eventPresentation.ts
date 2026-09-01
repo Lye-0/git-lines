@@ -14,6 +14,8 @@ function eventTypeLabel(node: GraphNode): string {
     case 'reset': return 'Reset';
     case 'rebase': return 'Rebase';
     case 'amend': return 'Amend';
+    case 'cherry-pick': return 'Cherry-pick';
+    case 'revert': return 'Revert';
     default: return 'Ref event';
   }
 }
@@ -51,6 +53,8 @@ function compactEventKind(node: GraphNode): string {
     case 'reset': return 'Reset';
     case 'rebase': return 'Rebase';
     case 'amend': return 'Amend';
+    case 'cherry-pick': return 'Cherry-pick';
+    case 'revert': return 'Revert';
     default: return 'Event';
   }
 }
@@ -58,7 +62,17 @@ function compactEventKind(node: GraphNode): string {
 /** Shows the ref movement without expanding the event row's height. */
 export function eventMovementLabel(node: GraphNode): string | undefined {
   const event = node.event;
-  if (!event || (event.type !== 'reset' && event.type !== 'amend' && event.type !== 'rebase')) return undefined;
+  if (!event || !['reset', 'amend', 'rebase', 'cherry-pick', 'revert'].includes(event.type)) return undefined;
+  if (event.type === 'cherry-pick') {
+    const created = shortOid(event.toOid);
+    if (!created) return 'Cherry-pick';
+    const source = shortOid(event.sourceOid);
+    return 'Cherry-pick · ' + (source ? source + ' ' : '') + '→ new ' + created;
+  }
+  if (event.type === 'revert') {
+    const target = shortOid(event.targetOid);
+    return target ? 'Revert · ' + target : 'Revert';
+  }
   const branch = normalizeRefName(node.targetRef ?? event.refName);
   const from = shortOid(event.fromOid);
   const to = shortOid(event.toOid);
@@ -84,6 +98,22 @@ export function eventLabelForWidth(node: GraphNode, width: number, x: number): s
   }
   const compact = candidates[candidates.length - 1] ?? 'Event';
   return compact.slice(0, Math.max(1, maxChars - 1)) + (maxChars > 1 ? '…' : '');
+}
+
+export interface EventLabelPart {
+  text: string;
+  className?: string;
+}
+
+/** Splits semantic event text so target hashes can receive their visual affordance. */
+export function eventLabelParts(node: GraphNode, renderedLabel: string): EventLabelPart[] {
+  const target = shortOid(node.event?.targetOid);
+  const fullLabel = target ? 'Revert · ' + target : undefined;
+  if (node.event?.type !== 'revert' || !target || renderedLabel !== fullLabel) return [{ text: renderedLabel }];
+  return [
+    { text: 'Revert · ' },
+    { text: target, className: 'event-revert-target' },
+  ];
 }
 
 function shortOid(oid: string | undefined): string | undefined {
@@ -114,6 +144,12 @@ export function eventTooltip(node: GraphNode): string {
   const from = shortOid(event.fromOid);
   const to = shortOid(event.toOid);
   if (from && to) lines.push(`Moved\n${from} → ${to}`);
+  if (event.type === 'cherry-pick') lines.push('Source\n' + (event.sourceOid ?? 'Unknown'));
+  if (event.type === 'revert') lines.push('Target\n' + (event.targetOid ?? 'Unknown'));
+  if (event.type === 'cherry-pick' || event.type === 'revert') {
+    if (event.fromOid) lines.push('Before\n' + event.fromOid);
+    if (event.toOid) lines.push('Created\n' + event.toOid);
+  }
   if (event.type === 'fast-forward' && Number.isInteger(event.commitCount) && (event.commitCount as number) >= 1) {
     lines.push(`Commits\n+${event.commitCount}`);
   }

@@ -23,6 +23,37 @@ describe('event detail presentation', () => {
     expect(fields.find((field) => field.label === 'Raw reflog message')).toMatchObject({ value: 'commit (amend): new feature', kind: 'raw' });
   });
 
+  it('shows cherry-pick source, before, and created hashes without dropping detail data', () => {
+    const cherryPick: HistoryEvent = {
+      ...event,
+      id: 'history:cherry-pick:10:new',
+      type: 'cherry-pick',
+      sourceOid: 'c'.repeat(40),
+      rawReflogMessage: 'commit (cherry-pick): source change',
+    };
+    const fields = eventDetailFields(cherryPick);
+    expect(fields.map((field) => field.label)).toEqual(['Operation', 'Branch / Ref', 'Source', 'Before', 'Created', 'Timestamp', 'Raw reflog message']);
+    expect(fields.find((field) => field.label === 'Source')).toMatchObject({ value: 'cccccccccccc', title: 'c'.repeat(40), kind: 'hash' });
+    expect(fields.find((field) => field.label === 'Before')).toMatchObject({ value: 'aaaaaaaaaaaa', title: 'a'.repeat(40), kind: 'hash' });
+    expect(fields.find((field) => field.label === 'Created')).toMatchObject({ value: 'bbbbbbbbbbbb', title: 'b'.repeat(40), kind: 'hash' });
+  });
+
+  it('shows a revert target when Git recorded one and keeps an explicit Unknown fallback', () => {
+    const revert: HistoryEvent = {
+      ...event,
+      id: 'history:revert:10:new',
+      type: 'revert',
+      targetOid: 'd'.repeat(40),
+      rawReflogMessage: 'commit: Revert "target"',
+    };
+    const fields = eventDetailFields(revert);
+    expect(fields.map((field) => field.label)).toEqual(['Operation', 'Branch / Ref', 'Target', 'Before', 'Created', 'Timestamp', 'Raw reflog message']);
+    expect(fields.find((field) => field.label === 'Target')).toMatchObject({ value: 'dddddddddddd', title: 'd'.repeat(40), kind: 'hash' });
+
+    const missingTarget = eventDetailFields({ ...revert, targetOid: undefined });
+    expect(missingTarget.find((field) => field.label === 'Target')?.value).toBe('Unknown');
+  });
+
   it('does not infer reset mode when the reflog subject does not provide one', () => {
     const reset: HistoryEvent = { ...event, id: 'history:reset:10:new', type: 'reset', rawReflogMessage: 'reset: moving to HEAD~2' };
     expect(eventDetailTitle(reset)).toBe('Reset · feature');

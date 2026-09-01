@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphNode } from '../../src/model/graphModel.js';
-import { eventLabelForWidth, eventMainLabel, eventMovementLabel, eventTooltip } from '../../webview/src/components/eventPresentation';
+import { eventLabelForWidth, eventLabelParts, eventMainLabel, eventMovementLabel, eventTooltip } from '../../webview/src/components/eventPresentation';
 
 const oid = (letter: string) => letter.repeat(40);
 
@@ -58,6 +58,44 @@ describe('ref event presentation', () => {
     expect(eventMainLabel(rebase)).toBe('Rebase · feature: aaaaaaaa → bbbbbbbb');
   });
 
+  it.each([
+    ['cherry-pick', 'Cherry-pick'],
+    ['revert', 'Revert'],
+  ] as const)('shows %s movement in the single event row', (type, label) => {
+    const operation = eventNode({
+      id: `history:${type}:1:b`,
+      type,
+      operation: undefined,
+      ...(type === 'cherry-pick' ? { sourceOid: oid('s') } : { targetOid: oid('t') }),
+    });
+    operation.kind = 'history-event';
+    operation.label = `${label} · main`;
+    expect(eventMovementLabel(operation)).toBe(type === 'cherry-pick'
+      ? 'Cherry-pick · ssssssss → new bbbbbbbb'
+      : 'Revert · tttttttt');
+    expect(eventMainLabel(operation)).toBe(type === 'cherry-pick'
+      ? 'Cherry-pick · ssssssss → new bbbbbbbb'
+      : 'Revert · tttttttt');
+  });
+
+  it('uses a compact cherry-pick fallback when source evidence is unavailable', () => {
+    const operation = eventNode({ id: 'history:cherry-pick:1:b', type: 'cherry-pick', operation: undefined, sourceOid: undefined });
+    operation.kind = 'history-event';
+    expect(eventMainLabel(operation)).toBe('Cherry-pick · → new bbbbbbbb');
+  });
+
+  it('marks an explicitly identified revert target for visual strike-through', () => {
+    const operation = eventNode({ id: 'history:revert:1:b', type: 'revert', operation: undefined, targetOid: oid('t') });
+    operation.kind = 'history-event';
+    const label = eventMainLabel(operation);
+    expect(label).toBe('Revert · tttttttt');
+    expect(eventLabelParts(operation, label)).toEqual([
+      { text: 'Revert · ' },
+      { text: 'tttttttt', className: 'event-revert-target' },
+    ]);
+    expect(eventLabelParts(operation, 'Revert')).toEqual([{ text: 'Revert' }]);
+  });
+
   it('compacts only the event label when the graph area is narrow', () => {
     const node = eventNode();
     expect(eventLabelForWidth(node, 120, 24)).toBe('FF · +3');
@@ -73,5 +111,19 @@ describe('ref event presentation', () => {
     expect(tooltip).toContain('Affected refs\nmain\nHEAD\norigin/main');
     expect(tooltip).toContain('Reflog\npull origin/main: Fast-forward');
     expect(tooltip).toContain('Occurred\n');
+  });
+
+  it('keeps full source/target and before/created hashes in the tooltip', () => {
+    const source = oid('s');
+    const target = oid('t');
+    const cherry = eventNode({ type: 'cherry-pick', sourceOid: source });
+    const revert = eventNode({ type: 'revert', targetOid: target });
+
+    expect(eventTooltip(cherry)).toContain(`Source\n${source}`);
+    expect(eventTooltip(cherry)).toContain(`Before\n${oid('a')}`);
+    expect(eventTooltip(cherry)).toContain(`Created\n${oid('b')}`);
+    expect(eventTooltip(revert)).toContain(`Target\n${target}`);
+    expect(eventTooltip(revert)).toContain(`Before\n${oid('a')}`);
+    expect(eventTooltip(revert)).toContain(`Created\n${oid('b')}`);
   });
 });

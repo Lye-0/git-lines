@@ -34,6 +34,10 @@ export interface GraphNode {
   event?: HistoryEvent;
   /** Commit node reached by a ref event. Ref events do not participate in the commit DAG. */
   anchorCommitId?: string;
+  /** Commit immediately below the semantic boundary where the event is shown. */
+  eventBoundaryCommitId?: string;
+  /** Commit immediately above the semantic boundary used for the annotation edge. */
+  eventStartCommitId?: string;
   /** The ref name whose lane owns a ref event (for example refs/heads/main). */
   targetRef?: string;
   /** Graph-track identifier resolved from targetRef during lane layout. */

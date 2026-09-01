@@ -634,7 +634,7 @@ describe('graph layout', () => {
       commits,
       workingTrees: [],
       operations: [],
-      events: [event.event],
+      events: [event.event!],
       primaryBranch: 'main',
       shallowBoundaryOids: [],
     };
@@ -710,6 +710,65 @@ describe('graph layout', () => {
     expect(annotation?.d).toBe(`M ${headPoint.x} ${headPoint.y} L ${eventPoint.x} ${eventPoint.y}`);
     expect(withEvent.edgePaths?.some((path) => path.id.endsWith(':from'))).toBe(false);
     expect(routeEdges(withEvent.nodes, withEvent.edges).filter((path) => path.annotation === 'ref-event')).toHaveLength(1);
+  });
+
+  it('places a completed operation event between the new commit and its parent boundary', () => {
+    const base = commitNode('a', 1);
+    const parent = { ...commitNode('b', 2), refIds: ['main'] };
+    const newCommit = { ...commitNode('c', 3), refIds: ['main'] };
+    const event: GraphNode = {
+      id: 'event:cherry-pick',
+      kind: 'history-event',
+      refIds: ['main'],
+      timestamp: 4,
+      label: 'Cherry-pick · main',
+      anchorCommitId: newCommit.id,
+      eventBoundaryCommitId: parent.id,
+      targetRef: 'refs/heads/main',
+      event: {
+        id: 'event:cherry-pick',
+        type: 'cherry-pick',
+        refName: 'refs/heads/main',
+        fromOid: parent.oid,
+        toOid: newCommit.oid!,
+        boundaryOid: parent.oid,
+        timestamp: 4,
+      },
+    };
+    const refs = [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local' as const, oid: newCommit.oid! }];
+    const commits = [
+      { oid: newCommit.oid!, parentOids: [parent.oid!], subject: 'new', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      { oid: parent.oid!, parentOids: [base.oid!], subject: 'old', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: base.oid!, parentOids: [], subject: 'base', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+    const facts: GraphFactModel = {
+      nodes: [newCommit, parent, base, event],
+      edges: [
+        { id: 'parent:c:b', type: 'parent', fromNodeId: newCommit.id, toNodeId: parent.id },
+        { id: 'parent:b:a', type: 'parent', fromNodeId: parent.id, toNodeId: base.id },
+        { id: 'event:cherry-pick:annotation', type: 'history-event', fromNodeId: newCommit.id, toNodeId: event.id, annotation: 'ref-event' },
+      ],
+      refs,
+      commits,
+      workingTrees: [],
+      operations: [],
+      events: [event.event!],
+      primaryBranch: 'main',
+      shallowBoundaryOids: [],
+    };
+    const layout = createGraphLayout(facts, { visibleCommitCount: commits.length, hasMore: false });
+    const laidOutNew = layout.nodes.find((node) => node.id === newCommit.id)!;
+    const laidOutEvent = layout.nodes.find((node) => node.id === event.id)!;
+    const laidOutParent = layout.nodes.find((node) => node.id === parent.id)!;
+
+    expect(laidOutEvent).toMatchObject({ anchorCommitId: newCommit.id, eventBoundaryCommitId: parent.id });
+    expect(laidOutNew.row).toBeLessThan(laidOutEvent.row!);
+    expect(laidOutEvent.row).toBeLessThan(laidOutParent.row!);
+    expect(layout.edges.filter((edge) => edge.type === 'parent')).toHaveLength(2);
+    expect(layout.edges).not.toContainEqual(expect.objectContaining({ fromNodeId: event.id }));
+    const annotation = layout.edgePaths?.find((path) => path.annotation === 'ref-event');
+    expect(annotation?.d).toBe(`M ${pointForNode(laidOutNew).x} ${pointForNode(laidOutNew).y} L ${pointForNode(laidOutEvent).x} ${pointForNode(laidOutEvent).y}`);
+    assertRowInvariants(layout.nodes, layout.edges);
   });
 
   it('keeps adjacent parent paths joined at the same-lane node center', () => {

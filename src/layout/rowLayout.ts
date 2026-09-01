@@ -66,8 +66,8 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
   }
 
   // Ref events are not part of the structural topological sort, but they are
-  // real timeline rows.  Insert each event immediately before its destination
-  // anchor while preserving the structural order and parent constraints.
+  // real timeline rows.  Insert each event immediately before its semantic
+  // boundary while preserving the structural order and parent constraints.
   const eventAnchorById = new Map(edges
     .filter((edge) => edge.annotation === 'ref-event' && structuralIds.has(edge.fromNodeId))
     .map((edge) => [edge.toNodeId, edge.fromNodeId]));
@@ -77,8 +77,10 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     .map((node) => [node.oid as string, node.id]));
   const eventNodes = nodes.filter((candidate) => !structuralIds.has(candidate.id)).sort(compareNodes);
   const anchorForEvent = (node: GraphNode): string | undefined => {
-    const explicitAnchor = node.anchorCommitId && structuralIds.has(node.anchorCommitId) ? node.anchorCommitId : undefined;
-    return explicitAnchor ?? eventAnchorById.get(node.id) ?? (node.event?.toOid ? commitIdByOid.get(node.event.toOid) : undefined);
+    const explicitBoundary = node.eventBoundaryCommitId && structuralIds.has(node.eventBoundaryCommitId) ? node.eventBoundaryCommitId : undefined;
+    const destinationAnchor = node.anchorCommitId && structuralIds.has(node.anchorCommitId) ? node.anchorCommitId : undefined;
+    const eventStart = node.eventStartCommitId && structuralIds.has(node.eventStartCommitId) ? node.eventStartCommitId : undefined;
+    return explicitBoundary ?? destinationAnchor ?? eventStart ?? eventAnchorById.get(node.id) ?? (node.event?.toOid ? commitIdByOid.get(node.event.toOid) : undefined);
   };
   const structuralRowSet = new Set(result.values());
   const canReusePreviousTimeline = Boolean(previousRows && eventNodes.length > 0 && eventNodes.every((node) => {
@@ -156,7 +158,7 @@ export function assertRowInvariants(nodes: GraphNode[], edges: GraphEdge[]): voi
     .map((edge) => [edge.toNodeId, edge.fromNodeId]));
   for (const node of nodes.filter((candidate) => candidate.kind === 'fast-forward-event' || candidate.kind === 'history-event')) {
     const row = node.row as number;
-    const anchorId = node.anchorCommitId ?? eventAnchorById.get(node.id);
+    const anchorId = node.eventBoundaryCommitId ?? node.anchorCommitId ?? eventAnchorById.get(node.id);
     const anchor = anchorId ? byId.get(anchorId) : undefined;
     if (anchor && row >= (anchor.row as number)) throw new Error(`Ref event row invariant violated: ${node.id}`);
     if (anchor && structuralRows.has(row)) throw new Error(`Ref event row collides with structural row: ${node.id}`);

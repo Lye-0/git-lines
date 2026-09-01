@@ -97,8 +97,55 @@ describe('history event resolver', () => {
       refName: 'refs/heads/feature',
       fromOid: oldTip.oid,
       toOid: newTip.oid,
+      boundaryOid: replayBase.oid,
+      eventStartOid: newTip.oid,
       rawReflogMessage: 'rebase (finish): refs/heads/feature onto ' + replayBase.oid,
     });
+  });
+
+  it('classifies completed cherry-pick and revert movements and puts their boundaries at the new commit parent', () => {
+    const sourceOid = '1'.repeat(40);
+    const cherryPick = { ...commit('c', [oid('b')], 4), body: 'source change\n\n(cherry picked from commit ' + sourceOid + ')\n' };
+    const reverted = { ...commit('d', [cherryPick.oid], 5), body: 'Revert "source change"\n\nThis reverts commit ' + oid('b') + '.\n' };
+    const events = resolveHistoryEvents([
+      entry('commit (cherry-pick): source change', oid('b'), cherryPick.oid, 'refs/heads/main', 'main@{0}', 6_000),
+      entry('commit (cherry-pick): source change', oid('b'), cherryPick.oid, 'HEAD', 'HEAD@{0}', 6_000),
+      entry('commit: Revert "source change"', cherryPick.oid, reverted.oid, 'refs/heads/main', 'main@{0}', 7_000),
+    ], [...commits, cherryPick, reverted]);
+
+    expect(events).toHaveLength(2);
+    expect(events.find((event) => event.type === 'cherry-pick')).toMatchObject({
+      refName: 'refs/heads/main',
+      fromOid: oid('b'),
+      toOid: cherryPick.oid,
+      boundaryOid: oid('b'),
+      eventStartOid: cherryPick.oid,
+      sourceOid,
+      affectedRefs: ['refs/heads/main'],
+    });
+    expect(events.find((event) => event.type === 'revert')).toMatchObject({
+      refName: 'refs/heads/main',
+      fromOid: cherryPick.oid,
+      toOid: reverted.oid,
+      boundaryOid: cherryPick.oid,
+      eventStartOid: reverted.oid,
+      targetOid: oid('b'),
+    });
+  });
+
+  it('keeps cherry-pick and revert events when their bodies do not contain explicit source evidence', () => {
+    const cherryPick = { ...commit('e', [oid('b')], 4), body: 'source change without -x\n' };
+    const reverted = { ...commit('f', [cherryPick.oid], 5), body: 'Revert "source change"\n\nNo standard target marker.\n' };
+    const events = resolveHistoryEvents([
+      entry('commit (cherry-pick): source change', oid('b'), cherryPick.oid, 'refs/heads/main', 'main@{0}', 6_000),
+      entry('commit: Revert "source change"', cherryPick.oid, reverted.oid, 'refs/heads/main', 'main@{0}', 7_000),
+    ], [...commits, cherryPick, reverted]);
+
+    expect(events).toHaveLength(2);
+    expect(events.find((event) => event.type === 'cherry-pick')).toMatchObject({ toOid: cherryPick.oid });
+    expect(events.find((event) => event.type === 'cherry-pick')?.sourceOid).toBeUndefined();
+    expect(events.find((event) => event.type === 'revert')).toMatchObject({ toOid: reverted.oid });
+    expect(events.find((event) => event.type === 'revert')?.targetOid).toBeUndefined();
   });
 
   it('does not expose an unfinished rebase start as a user-facing history event', () => {

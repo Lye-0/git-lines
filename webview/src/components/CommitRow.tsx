@@ -1,7 +1,7 @@
 import React, { type CSSProperties } from 'react';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
-import { eventLabelForWidth, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
+import { eventLabelForWidth, eventLabelParts, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
 import { operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import { commitChangeStats } from './commitStatsPresentation';
 import { commitMetaText, commitRowPresentation } from './commitRowPresentation';
@@ -76,10 +76,13 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
     const fullEventLabel = eventMainLabel(node);
     const eventLabel = eventLabelForWidth(node, eventLabelWidth ?? Number.POSITIVE_INFINITY, eventLabelX);
     const tooltip = eventTooltip(node);
+    const eventLabelContent = eventLabelParts(node, eventLabel).map((part, index) => (
+      <span className={part.className} key={(part.className ?? 'text') + index}>{part.text}</span>
+    ));
     const eventContent = <div className={`row-content event-row-content${selectedEvent ? ' selected' : ''}`}>
         <div className="row-primary">
           <div className="row-text">
-            <span className="subject event-subject" title={tooltip}>{eventLabel}</span>
+            <span className="subject event-subject" title={tooltip}>{eventLabelContent}</span>
             <span className="sr-only">{fullEventLabel}. {tooltip}</span>
           </div>
         </div>

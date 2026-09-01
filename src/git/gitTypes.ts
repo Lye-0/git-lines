@@ -90,6 +90,8 @@ export type HistoryEventType =
   | 'fast-forward'
   | 'reset'
   | 'amend'
+  | 'cherry-pick'
+  | 'revert'
   | 'rebase'
   | 'force-update'
   | 'branch-move'
@@ -101,9 +103,21 @@ export interface HistoryEvent {
   refName: string;
   fromOid?: string;
   toOid: string;
+  /**
+   * The commit immediately below the operation's semantic boundary. This is
+   * separate from toOid: the latter is the ref destination, while this value
+   * tells the timeline where the new history interval starts.
+   */
+  boundaryOid?: string;
+  /** Commit immediately above the semantic boundary (the event connector source). */
+  eventStartOid?: string;
   timestamp: number;
   /** Number of commits reachable from toOid but not from fromOid for FF events. */
   commitCount?: number;
+  /** Source commit explicitly recorded by a completed cherry-pick, when available. */
+  sourceOid?: string;
+  /** Target commit explicitly recorded by a completed revert, when available. */
+  targetOid?: string;
   /** Short, explicit operation name such as pull or merge. */
   operation?: string;
   /** Original reflog subject retained for tooltip/detail views. */

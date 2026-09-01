@@ -20,11 +20,26 @@ function compactHash(oid: string | undefined): EventDetailField['value'] {
 export function eventDetailFields(event: HistoryEvent): EventDetailField[] {
   const operation = event.operation?.trim() || titleCase(event.type);
   const raw = event.rawReflogMessage ?? event.subject ?? '';
+  const movementFields: EventDetailField[] = event.type === 'cherry-pick'
+    ? [
+      { label: 'Source', value: compactHash(event.sourceOid), title: event.sourceOid, kind: 'hash' },
+      { label: 'Before', value: compactHash(event.fromOid), title: event.fromOid, kind: 'hash' },
+      { label: 'Created', value: compactHash(event.toOid), title: event.toOid, kind: 'hash' },
+    ]
+    : event.type === 'revert'
+      ? [
+        { label: 'Target', value: compactHash(event.targetOid), title: event.targetOid, kind: 'hash' },
+        { label: 'Before', value: compactHash(event.fromOid), title: event.fromOid, kind: 'hash' },
+        { label: 'Created', value: compactHash(event.toOid), title: event.toOid, kind: 'hash' },
+      ]
+      : [
+        { label: 'Old hash', value: compactHash(event.fromOid), title: event.fromOid, kind: 'hash' },
+        { label: 'New hash', value: compactHash(event.toOid), title: event.toOid, kind: 'hash' },
+      ];
   return [
     { label: 'Operation', value: operation },
     { label: 'Branch / Ref', value: normalizeRefName(event.refName), title: event.refName },
-    { label: 'Old hash', value: compactHash(event.fromOid), title: event.fromOid, kind: 'hash' },
-    { label: 'New hash', value: compactHash(event.toOid), title: event.toOid, kind: 'hash' },
+    ...movementFields,
     { label: 'Timestamp', value: Number.isFinite(event.timestamp) ? new Date(event.timestamp).toLocaleString() : 'Unknown' },
     { label: 'Raw reflog message', value: raw || 'Unavailable', title: raw || undefined, kind: 'raw' },
   ];
