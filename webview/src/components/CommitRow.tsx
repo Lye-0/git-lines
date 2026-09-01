@@ -48,6 +48,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
   const refEvent = isRefEvent(node);
   const rowPresentation = commitRowPresentation(node);
   const previousRoute = rowPresentation.previousRoute;
+  const historicalBadgeLabel = rowPresentation.historicalBadgeLabel;
   // The title already identifies these state rows ("Working Tree" or
   // "Merge in progress"); repeating a second kind label only adds noise.
   const kind = refEvent || node.kind === 'working-tree' || node.kind === 'operation' ? undefined : kindLabel(node.kind);
@@ -101,6 +102,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
         <div className="row-text">
           <div className="row-heading">
             {rowPresentation.previousBadgeLabel && <span className="previous-badge" title="Previous route">{rowPresentation.previousBadgeLabel}</span>}
+            {historicalBadgeLabel && <span className="previous-badge" title="Historical route classification">{historicalBadgeLabel}</span>}
             <span className={`subject${previousRoute ? ' previous-subject' : ''}`} title={node.subject ?? node.label}>{title}</span>
             {working?.operation && <span className="working-operation" title={working.operation}>{`(+ ${working.operation})`}</span>}
             {badges.length > 0 && <div className="row-meta">

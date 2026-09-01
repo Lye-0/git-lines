@@ -95,6 +95,7 @@ export type HistoryEventType =
   | 'rebase'
   | 'force-update'
   | 'branch-move'
+  | 'branch-rename'
   | 'generic-ref-move';
 
 export interface HistoryEvent {
@@ -122,6 +123,10 @@ export interface HistoryEvent {
   operation?: string;
   /** Original reflog subject retained for tooltip/detail views. */
   rawReflogMessage?: string;
+  /** Previous local branch ref for an explicit Git branch rename. */
+  fromRef?: string;
+  /** New local branch ref for an explicit Git branch rename. */
+  toRef?: string;
   sourceLabel?: string;
   subject?: string;
   /** All refs updated by the same logical Git operation, including HEAD. */

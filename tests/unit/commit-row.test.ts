@@ -23,4 +23,12 @@ describe('commit row presentation', () => {
       metadataPlacement: 'content-start',
     });
   });
+
+  it('shows a deleted/unreferenced badge only on a historical route head', () => {
+    expect(commitRowPresentation({ kind: 'reflog-commit', previousRoute: false, historicalKind: 'unreferenced', historicalRouteHead: true })).toMatchObject({
+      historicalBadgeLabel: 'UNREFERENCED',
+    });
+    expect(commitRowPresentation({ kind: 'reflog-commit', previousRoute: false, historicalKind: 'unreferenced', historicalRouteHead: false }).historicalBadgeLabel).toBeUndefined();
+    expect(commitRowPresentation({ kind: 'reflog-commit', previousRoute: false, historicalKind: 'deleted-branch', historicalRouteHead: true }).historicalBadgeLabel).toBe('DELETED BRANCH');
+  });
 });

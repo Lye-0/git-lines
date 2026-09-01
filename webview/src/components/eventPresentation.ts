@@ -10,6 +10,7 @@ function eventTypeLabel(node: GraphNode): string {
     case 'fast-forward': return 'Fast-forward';
     case 'force-update': return 'Force update';
     case 'branch-move': return 'Branch move';
+    case 'branch-rename': return 'Branch rename';
     case 'generic-ref-move': return 'Ref move';
     case 'reset': return 'Reset';
     case 'rebase': return 'Rebase';
@@ -49,6 +50,7 @@ function compactEventKind(node: GraphNode): string {
     case 'fast-forward': return 'FF';
     case 'force-update': return 'Force';
     case 'branch-move': return 'Move';
+    case 'branch-rename': return 'Rename';
     case 'generic-ref-move': return 'Move';
     case 'reset': return 'Reset';
     case 'rebase': return 'Rebase';
@@ -62,6 +64,11 @@ function compactEventKind(node: GraphNode): string {
 /** Shows the ref movement without expanding the event row's height. */
 export function eventMovementLabel(node: GraphNode): string | undefined {
   const event = node.event;
+  if (event?.type === 'branch-rename') {
+    const from = event.fromRef ? normalizeRefName(event.fromRef) : undefined;
+    const to = normalizeRefName(event.toRef ?? event.refName);
+    return from && to ? `Branch rename · ${from} → ${to}` : 'Branch rename';
+  }
   if (!event || !['reset', 'amend', 'rebase', 'cherry-pick', 'revert'].includes(event.type)) return undefined;
   if (event.type === 'cherry-pick') {
     const created = shortOid(event.toOid);
@@ -141,9 +148,15 @@ export function eventTooltip(node: GraphNode): string {
   const lines = [eventTypeLabel(node)];
   const branch = normalizeRefName(node.targetRef ?? event.refName);
   if (branch) lines.push(`Branch\n${branch}`);
+  if (event.type === 'branch-rename') {
+    lines.push(`From\n${event.fromRef ? normalizeRefName(event.fromRef) : 'Unknown'}`);
+    lines.push(`To\n${normalizeRefName(event.toRef ?? event.refName) || 'Unknown'}`);
+    lines.push(`Commit\n${event.toOid}`);
+    lines.push('Operation\nBranch rename');
+  }
   const from = shortOid(event.fromOid);
   const to = shortOid(event.toOid);
-  if (from && to) lines.push(`Moved\n${from} → ${to}`);
+  if (event.type !== 'branch-rename' && from && to) lines.push(`Moved\n${from} → ${to}`);
   if (event.type === 'cherry-pick') lines.push('Source\n' + (event.sourceOid ?? 'Unknown'));
   if (event.type === 'revert') lines.push('Target\n' + (event.targetOid ?? 'Unknown'));
   if (event.type === 'cherry-pick' || event.type === 'revert') {

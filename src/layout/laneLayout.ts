@@ -1,5 +1,5 @@
 import type { GitCommit, GitRef, HistoryEvent } from '../git/gitTypes.js';
-import type { GraphFactModel, GraphNode, GraphTrack } from '../model/graphModel.js';
+import type { GraphFactModel, GraphNode, GraphTrack, HistoricalRouteKind } from '../model/graphModel.js';
 import { branchFamilyForRef, normalizeRefName } from '../model/refDisplay.js';
 import {
   assignLiveFamilyColors,
@@ -36,6 +36,7 @@ interface TrackCandidate {
   oids: Set<string>;
   label?: string;
   synthetic?: boolean;
+  historicalKind?: HistoricalRouteKind;
 }
 
 function interval(segment: Pick<BranchSegment, 'startRow' | 'endRow'>): { startRow: number; endRow: number } {
@@ -221,15 +222,20 @@ interface SideBranch {
   candidate: TrackCandidate;
 }
 
-function historicalCandidate(id: string): TrackCandidate {
+function historicalCandidate(id: string, historicalKind: HistoricalRouteKind = 'previous'): TrackCandidate {
   return {
     id,
     family: 'historical',
     kind: 'local',
     refs: [],
     oids: new Set<string>(),
-    label: 'Historical branch',
+    label: historicalKind === 'deleted-branch'
+      ? 'Deleted branch'
+      : historicalKind === 'unreferenced'
+        ? 'Unreferenced route'
+        : 'Historical branch',
     synthetic: true,
+    historicalKind,
   };
 }
 
@@ -252,6 +258,7 @@ interface PreviousRoute {
   rootOid: string;
   oids: Set<string>;
   candidate: TrackCandidate;
+  historicalKind: HistoricalRouteKind;
 }
 
 /**
@@ -277,9 +284,30 @@ function previousRoutesFor(events: HistoryEvent[], nodes: GraphNode[], commits: 
       oids.add(current);
       current = commits.get(current)?.parentOids[0];
     }
-    routes.push({ rootOid, oids, candidate: historicalCandidate(`history:previous:${event.id}`) });
+    routes.push({ rootOid, oids, candidate: historicalCandidate(`history:previous:${event.id}`, 'previous'), historicalKind: 'previous' });
   }
   return routes;
+}
+
+/** Builds side-route candidates already classified by GraphBuilder. */
+function unreferencedRoutesFor(nodes: GraphNode[]): PreviousRoute[] {
+  const grouped = new Map<string, { rootOid?: string; oids: Set<string>; kind: HistoricalRouteKind }>();
+  for (const node of nodes) {
+    if (node.kind !== 'reflog-commit' || !node.oid || !node.historicalRouteId || !node.historicalKind || node.historicalKind === 'previous') continue;
+    const route = grouped.get(node.historicalRouteId) ?? { oids: new Set<string>(), kind: node.historicalKind };
+    route.oids.add(node.oid);
+    if (node.historicalRouteHead) route.rootOid = node.oid;
+    grouped.set(node.historicalRouteId, route);
+  }
+  return [...grouped.entries()].map(([routeId, route]) => {
+    const rootOid = route.rootOid ?? [...route.oids].sort()[0] as string;
+    return {
+      rootOid,
+      oids: route.oids,
+      candidate: historicalCandidate(routeId, route.kind),
+      historicalKind: route.kind,
+    };
+  });
 }
 
 function sideBranchesFor(commits: Map<string, GitCommit>, nodes: GraphNode[], candidates: TrackCandidate[], primaryCandidate: TrackCandidate | undefined, primaryOids: Set<string>): SideBranch[] {
@@ -301,7 +329,7 @@ function sideBranchesFor(commits: Map<string, GitCommit>, nodes: GraphNode[], ca
       if (!candidate) {
         const rootNode = nodeByOid.get(rootOid);
         candidate = rootNode?.previousRoute || rootNode?.kind === 'reflog-commit'
-          ? historicalCandidate(`history:${merge.oid}:parent:${parentIndex}`)
+          ? historicalCandidate(`history:${merge.oid}:parent:${parentIndex}`, rootNode?.historicalKind ?? 'previous')
           : mergedSideCandidate(rootOid, `side:${merge.oid}:parent:${parentIndex}`);
         candidates.push(candidate);
       }
@@ -419,7 +447,9 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     .flatMap((candidate) => candidate.refs.map((ref) => ref.oid).filter((oid): oid is string => Boolean(oid))));
   const primaryOids = primaryCandidate ? firstParentChain(primaryTip, commits, nonPrimaryTipOids) : new Set<string>();
   const previousRoutes = previousRoutesFor(facts.events, facts.nodes, commits);
-  candidates.push(...previousRoutes.map((route) => route.candidate));
+  const unreferencedRoutes = unreferencedRoutesFor(facts.nodes);
+  const historicalRoutes = [...previousRoutes, ...unreferencedRoutes];
+  candidates.push(...historicalRoutes.map((route) => route.candidate));
   const sideBranches = sideBranchesFor(commits, facts.nodes, candidates, primaryCandidate, primaryOids);
   const ordered = candidates.slice().sort((a, b) => {
     if (a.id === primaryCandidate?.id) return -1;
@@ -457,7 +487,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   // Older side paths are assigned first so a later merge whose side parent
   // passes through them transitions into the already-established branch
   // segment instead of overwriting its track.
-  for (const route of previousRoutes) assignFirstParentPath(route.rootOid, route.candidate.id, route.oids);
+  for (const route of historicalRoutes) assignFirstParentPath(route.rootOid, route.candidate.id, route.oids);
   for (const branch of sideBranches) assignFirstParentPath(branch.rootOid, branch.candidate.id);
   // A live branch ref is useful for naming an otherwise unmerged branch, but
   // it cannot override the primary first-parent spine or an older side path.
@@ -601,6 +631,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
         familyColorAssignments.get(candidate.family)?.variationIndex ?? 0,
       ),
     refNames: candidate.refs.map((ref) => ref.fullName),
+    historicalKind: candidate.historicalKind,
   }));
   const laidOut = initialAssignments.map(({ node, trackId }) => {
     const nodeLane = trackId ? laneByNodeId.get(node.id) ?? trackLane.get(trackId) ?? 0 : 0;

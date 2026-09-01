@@ -148,6 +148,33 @@ describe('history event resolver', () => {
     expect(events.find((event) => event.type === 'revert')?.targetOid).toBeUndefined();
   });
 
+  it('resolves an explicit branch rename even though the branch keeps the same commit OID', () => {
+    const renameSubject = 'Branch: renamed refs/heads/feature to refs/heads/feature-renamed';
+    const events = resolveHistoryEvents([
+      entry(renameSubject, oid('b'), oid('b'), 'HEAD', 'HEAD@{0}', 8_000),
+      entry(renameSubject, oid('b'), oid('b'), 'refs/heads/feature-renamed', 'feature-renamed@{0}', 8_000),
+    ], commits);
+
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: 'branch-rename',
+      refName: 'refs/heads/feature-renamed',
+      toOid: oid('b'),
+      eventStartOid: oid('b'),
+      operation: 'Branch rename',
+      fromRef: 'refs/heads/feature',
+      toRef: 'refs/heads/feature-renamed',
+      rawReflogMessage: renameSubject,
+      affectedRefs: ['refs/heads/feature-renamed', 'HEAD'],
+    });
+    expect(events[0]?.fromOid).toBeUndefined();
+  });
+
+  it('does not infer a branch rename from a commit subject', () => {
+    const subject = 'commit: Branch: renamed refs/heads/feature to refs/heads/feature-renamed';
+    expect(resolveHistoryEvents([entry(subject, oid('a'), oid('b'))], commits)).toEqual([]);
+  });
+
   it('does not expose an unfinished rebase start as a user-facing history event', () => {
     const events = resolveHistoryEvents([
       entry('rebase (start): checkout main', oid('b'), oid('a'), 'HEAD'),

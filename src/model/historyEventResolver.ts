@@ -3,12 +3,20 @@ import type { GitCommit, HistoryEvent, HistoryEventType, ReflogEntry } from '../
 interface ClassifiedEntry {
   entry: ReflogEntry;
   type: HistoryEventType;
+  branchRename?: BranchRename;
+}
+
+interface BranchRename {
+  fromRef: string;
+  toRef: string;
 }
 
 interface EventGroup {
   type: HistoryEventType;
   fromOid?: string;
   toOid: string;
+  fromRef?: string;
+  toRef?: string;
   timestamp: number;
   entries: ReflogEntry[];
 }
@@ -81,6 +89,25 @@ function isExplicitBranchMove(subject: string): boolean {
   // `branch -f` and the corresponding reflog wording are meaningful; normal
   // checkout/switch and branch creation entries are routine navigation.
   return /^(?:branch\s+-f\b|branch:\s*(?:reset|force|move)\b)/i.test(subject.trim());
+}
+
+/**
+ * Git records a local branch rename explicitly in both the old HEAD reflog
+ * and the new branch reflog.  This is a ref-name operation, not an OID move:
+ * the new entry normally has the same OID as the preceding entry.  Keep the
+ * parser deliberately strict so a branch name or commit subject can never
+ * manufacture a rename event.
+ */
+function parseExplicitBranchRename(subject: string): BranchRename | undefined {
+  const match = /^branch:\s*renamed\s+(refs\/heads\/\S+)\s+to\s+(refs\/heads\/\S+)\s*$/i.exec(subject.trim());
+  if (!match?.[1] || !match[2] || match[1] === match[2]) return undefined;
+  return { fromRef: match[1], toRef: match[2] };
+}
+
+function isBranchRenameRef(entry: ReflogEntry, rename: BranchRename): boolean {
+  // The same Git operation is emitted for HEAD and for the resulting local
+  // branch.  Other refs are not authoritative evidence for a local rename.
+  return entry.refName === 'HEAD' || entry.refName === rename.toRef;
 }
 
 function classify(subject: string, fromOid: string | undefined, toOid: string, refName: string, commits: Map<string, GitCommit>): HistoryEventType | undefined {
@@ -172,6 +199,9 @@ function groupKey(entry: ClassifiedEntry): string {
   // The same operation can write different subjects (or cross a timestamp
   // boundary) for HEAD, a local branch, and a remote-tracking ref. The
   // proven operation type and OID transition are the stable identity we have.
+  if (entry.type === 'branch-rename' && entry.branchRename) {
+    return [entry.type, entry.branchRename.fromRef, entry.branchRename.toRef, entry.entry.newOid].join('\0');
+  }
   return [entry.type, entry.entry.previousOid ?? '', entry.entry.newOid].join('\0');
 }
 
@@ -284,6 +314,7 @@ function firstChildAboveBoundary(toOid: string, boundaryOid: string | undefined,
 
 function eventStartOidFor(group: EventGroup, boundaryOid: string | undefined, commits: Map<string, GitCommit>): string | undefined {
   if (group.type === 'rebase') return firstChildAboveBoundary(group.toOid, boundaryOid, commits) ?? group.toOid;
+  if (group.type === 'branch-rename') return group.toOid;
   if (group.type === 'reset' || group.type === 'amend' || group.type === 'cherry-pick' || group.type === 'revert') return group.toOid;
   return undefined;
 }
@@ -296,6 +327,11 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
   const commitMap = new Map(commits.map((commit) => [commit.oid, commit]));
   const candidates: ClassifiedEntry[] = [];
   for (const entry of entries) {
+    const branchRename = parseExplicitBranchRename(entry.subject);
+    if (branchRename && isBranchRenameRef(entry, branchRename) && commitMap.has(entry.newOid)) {
+      candidates.push({ entry, type: 'branch-rename', branchRename });
+      continue;
+    }
     if (!entry.previousOid || entry.previousOid === entry.newOid) continue;
     const type = classify(entry.subject, entry.previousOid, entry.newOid, entry.refName, commitMap);
     if (type) candidates.push({ entry, type });
@@ -311,8 +347,9 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
     }
     else groups.set(key, {
       type: candidate.type,
-      fromOid: candidate.entry.previousOid,
+      fromOid: candidate.type === 'branch-rename' ? undefined : candidate.entry.previousOid,
       toOid: candidate.entry.newOid,
+      ...(candidate.branchRename ? { fromRef: candidate.branchRename.fromRef, toRef: candidate.branchRename.toRef } : {}),
       timestamp: candidate.entry.timestamp,
       entries: [candidate.entry],
     });
@@ -332,12 +369,17 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
       return {
         id: `history:${group.type}:${group.timestamp}:${group.toOid}`,
         type: group.type,
-        refName: entriesForGroup[0].refName,
+        refName: group.toRef ?? entriesForGroup[0].refName,
         fromOid: group.fromOid,
         toOid: group.toOid,
         ...(boundaryOid ? { boundaryOid } : {}),
         ...(eventStartOid ? { eventStartOid } : {}),
         timestamp: group.timestamp,
+        ...(group.type === 'branch-rename' ? {
+          operation: 'Branch rename',
+          fromRef: group.fromRef,
+          toRef: group.toRef,
+        } : {}),
         ...(group.type === 'fast-forward' ? { commitCount: countCommitsBetween(group.fromOid, group.toOid, commitMap.values()), operation: operationName(representative.subject) } : {}),
         ...(sourceOid ? { sourceOid } : {}),
         ...(targetOid ? { targetOid } : {}),

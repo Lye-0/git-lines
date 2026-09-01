@@ -7,6 +7,7 @@ import { buildGraphFacts } from '../../src/model/graphBuilder.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { HISTORICAL_ROUTE_COLOR } from '../../src/utils/color.js';
 import { createGraphColorResolver } from '../../webview/src/components/graphColor';
+import { commitRowPresentation } from '../../webview/src/components/commitRowPresentation';
 import { commitFixture, createGitFixture } from '../fixtures/gitFixture.js';
 
 function commitText(fixture: ReturnType<typeof createGitFixture>, file: string, contents: string, message: string, date: string): void {
@@ -66,6 +67,100 @@ describe('GitClient integration fixture', () => {
     const detail = await new GitClient().readCommitDetail(fixture.root, feature?.oid ?? '');
     expect(detail.fileChanges).toEqual([{ path: 'feature.txt', status: 'A', additions: 1, deletions: 0 }]);
     expect(snapshot.historyEvents).toHaveLength(0);
+  });
+
+  it('reads an actual branch rename as one same-route event between Working Tree and HEAD', async () => {
+    fixture = createGitFixture();
+    commitFixture(fixture, 'initial', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'feature']);
+    commitFixture(fixture, 'Commit before branch rename', '2026-08-27T10:00:00+09:00');
+    const headOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    const baseOid = fixture.run(['rev-parse', 'HEAD^']).trim();
+    fixture.run(['branch', '-m', 'feature', 'feature-renamed']);
+
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    const renameSubject = 'Branch: renamed refs/heads/feature to refs/heads/feature-renamed';
+    expect(snapshot.reflogs.filter((entry) => entry.subject === renameSubject)).toHaveLength(2);
+    const rename = snapshot.historyEvents.filter((event) => event.type === 'branch-rename');
+    expect(rename).toHaveLength(1);
+    expect(rename[0]).toMatchObject({
+      refName: 'refs/heads/feature-renamed',
+      toOid: headOid,
+      fromRef: 'refs/heads/feature',
+      toRef: 'refs/heads/feature-renamed',
+      operation: 'Branch rename',
+      rawReflogMessage: renameSubject,
+    });
+
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    const working = layout.nodes.find((node) => node.kind === 'working-tree');
+    const head = layout.nodes.find((node) => node.oid === headOid);
+    const base = layout.nodes.find((node) => node.oid === baseOid);
+    const event = layout.nodes.find((node) => node.event?.type === 'branch-rename');
+
+    expect(working).toBeDefined();
+    expect(head).toBeDefined();
+    expect(base).toBeDefined();
+    expect(event).toMatchObject({
+      kind: 'history-event',
+      anchorCommitId: head?.id,
+      eventStartCommitId: head?.id,
+      targetRef: 'refs/heads/feature-renamed',
+      historicalEvent: false,
+    });
+    expect(working?.row).toBeLessThan(event?.row ?? Number.MAX_SAFE_INTEGER);
+    expect(event?.row).toBeLessThan(head?.row ?? Number.MAX_SAFE_INTEGER);
+    expect(head?.row).toBeLessThan(base?.row ?? Number.MAX_SAFE_INTEGER);
+    expect(event?.trackId).toBe(head?.trackId);
+    expect(head?.refBadges?.map((badge) => badge.name)).toContain('feature-renamed');
+    expect(head?.refBadges?.map((badge) => badge.name)).not.toContain('feature');
+    expect(facts.nodes.some((node) => node.historicalKind || node.previousRoute)).toBe(false);
+    expect(layout.tracks.some((track) => track.historicalKind)).toBe(false);
+    expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'working-tree', fromNodeId: working?.id, toNodeId: head?.id }));
+    expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'parent', fromNodeId: head?.id, toNodeId: base?.id }));
+    expect(facts.edges.some((edge) => edge.type === 'parent' && (edge.fromNodeId === event?.id || edge.toNodeId === event?.id))).toBe(false);
+
+    const hiddenFacts = buildGraphFacts(snapshot, { showReflog: false });
+    expect(hiddenFacts.events.filter((historyEvent) => historyEvent.type === 'branch-rename')).toEqual([]);
+    expect(hiddenFacts.nodes.some((node) => node.event?.type === 'branch-rename')).toBe(false);
+    const hiddenLayout = createGraphLayout(hiddenFacts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: hiddenFacts.primaryBranch });
+    expect(hiddenLayout.nodes.some((node) => node.event?.type === 'branch-rename')).toBe(false);
+    expect(hiddenLayout.nodes.find((node) => node.kind === 'working-tree')?.row).toBeLessThan(hiddenLayout.nodes.find((node) => node.oid === headOid)?.row ?? Number.MAX_SAFE_INTEGER);
+  });
+
+  it('keeps a deleted branch reflog path on a gray historical side lane', async () => {
+    fixture = createGitFixture();
+    commitText(fixture, 'base.txt', 'base\n', 'shared base', '2026-08-27T09:00:00+09:00');
+    const baseOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['switch', '-c', 'feature']);
+    commitText(fixture, 'branch-one.txt', 'one\n', 'deleted branch B', '2026-08-27T10:00:00+09:00');
+    const branchOneOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    commitText(fixture, 'branch-two.txt', 'two\n', 'deleted branch C', '2026-08-27T11:00:00+09:00');
+    const branchTipOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['switch', 'main']);
+    fixture.run(['branch', '-D', 'feature']);
+
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    const branchTip = layout.nodes.find((node) => node.oid === branchTipOid);
+    const branchOne = layout.nodes.find((node) => node.oid === branchOneOid);
+    const base = layout.nodes.find((node) => node.oid === baseOid);
+    const historicalTrack = layout.tracks.find((track) => track.id === branchTip?.trackId);
+    const baseTrack = layout.tracks.find((track) => track.id === base?.trackId);
+
+    expect(branchTip).toMatchObject({ kind: 'reflog-commit', historicalKind: 'unreferenced', historicalRouteHead: true });
+    expect(branchOne).toMatchObject({ kind: 'reflog-commit', historicalKind: 'unreferenced', historicalRouteHead: false });
+    expect(branchOne?.trackId).toBe(branchTip?.trackId);
+    expect(historicalTrack).toMatchObject({ family: 'historical', historicalKind: 'unreferenced' });
+    expect(baseTrack?.family).toBe('main');
+    expect(branchTip?.lane).toBeGreaterThan(base?.lane ?? -1);
+    expect(commitRowPresentation(branchTip!).historicalBadgeLabel).toBe('UNREFERENCED');
+    expect(commitRowPresentation(branchOne!).historicalBadgeLabel).toBeUndefined();
+
+    const hidden = buildGraphFacts(snapshot, { showReflog: false });
+    expect(hidden.nodes.some((node) => node.oid === branchTipOid || node.oid === branchOneOid)).toBe(false);
   });
 
   it('labels a reflog-proven fast-forward without inventing a merge commit', async () => {
@@ -491,6 +586,8 @@ describe('GitClient integration fixture', () => {
     expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
     expect(amendEvent?.boundaryOid).toBe(baseLayoutNode?.oid);
     assertEventBoundary(layout, amendEvent?.id ?? '', snapshot.workingTrees[0]?.headOid ?? '', baseLayoutNode?.oid ?? '');
+    expect(currentLayoutNode?.row).toBeLessThan(layout.nodes.find((node) => node.id === amendEvent?.id)?.row ?? Number.MAX_SAFE_INTEGER);
+    expect(layout.nodes.find((node) => node.id === amendEvent?.id)?.row).toBeLessThan(oldLayoutNode?.row ?? Number.MAX_SAFE_INTEGER);
   });
 
   it('keeps a long feature lane independent and preserves both merge parents', async () => {

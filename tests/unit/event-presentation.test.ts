@@ -58,6 +58,27 @@ describe('ref event presentation', () => {
     expect(eventMainLabel(rebase)).toBe('Rebase · feature: aaaaaaaa → bbbbbbbb');
   });
 
+  it('shows an explicit branch rename without presenting it as an OID movement', () => {
+    const rename = eventNode({
+      id: 'history:branch-rename:1:b',
+      type: 'branch-rename',
+      operation: 'Branch rename',
+      fromOid: undefined,
+      fromRef: 'refs/heads/feature',
+      toRef: 'refs/heads/feature-renamed',
+      refName: 'refs/heads/feature-renamed',
+    });
+    rename.kind = 'history-event';
+    rename.label = 'Branch rename · feature → feature-renamed';
+
+    expect(eventMovementLabel(rename)).toBe('Branch rename · feature → feature-renamed');
+    expect(eventMainLabel(rename)).toBe('Branch rename · feature → feature-renamed');
+    expect(eventTooltip(rename)).toContain('From\nfeature');
+    expect(eventTooltip(rename)).toContain('To\nfeature-renamed');
+    expect(eventTooltip(rename)).toContain(`Commit\n${oid('b')}`);
+    expect(eventTooltip(rename)).toContain('Operation\nBranch rename');
+  });
+
   it.each([
     ['cherry-pick', 'Cherry-pick'],
     ['revert', 'Revert'],

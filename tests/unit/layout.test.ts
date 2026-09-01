@@ -828,6 +828,67 @@ describe('graph layout', () => {
     assertRowInvariants(layout.nodes, layout.edges);
   });
 
+  it('keeps an Amend event on the live boundary before the old commit side route', () => {
+    const base = commitNode('a', 1);
+    const parent = { ...commitNode('b', 2), refIds: ['main'] };
+    const oldCommit = { ...commitNode('o', 2.5), kind: 'reflog-commit' as const, previousRoute: true };
+    const newCommit = { ...commitNode('c', 3), refIds: ['main'] };
+    const event: GraphNode = {
+      id: 'event:amend',
+      kind: 'history-event',
+      refIds: ['main'],
+      timestamp: 4,
+      label: 'Amend · main',
+      anchorCommitId: newCommit.id,
+      eventBoundaryCommitId: parent.id,
+      eventStartCommitId: newCommit.id,
+      targetRef: 'refs/heads/main',
+      event: {
+        id: 'event:amend',
+        type: 'amend',
+        refName: 'refs/heads/main',
+        fromOid: oldCommit.oid!,
+        toOid: newCommit.oid!,
+        boundaryOid: parent.oid,
+        eventStartOid: newCommit.oid,
+        timestamp: 4,
+      },
+    };
+    const commits = [
+      { oid: newCommit.oid!, parentOids: [parent.oid!], subject: 'new', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      { oid: oldCommit.oid!, parentOids: [parent.oid!], subject: 'old', authorName: 'A', authorDate: 2.5, committerName: 'A', committerDate: 2.5 },
+      { oid: parent.oid!, parentOids: [base.oid!], subject: 'parent', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      { oid: base.oid!, parentOids: [], subject: 'base', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
+    ];
+    const layout = createGraphLayout({
+      nodes: [newCommit, oldCommit, parent, base, event],
+      edges: [
+        { id: 'parent:new:parent', type: 'parent', fromNodeId: newCommit.id, toNodeId: parent.id },
+        { id: 'parent:old:parent', type: 'parent', fromNodeId: oldCommit.id, toNodeId: parent.id },
+        { id: 'parent:parent:base', type: 'parent', fromNodeId: parent.id, toNodeId: base.id },
+        { id: 'event:amend:annotation', type: 'history-event', fromNodeId: newCommit.id, toNodeId: event.id, annotation: 'ref-event' },
+      ],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: newCommit.oid! }],
+      commits,
+      workingTrees: [],
+      operations: [],
+      events: [event.event!],
+      primaryBranch: 'main',
+      shallowBoundaryOids: [],
+    }, { visibleCommitCount: commits.length, hasMore: false });
+    const laidOutNew = layout.nodes.find((node) => node.id === newCommit.id)!;
+    const laidOutEvent = layout.nodes.find((node) => node.id === event.id)!;
+    const laidOutOld = layout.nodes.find((node) => node.id === oldCommit.id)!;
+    const laidOutParent = layout.nodes.find((node) => node.id === parent.id)!;
+
+    expect(laidOutNew.row).toBeLessThan(laidOutEvent.row!);
+    expect(laidOutEvent.row).toBeLessThan(laidOutOld.row!);
+    expect(laidOutOld.row).toBeLessThan(laidOutParent.row!);
+    expect(laidOutOld.lane).toBeGreaterThan(laidOutNew.lane!);
+    expect(layout.tracks.find((track) => track.id === laidOutOld.trackId)?.family).toBe('historical');
+    assertRowInvariants(layout.nodes, layout.edges);
+  });
+
   it('splits a completed single-commit Rebase parent path through the event', () => {
     const facts = rebaseFacts();
     const layout = createGraphLayout(facts, { visibleCommitCount: facts.commits.length, hasMore: false });

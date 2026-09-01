@@ -192,6 +192,60 @@ describe('graph fact builder', () => {
     expect(oldNode?.previousRoute).toBe(false);
   });
 
+  it('keeps reflog-retained commits from a removed ref on an UNREFERENCED historical route', () => {
+    const historicalSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: oid('c'), parentOids: [oid('b')], subject: 'Deleted branch C', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oid('b'), parentOids: [oid('a')], subject: 'Deleted branch B', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        { oid: oid('a'), parentOids: [], subject: 'Shared main base', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      ],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('a') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('a'), branch: 'main' }],
+      reflogs: [
+        { refName: 'HEAD', newOid: oid('c'), selector: 'HEAD@{0}', timestamp: 4, subject: 'commit: Deleted branch C' },
+        { refName: 'HEAD', newOid: oid('b'), selector: 'HEAD@{1}', timestamp: 3, subject: 'commit: Deleted branch B' },
+        { refName: 'HEAD', newOid: oid('a'), selector: 'HEAD@{2}', timestamp: 2, subject: 'checkout: moving from feature to main' },
+      ],
+      visibleCommitCount: 3,
+    };
+    const facts = buildGraphFacts(historicalSnapshot, { showReflog: true });
+    const tip = facts.nodes.find((node) => node.oid === oid('c'));
+    const branchCommit = facts.nodes.find((node) => node.oid === oid('b'));
+    const shared = facts.nodes.find((node) => node.oid === oid('a'));
+
+    expect(tip).toMatchObject({ kind: 'reflog-commit', historicalKind: 'unreferenced', historicalRouteHead: true });
+    expect(branchCommit).toMatchObject({ kind: 'reflog-commit', historicalKind: 'unreferenced', historicalRouteHead: false });
+    expect(branchCommit?.historicalRouteId).toBe(tip?.historicalRouteId);
+    expect(shared).toMatchObject({ kind: 'commit', historicalKind: undefined });
+
+    const hidden = buildGraphFacts(historicalSnapshot, { showReflog: false });
+    expect(hidden.nodes.some((node) => node.oid === oid('c') || node.oid === oid('b'))).toBe(false);
+  });
+
+  it('uses DELETED BRANCH only when a reflog explicitly records the deletion', () => {
+    const deletedSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: oid('c'), parentOids: [oid('b')], subject: 'C', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oid('b'), parentOids: [oid('a')], subject: 'B', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        { oid: oid('a'), parentOids: [], subject: 'A', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      ],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('a') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('a'), branch: 'main' }],
+      reflogs: [
+        { refName: 'HEAD', newOid: oid('a'), selector: 'HEAD@{0}', timestamp: 5, subject: 'branch: deleted feature' },
+        { refName: 'HEAD', newOid: oid('a'), selector: 'HEAD@{1}', timestamp: 4, subject: 'checkout: moving from feature to main' },
+        { refName: 'HEAD', newOid: oid('c'), selector: 'HEAD@{2}', timestamp: 3, subject: 'commit: C' },
+        { refName: 'HEAD', newOid: oid('b'), selector: 'HEAD@{3}', timestamp: 2, subject: 'commit: B' },
+      ],
+      visibleCommitCount: 3,
+    };
+    const facts = buildGraphFacts(deletedSnapshot, { showReflog: true });
+    expect(facts.nodes.find((node) => node.oid === oid('c'))).toMatchObject({ historicalKind: 'deleted-branch', historicalRouteHead: true });
+    expect(facts.nodes.find((node) => node.oid === oid('b'))?.historicalKind).toBe('deleted-branch');
+  });
+
   it('marks the old tip of a completed rebase as PREVIOUS without graying the new route', () => {
     const facts = buildGraphFacts({
       ...snapshot,

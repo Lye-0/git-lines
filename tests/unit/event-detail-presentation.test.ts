@@ -54,6 +54,27 @@ describe('event detail presentation', () => {
     expect(missingTarget.find((field) => field.label === 'Target')?.value).toBe('Unknown');
   });
 
+  it('shows branch rename refs and the commit retained by the ref rename', () => {
+    const rename: HistoryEvent = {
+      id: 'history:branch-rename:10:new',
+      type: 'branch-rename',
+      refName: 'refs/heads/feature-renamed',
+      toOid: 'b'.repeat(40),
+      fromRef: 'refs/heads/feature',
+      toRef: 'refs/heads/feature-renamed',
+      operation: 'Branch rename',
+      timestamp: Date.UTC(2026, 0, 1, 0, 0, 0),
+      rawReflogMessage: 'Branch: renamed refs/heads/feature to refs/heads/feature-renamed',
+    };
+    const fields = eventDetailFields(rename);
+    expect(fields.map((field) => field.label)).toEqual(['Operation', 'Branch / Ref', 'From', 'To', 'Commit', 'Timestamp', 'Raw reflog message']);
+    expect(fields.find((field) => field.label === 'Operation')?.value).toBe('Branch rename');
+    expect(fields.find((field) => field.label === 'From')).toMatchObject({ value: 'feature', title: 'refs/heads/feature' });
+    expect(fields.find((field) => field.label === 'To')).toMatchObject({ value: 'feature-renamed', title: 'refs/heads/feature-renamed' });
+    expect(fields.find((field) => field.label === 'Commit')).toMatchObject({ value: 'bbbbbbbbbbbb', title: 'b'.repeat(40), kind: 'hash' });
+    expect(eventDetailTitle(rename)).toBe('Branch rename · feature → feature-renamed');
+  });
+
   it('does not infer reset mode when the reflog subject does not provide one', () => {
     const reset: HistoryEvent = { ...event, id: 'history:reset:10:new', type: 'reset', rawReflogMessage: 'reset: moving to HEAD~2' };
     expect(eventDetailTitle(reset)).toBe('Reset · feature');

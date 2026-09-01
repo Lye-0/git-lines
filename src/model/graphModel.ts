@@ -13,6 +13,9 @@ export type GraphNodeKind =
 
 export type GraphSyncState = 'shared' | 'local-only' | 'remote-only';
 
+/** Why a commit is retained outside the current live ref graph. */
+export type HistoricalRouteKind = 'previous' | 'deleted-branch' | 'unreferenced';
+
 export interface GraphNode {
   id: string;
   kind: GraphNodeKind;
@@ -31,6 +34,12 @@ export interface GraphNode {
   syncState?: GraphSyncState;
   /** Commit belongs to the old route produced by a reset or amend event. */
   previousRoute?: boolean;
+  /** Explicit reason for a non-live route, when Git metadata supports it. */
+  historicalKind?: HistoricalRouteKind;
+  /** Stable identity shared by commits in one historical side route. */
+  historicalRouteId?: string;
+  /** Only the tip/head of a historical side route receives its route badge. */
+  historicalRouteHead?: boolean;
   /** A ref-move event whose destination is currently on a historical route. */
   historicalEvent?: boolean;
   event?: HistoryEvent;
@@ -72,6 +81,8 @@ export interface GraphTrack {
   segments?: Array<{ startRow: number; endRow: number; lane: number }>;
   color: string;
   refNames: string[];
+  /** Historical side-route classification, when this is not a live track. */
+  historicalKind?: HistoricalRouteKind;
 }
 
 export interface GraphFactModel {
