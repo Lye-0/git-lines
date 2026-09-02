@@ -1,11 +1,12 @@
-import type { GraphEdge, GraphNode } from '../model/graphModel.js';
+import type { GraphEdge, GraphNode, HistoryRelation } from '../model/graphModel.js';
 import { normalizeRefName } from '../model/refDisplay.js';
-import type { EdgePath } from './layoutTypes.js';
+import type { EdgePath, HistoryRelationPath } from './layoutTypes.js';
 
 export interface EdgeRouterOptions {
   rowHeight?: number;
   laneWidth?: number;
   leftPadding?: number;
+  annotationRows?: ReadonlyMap<string, number>;
 }
 
 interface Point {
@@ -71,8 +72,57 @@ function operationCurve(a: Point, b: Point): CubicCurve {
   };
 }
 
+function historyRelationCurve(a: Point, b: Point): CubicCurve {
+  const direction = b.y >= a.y ? 1 : -1;
+  const delta = Math.min(42, Math.max(10, Math.abs(b.y - a.y) * 0.2));
+  // Let the curve turn toward the target before its final segment.  Keeping
+  // this offset small preserves the existing short relation shape while
+  // giving the terminal tangent a useful horizontal component when the
+  // commits occupy different lanes.
+  const lateralDirection = Math.sign(b.x - a.x);
+  const lateral = Math.min(18, Math.abs(b.x - a.x) * 0.18);
+  return {
+    p0: a,
+    p1: { x: a.x + lateralDirection * lateral, y: a.y + direction * delta },
+    p2: { x: b.x - lateralDirection * lateral, y: b.y - direction * delta },
+    p3: b,
+  };
+}
+
+function cubicDerivative(curve: CubicCurve, t: number): Point {
+  const oneMinusT = 1 - t;
+  return {
+    x: 3 * oneMinusT ** 2 * (curve.p1.x - curve.p0.x)
+      + 6 * oneMinusT * t * (curve.p2.x - curve.p1.x)
+      + 3 * t ** 2 * (curve.p3.x - curve.p2.x),
+    y: 3 * oneMinusT ** 2 * (curve.p1.y - curve.p0.y)
+      + 6 * oneMinusT * t * (curve.p2.y - curve.p1.y)
+      + 3 * t ** 2 * (curve.p3.y - curve.p2.y),
+  };
+}
+
 function curvePath(curve: CubicCurve): string {
   return `M ${curve.p0.x} ${curve.p0.y} C ${curve.p1.x} ${curve.p1.y}, ${curve.p2.x} ${curve.p2.y}, ${curve.p3.x} ${curve.p3.y}`;
+}
+
+function insetPoint(from: Point, to: Point, distance: number): Point {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length < Number.EPSILON) return from;
+  return { x: from.x + (dx / length) * distance, y: from.y + (dy / length) * distance };
+}
+
+function arrowPath(tip: Point, tangent: Point, size = 3): string {
+  const length = Math.hypot(tangent.x, tangent.y) || 1;
+  const ux = tangent.x / length;
+  const uy = tangent.y / length;
+  const px = -uy;
+  const py = ux;
+  const base = { x: tip.x - ux * size * 1.8, y: tip.y - uy * size * 1.8 };
+  const left = { x: base.x + px * size * 0.72, y: base.y + py * size * 0.72 };
+  const right = { x: base.x - px * size * 0.72, y: base.y - py * size * 0.72 };
+  return `M ${tip.x} ${tip.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z`;
 }
 
 function splitCubic(curve: CubicCurve, t: number, boundary: Point): [CubicCurve, CubicCurve] {
@@ -370,5 +420,57 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
     const curve = edge.type === 'operation' ? operationCurve(a, b) : parentCurve(a, b);
     const d = curvePath(curve);
     return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
+  });
+}
+
+/**
+ * Routes operation overlays independently from DAG edge routing.  A relation
+ * is intentionally omitted when either endpoint is not in the current page;
+ * partial arrows and fallback event rows would make pagination misleading.
+ */
+export function routeHistoryRelations(nodes: GraphNode[], relations: HistoryRelation[], options: EdgeRouterOptions = {}): HistoryRelationPath[] {
+  // Relations describe commit-object replacement, never the Working Tree
+  // state node, even though that node also carries the current HEAD OID.
+  const byOid = new Map(nodes
+    .filter((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid)
+    .map((node) => [node.oid as string, node]));
+  const rowHeight = options.rowHeight ?? 38;
+  const laneWidth = options.laneWidth ?? 34;
+  return relations.flatMap<HistoryRelationPath>((relation) => {
+    const source = byOid.get(relation.sourceOid);
+    const target = byOid.get(relation.targetOid);
+    if (!source || !target) return [];
+    const sourcePoint = pointForNode(source, { rowHeight, laneWidth, leftPadding: options.leftPadding });
+    const targetPoint = pointForNode(target, { rowHeight, laneWidth, leftPadding: options.leftPadding });
+    const distance = Math.hypot(targetPoint.x - sourcePoint.x, targetPoint.y - sourcePoint.y);
+    if (distance < Number.EPSILON) return [];
+    // Keep both the curve and the small arrowhead outside the 6.5px commit
+    // node.  The extra gap also keeps the overlay visually separate from the
+    // target's normal DAG edge.
+    const endpointInset = 8.5;
+    const curve = historyRelationCurve(
+      insetPoint(sourcePoint, targetPoint, Math.min(endpointInset, distance / 3)),
+      insetPoint(targetPoint, sourcePoint, Math.min(endpointInset, distance / 3)),
+    );
+    // A virtual annotation row gives the operation text stable vertical
+    // space.  Keep its graph marker on the same relation curve; the row never
+    // becomes an endpoint or a DAG edge.
+    const annotationRow = options.annotationRows?.get(relation.id);
+    const labelPoint = annotationRow === undefined
+      ? cubicPoint(curve, 0.42)
+      : cubicPoint(curve, parameterAtY(curve, 18 + annotationRow * rowHeight));
+    return [{
+      id: `${relation.id}:overlay`,
+      relationId: relation.id,
+      kind: relation.kind,
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      d: curvePath(curve),
+      // The arrow direction is the actual terminal Bezier tangent, not a
+      // fixed screen-space angle or a chord approximation.
+      arrowD: arrowPath(curve.p3, cubicDerivative(curve, 1)),
+      labelX: labelPoint.x,
+      labelY: labelPoint.y,
+    }];
   });
 }

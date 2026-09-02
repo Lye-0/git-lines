@@ -80,6 +80,22 @@ export interface GraphEdge {
   annotation?: 'ref-event' | 'shallow-boundary';
 }
 
+/**
+ * A Git-proven history transformation that is intentionally kept outside the
+ * commit DAG and its timeline rows.  The first overlay phase currently
+ * exposes only explicit amend reflog transitions.
+ */
+export interface HistoryRelation {
+  id: string;
+  kind: 'amend';
+  sourceOid: string;
+  targetOid: string;
+  refName?: string;
+  timestamp: number;
+  rawReflogMessage?: string;
+  evidence: 'reflog';
+}
+
 export interface GraphTrack {
   id: string;
   label: string;
@@ -104,6 +120,8 @@ export interface GraphFactModel {
   workingTrees: WorkingTreeState[];
   operations: OperationState[];
   events: HistoryEvent[];
+  /** Operation overlays do not participate in rows, lanes, or DAG edges. */
+  historyRelations?: HistoryRelation[];
   primaryBranch?: string;
   shallowBoundaryOids: string[];
 }

@@ -1,4 +1,5 @@
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
+import { operationAnnotationLabel } from './operationPresentation';
 
 /** Shared horizontal placement for the normal-row change statistics column. */
 export const CHANGES_COLUMN_START = 1180;
@@ -43,7 +44,7 @@ function estimatedBadgeWidth(badge: NonNullable<GraphLayout['nodes'][number]['re
  * this estimate only reserves scrollable space before the fixed changes
  * column, so flexbox never has to shrink a badge to fit the viewport.
  */
-export function changesColumnStartForLayout(layout: Pick<GraphLayout, 'nodes'>): number {
+export function changesColumnStartForLayout(layout: Pick<GraphLayout, 'nodes' | 'historyRelations'>): number {
   let required = COMMIT_CONTENT_MIN_WIDTH;
   for (const node of layout.nodes) {
     const badges = node.refBadges ?? [];
@@ -52,10 +53,14 @@ export function changesColumnStartForLayout(layout: Pick<GraphLayout, 'nodes'>):
     const titleWidth = Math.min(620, (node.subject ?? node.label ?? '').length * REF_BADGE_CHARACTER_WIDTH);
     required = Math.max(required, Math.ceil(titleWidth + ROW_HEADING_GAP + badgeWidth + ROW_CONTENT_INSET));
   }
+  for (const relation of layout.historyRelations ?? []) {
+    const operationWidth = Math.min(620, operationAnnotationLabel(relation).length * REF_BADGE_CHARACTER_WIDTH);
+    required = Math.max(required, Math.ceil(operationWidth + ROW_CONTENT_INSET));
+  }
   return required;
 }
 
-export function timelineContentWidthForLayout(layout: Pick<GraphLayout, 'nodes'>): number {
+export function timelineContentWidthForLayout(layout: Pick<GraphLayout, 'nodes' | 'historyRelations'>): number {
   return Math.max(TIMELINE_MIN_CONTENT_WIDTH, changesColumnStartForLayout(layout) + CHANGES_COLUMN_WIDTH + 11);
 }
 

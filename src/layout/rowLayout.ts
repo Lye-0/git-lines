@@ -85,16 +85,6 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     .map((node) => [node.oid as string, node.id]));
   const eventNodes = nodes.filter((candidate) => !structuralIds.has(candidate.id)).sort(compareNodes);
   const refOnlyEvents = eventNodes.filter((candidate) => candidate.refOnly === true);
-  const eventsAfterNode = new Map<string, GraphNode[]>();
-  for (const node of eventNodes) {
-    // Amend's old object is a historical side-route commit.  It must not be
-    // allowed to occupy the live route's boundary row before the event.  Put
-    // the event directly after the new commit; the historical object remains
-    // in the structural order on its own side lane.
-    if (node.event?.type === 'amend' && node.eventStartCommitId && structuralIds.has(node.eventStartCommitId)) {
-      eventsAfterNode.set(node.eventStartCommitId, [...(eventsAfterNode.get(node.eventStartCommitId) ?? []), node]);
-    }
-  }
   const anchorForEvent = (node: GraphNode): string | undefined => {
     const explicitBoundary = node.eventBoundaryCommitId && structuralIds.has(node.eventBoundaryCommitId) ? node.eventBoundaryCommitId : undefined;
     const destinationAnchor = node.anchorCommitId && structuralIds.has(node.anchorCommitId) ? node.anchorCommitId : undefined;
@@ -102,7 +92,7 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     return explicitBoundary ?? destinationAnchor ?? eventStart ?? eventAnchorById.get(node.id) ?? (node.event?.toOid ? commitIdByOid.get(node.event.toOid) : undefined);
   };
   const structuralRowSet = new Set(result.values());
-  const canReusePreviousTimeline = Boolean(previousRows && eventNodes.length > 0 && refOnlyEvents.length === 0 && eventsAfterNode.size === 0 && eventNodes.every((node) => {
+  const canReusePreviousTimeline = Boolean(previousRows && eventNodes.length > 0 && refOnlyEvents.length === 0 && eventNodes.every((node) => {
     const previousRow = previousRows.get(node.id);
     if (previousRow === undefined || structuralRowSet.has(previousRow)) return false;
     const anchorId = anchorForEvent(node);
@@ -125,7 +115,6 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     else fallbackEvents.push(...refOnlyEvents);
     for (const node of eventNodes) {
       if (node.refOnly === true) continue;
-      if ([...eventsAfterNode.values()].some((events) => events.some((event) => event.id === node.id))) continue;
       const anchorId = anchorForEvent(node);
       if (anchorId !== undefined && result.has(anchorId)) {
         anchoredEvents.set(anchorId, [...(anchoredEvents.get(anchorId) ?? []), node]);
@@ -142,9 +131,7 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
       eventsForAnchor.forEach((event, index) => result.set(event.id, shiftedRow + index));
       const structuralRow = shiftedRow + eventsForAnchor.length;
       result.set(structuralNode.id, structuralRow);
-      const eventsAfter = eventsAfterNode.get(structuralNode.id) ?? [];
-      eventsAfter.forEach((event, index) => result.set(event.id, structuralRow + index + 1));
-      cumulativeShift += eventsForAnchor.length + eventsAfter.length;
+      cumulativeShift += eventsForAnchor.length;
     }
 
     const maxRow = Math.max(-1, ...result.values());

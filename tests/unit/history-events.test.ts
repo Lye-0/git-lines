@@ -80,6 +80,24 @@ describe('history event resolver', () => {
     expect(resolveHistoryEvents([entry('rebase (finish): refs/heads/main', oid('b'), oid('a'))], commits)[0].type).toBe('rebase');
   });
 
+  it('collapses duplicate amend reflogs by the proven OID transition and keeps consecutive transitions', () => {
+    const oldCommit = commit('o', [oid('a')], 3);
+    const firstAmend = commit('n', [oid('a')], 4);
+    const secondAmend = commit('p', [oid('a')], 5);
+    const events = resolveHistoryEvents([
+      entry('commit (amend): first', oldCommit.oid, firstAmend.oid, 'HEAD', 'HEAD@{0}', 6_000),
+      entry('commit (amend): first', oldCommit.oid, firstAmend.oid, 'refs/heads/main', 'main@{0}', 6_000),
+      entry('commit (amend): second', firstAmend.oid, secondAmend.oid, 'refs/heads/main', 'main@{0}', 7_000),
+    ], [...commits, oldCommit, firstAmend, secondAmend]);
+
+    expect(events).toHaveLength(2);
+    expect(events.map((event) => [event.fromOid, event.toOid])).toEqual([
+      [firstAmend.oid, secondAmend.oid],
+      [oldCommit.oid, firstAmend.oid],
+    ]);
+    expect(events.find((event) => event.fromOid === oldCommit.oid)?.affectedRefs).toEqual(['refs/heads/main', 'HEAD']);
+  });
+
   it('records the exact removed range only for a proven backward reset', () => {
     const chain = [
       commit('a', [], 1),

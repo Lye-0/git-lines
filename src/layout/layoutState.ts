@@ -13,7 +13,16 @@ export class LayoutState {
 
   public set(layout: GraphLayout): void {
     this.current = layout;
-    this.rowMap = new Map(layout.nodes.filter((node) => node.row !== undefined).map((node) => [node.id, node.row as number]));
+    // Operation annotation rows are presentation-only gaps inserted after
+    // the structural row layout.  Keep the structural coordinates here so a
+    // later page append does not insert the same virtual row a second time.
+    const rows = new Map(layout.nodes.filter((node) => node.row !== undefined).map((node) => [node.id, node.row as number]));
+    for (const annotation of [...(layout.operationAnnotationRows ?? [])].sort((a, b) => b.row - a.row)) {
+      for (const [nodeId, row] of rows) {
+        if (row > annotation.row) rows.set(nodeId, row - 1);
+      }
+    }
+    this.rowMap = rows;
     this.laneMap = new Map(layout.tracks.map((track) => [track.id, track.lane]));
     this.nodeLaneMap = new Map(layout.nodes.filter((node) => node.lane !== undefined).map((node) => [node.id, node.lane as number]));
   }

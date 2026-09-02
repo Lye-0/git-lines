@@ -6,6 +6,7 @@
   --graph-text: var(--vscode-foreground, #f4f4f5);
   --graph-muted: var(--vscode-descriptionForeground, #8b8b95);
   --graph-accent: var(--vscode-textLink-foreground, #8ab4ff);
+  --operation-overlay-accent: hsl(282 84% 76%);
 }
 
 * { box-sizing: border-box; }
@@ -48,6 +49,23 @@ h1, h2, p { margin: 0; }
 .graph-canvas { position: relative; min-height: 100%; }
 .graph-svg { position: absolute; top: 0; left: 0; display: block; overflow: visible; pointer-events: none; }
 .graph-edges { pointer-events: none; }
+.graph-history-relation-lines { pointer-events: none; }
+.graph-history-relation-annotations { pointer-events: none; }
+.history-relation-lines, .history-relation-annotation { color: var(--operation-overlay-accent); }
+.history-relation-path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+.history-relation-arrow { fill: currentColor; stroke: none; opacity: .9; }
+.history-relation-annotation { pointer-events: auto; cursor: help; }
+.history-relation-diamond { fill: var(--graph-bg); stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.history-relation-label { fill: currentColor; font-size: 12px; font-weight: 600; dominant-baseline: central; paint-order: stroke; stroke: var(--graph-bg); stroke-width: 3px; stroke-linejoin: round; }
+.history-relation-annotation.selected .history-relation-diamond { stroke-width: 2.25; }
+.operation-annotation-row .row-content { width: min(100%, var(--changes-column-content-width, 1413px)); max-width: 100%; padding: 4px 10px; background: transparent; }
+.operation-annotation-row { width: 100%; max-width: 100%; }
+.commit-row.operation-annotation-row:hover .row-content,
+.commit-row.operation-annotation-row:focus-visible .row-content { background: color-mix(in srgb, var(--graph-text) 6%, var(--graph-surface)); }
+.commit-row.operation-annotation-row .row-content.selected { background: color-mix(in srgb, var(--graph-accent) 13%, var(--graph-surface)); border-color: color-mix(in srgb, var(--graph-accent) 30%, var(--graph-border)); }
+.operation-annotation-detail { display: block; max-width: min(100%, var(--changes-column-content-width, 1413px)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--operation-overlay-accent); background: color-mix(in srgb, var(--operation-overlay-accent) 8%, var(--graph-surface)); border: 1px solid color-mix(in srgb, var(--operation-overlay-accent) 34%, var(--graph-border)); border-radius: 6px; padding: 5px 9px; font-size: 11px; font-weight: 600; }
+.operation-annotation-row .row-content.selected .operation-annotation-detail { border-color: color-mix(in srgb, var(--operation-overlay-accent) 68%, var(--graph-border)); background: color-mix(in srgb, var(--operation-overlay-accent) 14%, var(--graph-surface)); }
+.operation-annotation-detail:hover { background: color-mix(in srgb, var(--operation-overlay-accent) 13%, var(--graph-surface)); }
 .graph-node-masks { pointer-events: none; }
 .graph-nodes { isolation: isolate; }
 .edge { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }

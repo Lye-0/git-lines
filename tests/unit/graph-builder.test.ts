@@ -107,6 +107,51 @@ describe('graph fact builder', () => {
     expect(layout.tracks.find((track) => track.id === layout.nodes.find((node) => node.oid === detachedOid)?.trackId)?.family).not.toBe('historical');
   });
 
+  it('emits a detached HEAD amend as a relation without requiring a branch ref', () => {
+    const oldOid = oid('c');
+    const newOid = oid('d');
+    const amendSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: newOid, parentOids: [oid('b')], subject: 'detached amended commit', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oldOid, parentOids: [oid('b')], subject: 'old detached commit', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        ...snapshot.commits,
+      ],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: newOid, branch: undefined, detached: true }],
+      historyEvents: [{ id: 'history:amend:5:d', type: 'amend', refName: 'HEAD', fromOid: oldOid, toOid: newOid, timestamp: 5, subject: 'commit (amend): detached amended commit' }],
+      visibleCommitCount: 4,
+    };
+
+    const facts = buildGraphFacts(amendSnapshot, { showReflog: true });
+
+    expect(facts.historyRelations).toEqual([expect.objectContaining({ kind: 'amend', sourceOid: oldOid, targetOid: newOid, refName: 'HEAD', evidence: 'reflog' })]);
+    expect(facts.nodes.find((node) => node.oid === newOid)).toMatchObject({ kind: 'commit', headState: 'detached', previousRoute: false });
+    expect(facts.nodes.find((node) => node.oid === oldOid)).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
+    expect(facts.nodes.some((node) => node.id === 'history:amend:5:d')).toBe(false);
+
+    const hidden = buildGraphFacts(amendSnapshot, { showReflog: false });
+    expect(hidden.historyRelations).toEqual([]);
+    expect(hidden.events).toEqual([]);
+  });
+
+  it('keeps an Amend event for detail but does not route a partial relation when its source is unloaded', () => {
+    const newOid = oid('d');
+    const event = { id: 'history:amend:5:d', type: 'amend' as const, refName: 'refs/heads/main', fromOid: oid('missing'), toOid: newOid, timestamp: 5, subject: 'commit (amend): new' };
+    const facts = buildGraphFacts({
+      ...snapshot,
+      commits: [{ oid: newOid, parentOids: [oid('b')], subject: 'new', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 }, ...snapshot.commits],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: newOid }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: newOid, branch: 'main' }],
+      historyEvents: [event],
+      visibleCommitCount: 3,
+    }, { showReflog: true });
+
+    expect(facts.events).toEqual([event]);
+    expect(facts.historyRelations).toEqual([]);
+    expect(facts.nodes.some((node) => node.id === event.id)).toBe(false);
+    expect(createGraphLayout(facts, { visibleCommitCount: facts.commits.length, hasMore: false }).historyRelationPaths).toEqual([]);
+  });
+
   it('promotes a detached commit to UNREFERENCED only after HEAD leaves it', () => {
     const detachedOid = oid('d');
     const leftDetachedSnapshot: RepositorySnapshot = {
@@ -239,7 +284,7 @@ describe('graph fact builder', () => {
     });
   });
 
-  it('keeps multiple ref events as separate timeline facts on one destination', () => {
+  it('keeps Amend as a relation while retaining other ref events as timeline nodes', () => {
     const facts = buildGraphFacts({
       ...snapshot,
       commits: [
@@ -252,10 +297,11 @@ describe('graph fact builder', () => {
       ],
     });
     const eventNodes = facts.nodes.filter((node) => node.kind === 'history-event');
-    expect(eventNodes).toHaveLength(2);
-    expect(eventNodes.every((node) => node.anchorCommitId === `commit:${oid('b')}`)).toBe(true);
-    expect(eventNodes.every((node) => node.targetRef === 'refs/heads/main')).toBe(true);
-    expect(eventNodes.every((node) => node.oid === undefined)).toBe(true);
+    expect(eventNodes).toHaveLength(1);
+    expect(eventNodes[0]).toMatchObject({ event: { type: 'reset' }, anchorCommitId: `commit:${oid('b')}`, targetRef: 'refs/heads/main' });
+    expect(facts.events).toHaveLength(2);
+    expect(facts.historyRelations).toEqual([expect.objectContaining({ kind: 'amend', sourceOid: oid('o'), targetOid: oid('b'), evidence: 'reflog' })]);
+    expect(facts.edges.filter((edge) => edge.type === 'history-event')).toHaveLength(1);
   });
 
   it('keeps a live ref-only reset event without turning it into a historical route', () => {
@@ -267,8 +313,9 @@ describe('graph fact builder', () => {
       ],
     });
 
-    expect(facts.events).toHaveLength(1);
-    expect(facts.events[0]).toMatchObject({ type: 'reset', fromOid: oid('a'), toOid: oid('b') });
+    expect(facts.events).toHaveLength(2);
+    expect(facts.events).toContainEqual(expect.objectContaining({ type: 'reset', fromOid: oid('a'), toOid: oid('b') }));
+    expect(facts.historyRelations).toEqual([expect.objectContaining({ kind: 'amend', sourceOid: oid('a'), targetOid: oid('b'), evidence: 'reflog' })]);
     expect(facts.nodes.filter((node) => node.kind === 'history-event')).toHaveLength(1);
     expect(facts.nodes.find((node) => node.event?.type === 'reset')).toMatchObject({ refOnly: true, historicalEvent: false });
     expect(facts.nodes.find((node) => node.oid === oid('a'))?.previousRoute).toBe(false);

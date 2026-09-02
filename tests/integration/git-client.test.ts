@@ -727,7 +727,7 @@ describe('GitClient integration fixture', () => {
     expect(colors.colorForNode(secondEventNode!)).not.toBe(HISTORICAL_ROUTE_COLOR);
   });
 
-  it('places an amended reflog commit on a gray previous route', async () => {
+  it('places an amended reflog commit on a gray previous route and emits one overlay relation', async () => {
     fixture = createGitFixture();
     commitFixture(fixture, 'base', '2026-08-27T09:00:00+09:00');
     commitFixture(fixture, 'old commit before amend', '2026-08-27T10:00:00+09:00');
@@ -740,7 +740,7 @@ describe('GitClient integration fixture', () => {
     const oldNode = facts.nodes.find((node) => node.oid === oldTip);
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
     const oldLayoutNode = layout.nodes.find((node) => node.oid === oldTip);
-    const currentLayoutNode = layout.nodes.find((node) => node.oid === snapshot.workingTrees[0]?.headOid);
+    const currentLayoutNode = layout.nodes.find((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid === snapshot.workingTrees[0]?.headOid);
     const amendEvent = snapshot.historyEvents.find((event) => event.type === 'amend');
     const baseLayoutNode = layout.nodes.find((node) => node.subject === 'base');
     const historicalTrack = layout.tracks.find((track) => track.id === oldLayoutNode?.trackId);
@@ -748,13 +748,16 @@ describe('GitClient integration fixture', () => {
     expect(oldNode?.kind).toBe('reflog-commit');
     expect(oldNode?.previousRoute).toBe(true);
     expect(snapshot.historyEvents.some((event) => event.type === 'amend')).toBe(true);
+    expect(facts.historyRelations).toHaveLength(1);
+    expect(facts.historyRelations?.[0]).toMatchObject({ kind: 'amend', sourceOid: oldTip, targetOid: snapshot.workingTrees[0]?.headOid, evidence: 'reflog' });
     expect(historicalTrack?.family).toBe('historical');
     expect(oldLayoutNode?.lane).toBeGreaterThan(currentLayoutNode?.lane ?? -1);
     expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
     expect(amendEvent?.boundaryOid).toBe(baseLayoutNode?.oid);
-    assertEventBoundary(layout, amendEvent?.id ?? '', snapshot.workingTrees[0]?.headOid ?? '', baseLayoutNode?.oid ?? '');
-    expect(currentLayoutNode?.row).toBeLessThan(layout.nodes.find((node) => node.id === amendEvent?.id)?.row ?? Number.MAX_SAFE_INTEGER);
-    expect(layout.nodes.find((node) => node.id === amendEvent?.id)?.row).toBeLessThan(oldLayoutNode?.row ?? Number.MAX_SAFE_INTEGER);
+    expect(layout.nodes.find((node) => node.id === amendEvent?.id)).toBeUndefined();
+    expect(currentLayoutNode?.row).toBeLessThan(oldLayoutNode?.row ?? Number.MAX_SAFE_INTEGER);
+    expect(layout.historyRelationPaths).toEqual([expect.objectContaining({ relationId: amendEvent?.id, sourceNodeId: oldLayoutNode?.id, targetNodeId: currentLayoutNode?.id })]);
+    expect(layout.edges.filter((edge) => edge.type === 'history-event' && edge.annotation === 'ref-event')).toHaveLength(0);
   });
 
   it('keeps a long feature lane independent and preserves both merge parents', async () => {

@@ -1,5 +1,5 @@
 import type { HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
-import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind } from './graphModel.js';
+import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind, HistoryRelation } from './graphModel.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
 export interface GraphBuilderOptions {
@@ -282,6 +282,24 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       ...previousRoute.routes.entries(),
       ...unreferencedRouteSelection(snapshot, commitMap, reachableOids, previousRouteOids).entries(),
     ]);
+  const events = options.showReflog === false ? [] : snapshot.historyEvents;
+  // Amend is a proven old-object -> new-object transformation, but it is not
+  // a timeline node.  Keep the exact reflog-derived event in `events` for the
+  // detail view and expose a complete overlay relation only when both real
+  // endpoint commits are part of the current graph page.
+  const historyRelations: HistoryRelation[] = events.flatMap((event) => {
+    if (event.type !== 'amend' || !event.fromOid || !commitMap.has(event.fromOid) || !commitMap.has(event.toOid)) return [];
+    return [{
+      id: event.id,
+      kind: 'amend' as const,
+      sourceOid: event.fromOid,
+      targetOid: event.toOid,
+      refName: event.refName,
+      timestamp: event.timestamp,
+      rawReflogMessage: event.rawReflogMessage ?? event.subject,
+      evidence: 'reflog' as const,
+    }];
+  });
   const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
     if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
@@ -349,10 +367,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       }
     }
   }
-  const events = options.showReflog === false
-    ? []
-    : snapshot.historyEvents.filter((event) => event.type !== 'amend' || previousRoute.eventIds.has(event.id));
-  for (const event of events) {
+  for (const event of events.filter((candidate) => candidate.type !== 'amend')) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
     const eventStart = event.eventStartOid ? nodeByOid.get(event.eventStartOid) : undefined;
@@ -401,6 +416,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     workingTrees: snapshot.workingTrees,
     operations: snapshot.operations,
     events,
+    historyRelations,
     primaryBranch: primaryBranch(snapshot, options.primaryBranch),
     shallowBoundaryOids: snapshot.shallowBoundaryOids,
   };
