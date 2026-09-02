@@ -3,7 +3,7 @@ import { assignBranchSegmentLanes, computeLaneLayout } from '../../src/layout/la
 import { computeRowLayout, assertRowInvariants } from '../../src/layout/rowLayout.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { filterRenderableEdgePaths } from '../../src/layout/edgeVisibility.js';
-import { pointForNode, routeEdges } from '../../src/layout/edgeRouter.js';
+import { COMMIT_NODE_RADIUS, historyRelationTargetInset, pointForNode, routeEdges } from '../../src/layout/edgeRouter.js';
 import { HISTORICAL_ROUTE_COLOR, isSafeLiveBranchColor } from '../../src/utils/color.js';
 import type { EdgePath } from '../../src/layout/layoutTypes.js';
 import type { GraphFactModel, GraphNode } from '../../src/model/graphModel.js';
@@ -1009,9 +1009,14 @@ describe('graph layout', () => {
     const arrowBaseX = (arrowNumbers[2] + arrowNumbers[4]) / 2;
     const arrowBaseY = (arrowNumbers[3] + arrowNumbers[5]) / 2;
     const targetDistance = Math.hypot(arrowTip.x - targetPoint.x, arrowTip.y - targetPoint.y);
+    const arrowVertices = [
+      arrowTip,
+      { x: arrowNumbers[2], y: arrowNumbers[3] },
+      { x: arrowNumbers[4], y: arrowNumbers[5] },
+    ];
     expect(lineEnd).toEqual(arrowTip);
-    expect(targetDistance).toBeGreaterThan(6.5);
-    expect(targetDistance).toBeLessThan(12);
+    expect(targetDistance).toBeCloseTo(historyRelationTargetInset(), 5);
+    expect(arrowVertices.every((vertex) => Math.hypot(vertex.x - targetPoint.x, vertex.y - targetPoint.y) > COMMIT_NODE_RADIUS)).toBe(true);
     expect(arrowTip.y).toBeLessThan(arrowBaseY);
     expect(arrowTip.x).toBeLessThan(arrowBaseX);
     const sourcePoint = pointForNode(laidOutOld);

@@ -105,6 +105,29 @@ function curvePath(curve: CubicCurve): string {
   return `M ${curve.p0.x} ${curve.p0.y} C ${curve.p1.x} ${curve.p1.y}, ${curve.p2.x} ${curve.p2.y}, ${curve.p3.x} ${curve.p3.y}`;
 }
 
+/** Matches the commit node circle radius rendered by GraphSvg. */
+export const COMMIT_NODE_RADIUS = 6.5;
+/** Keep the overlay arrow small; placement, not size, is what makes it readable. */
+export const HISTORY_RELATION_ARROW_SIZE = 3;
+/** Visible gap between the arrow tip and the target node disk. */
+export const HISTORY_RELATION_ARROW_GAP = 2;
+const HISTORY_RELATION_ARROW_LENGTH_RATIO = 1.8;
+const HISTORY_RELATION_ARROW_HALF_WIDTH_RATIO = 0.72;
+
+/**
+ * Distance from the target commit center to the arrow tip.  The triangle
+ * itself extends away from the node along the terminal tangent, so the size
+ * parameter is reserved as extra readable clearance rather than as body
+ * length toward the node.
+ */
+export function historyRelationTargetInset(arrowSize = HISTORY_RELATION_ARROW_SIZE): number {
+  return COMMIT_NODE_RADIUS + arrowSize + HISTORY_RELATION_ARROW_GAP;
+}
+
+function historyRelationSourceInset(): number {
+  return COMMIT_NODE_RADIUS + HISTORY_RELATION_ARROW_GAP;
+}
+
 function insetPoint(from: Point, to: Point, distance: number): Point {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -113,15 +136,24 @@ function insetPoint(from: Point, to: Point, distance: number): Point {
   return { x: from.x + (dx / length) * distance, y: from.y + (dy / length) * distance };
 }
 
-function arrowPath(tip: Point, tangent: Point, size = 3): string {
+function insetFromAlong(origin: Point, direction: Point, distance: number): Point {
+  const length = Math.hypot(direction.x, direction.y);
+  if (length < Number.EPSILON) return origin;
+  return {
+    x: origin.x - (direction.x / length) * distance,
+    y: origin.y - (direction.y / length) * distance,
+  };
+}
+
+function arrowPath(tip: Point, tangent: Point, size = HISTORY_RELATION_ARROW_SIZE): string {
   const length = Math.hypot(tangent.x, tangent.y) || 1;
   const ux = tangent.x / length;
   const uy = tangent.y / length;
   const px = -uy;
   const py = ux;
-  const base = { x: tip.x - ux * size * 1.8, y: tip.y - uy * size * 1.8 };
-  const left = { x: base.x + px * size * 0.72, y: base.y + py * size * 0.72 };
-  const right = { x: base.x - px * size * 0.72, y: base.y - py * size * 0.72 };
+  const base = { x: tip.x - ux * size * HISTORY_RELATION_ARROW_LENGTH_RATIO, y: tip.y - uy * size * HISTORY_RELATION_ARROW_LENGTH_RATIO };
+  const left = { x: base.x + px * size * HISTORY_RELATION_ARROW_HALF_WIDTH_RATIO, y: base.y + py * size * HISTORY_RELATION_ARROW_HALF_WIDTH_RATIO };
+  const right = { x: base.x - px * size * HISTORY_RELATION_ARROW_HALF_WIDTH_RATIO, y: base.y - py * size * HISTORY_RELATION_ARROW_HALF_WIDTH_RATIO };
   return `M ${tip.x} ${tip.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z`;
 }
 
@@ -444,14 +476,20 @@ export function routeHistoryRelations(nodes: GraphNode[], relations: HistoryRela
     const targetPoint = pointForNode(target, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const distance = Math.hypot(targetPoint.x - sourcePoint.x, targetPoint.y - sourcePoint.y);
     if (distance < Number.EPSILON) return [];
-    // Keep both the curve and the small arrowhead outside the 6.5px commit
-    // node.  The extra gap also keeps the overlay visually separate from the
-    // target's normal DAG edge.
-    const endpointInset = 8.5;
-    const curve = historyRelationCurve(
-      insetPoint(sourcePoint, targetPoint, Math.min(endpointInset, distance / 3)),
-      insetPoint(targetPoint, sourcePoint, Math.min(endpointInset, distance / 3)),
-    );
+    // Source keeps the previous node-clearing inset.  The target inset is
+    // derived from the commit radius, the small arrow size, and a readable
+    // gap so the triangle sits before the node instead of under it.
+    const targetInset = Math.min(historyRelationTargetInset(), distance / 2);
+    const sourceInset = Math.min(historyRelationSourceInset(), Math.max(0, (distance - targetInset) / 3));
+    const start = insetPoint(sourcePoint, targetPoint, sourceInset);
+    // Pull the tip back along the real terminal tangent rather than the
+    // source-target chord.  After an annotation row the curve is steeper,
+    // so a chord inset leaves the arrow overlapping the node disk that is
+    // painted above the overlay.
+    const approach = cubicDerivative(historyRelationCurve(start, targetPoint), 1);
+    const end = insetFromAlong(targetPoint, approach, targetInset);
+    const curve = historyRelationCurve(start, end);
+    const tangent = cubicDerivative(curve, 1);
     // A virtual annotation row gives the operation text stable vertical
     // space.  Keep its graph marker on the same relation curve; the row never
     // becomes an endpoint or a DAG edge.
@@ -468,7 +506,7 @@ export function routeHistoryRelations(nodes: GraphNode[], relations: HistoryRela
       d: curvePath(curve),
       // The arrow direction is the actual terminal Bezier tangent, not a
       // fixed screen-space angle or a chord approximation.
-      arrowD: arrowPath(curve.p3, cubicDerivative(curve, 1)),
+      arrowD: arrowPath(curve.p3, tangent),
       labelX: labelPoint.x,
       labelY: labelPoint.y,
     }];
