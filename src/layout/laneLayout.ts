@@ -37,6 +37,7 @@ interface TrackCandidate {
   label?: string;
   synthetic?: boolean;
   historicalKind?: HistoricalRouteKind;
+  detached?: boolean;
 }
 
 function interval(segment: Pick<BranchSegment, 'startRow' | 'endRow'>): { startRow: number; endRow: number } {
@@ -254,6 +255,25 @@ function mergedSideCandidate(rootOid: string, id: string): TrackCandidate {
   };
 }
 
+/**
+ * A detached HEAD is not a branch ref, but a diverged current HEAD still
+ * needs a live visual route so its DAG edge can leave the named branch's
+ * spine.  This is an internal route identity only: it creates no ref, badge,
+ * or user-facing pseudo-branch.
+ */
+function detachedHeadCandidate(headOid: string): TrackCandidate {
+  return {
+    id: `detached-head:${headOid}`,
+    family: 'detached-head',
+    kind: 'local',
+    refs: [],
+    oids: new Set([headOid]),
+    label: 'HEAD (detached)',
+    synthetic: true,
+    detached: true,
+  };
+}
+
 interface PreviousRoute {
   rootOid: string;
   oids: Set<string>;
@@ -413,6 +433,15 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   const refs = branchRefs(facts.refs);
   const commits = new Map(facts.commits.map((commit) => [commit.oid, commit]));
   const { candidates, refTrack } = makeCandidates(refs, commits);
+  const currentTree = facts.workingTrees.find((tree) => tree.currentWorktree === true)
+    ?? facts.workingTrees.find((tree) => tree.currentWorktree === undefined && tree.mainWorktree !== false)
+    ?? facts.workingTrees[0];
+  const detachedHeadOid = currentTree?.detached ? currentTree.headOid : undefined;
+  const detachedCandidate = detachedHeadOid && commits.has(detachedHeadOid)
+    && !candidates.some((candidate) => candidate.refs.some((ref) => Boolean(ref.oid && ancestorDistances(ref.oid, commits).has(detachedHeadOid))))
+    ? detachedHeadCandidate(detachedHeadOid)
+    : undefined;
+  if (detachedCandidate) candidates.push(detachedCandidate);
   const eventTrackForRef = (refName?: string): string | undefined => {
     if (!refName) return undefined;
     const direct = refTrack.get(refName);
@@ -490,6 +519,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   // segment instead of overwriting its track.
   for (const route of historicalRoutes) assignFirstParentPath(route.rootOid, route.candidate.id, route.oids);
   for (const branch of sideBranches) assignFirstParentPath(branch.rootOid, branch.candidate.id);
+  if (detachedCandidate) assignFirstParentPath(detachedHeadOid, detachedCandidate.id);
   // A live branch ref is useful for naming an otherwise unmerged branch, but
   // it cannot override the primary first-parent spine or an older side path.
   for (const candidate of candidates.filter((item) => item !== primaryCandidate && !item.synthetic)) {
@@ -633,6 +663,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
       ),
     refNames: candidate.refs.map((ref) => ref.fullName),
     historicalKind: candidate.historicalKind,
+    detached: candidate.detached,
   }));
   const laidOut = initialAssignments.map(({ node, trackId }) => {
     const nodeLane = trackId ? laneByNodeId.get(node.id) ?? trackLane.get(trackId) ?? 0 : 0;

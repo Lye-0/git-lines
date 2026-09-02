@@ -73,6 +73,62 @@ describe('GitClient integration fixture', () => {
     expect(snapshot.historyEvents).toHaveLength(0);
   });
 
+  it('keeps the current detached HEAD commit live until HEAD leaves it', async () => {
+    fixture = createGitFixture();
+    commitText(fixture, 'history.txt', 'initial\n', 'Initial commit', '2026-08-27T09:00:00+09:00');
+    commitText(fixture, 'history.txt', 'main-one\n', 'Main commit one', '2026-08-27T10:00:00+09:00');
+    const mainOneOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    commitText(fixture, 'history.txt', 'main-two\n', 'Main commit two', '2026-08-27T11:00:00+09:00');
+    const mainTwoOid = fixture.run(['rev-parse', 'HEAD']).trim();
+
+    fixture.run(['checkout', mainOneOid]);
+    let snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    let current = snapshot.workingTrees.find((tree) => tree.currentWorktree === true);
+    let facts = buildGraphFacts(snapshot, { showReflog: true });
+    let head = facts.nodes.find((node) => node.oid === mainOneOid);
+
+    expect(current).toMatchObject({ detached: true, headOid: mainOneOid });
+    expect(head).toMatchObject({ kind: 'commit', previousRoute: false, historicalKind: undefined, refBadges: [], headState: 'detached' });
+    expect(snapshot.refs.find((ref) => ref.fullName === 'refs/heads/main')?.oid).toBe(mainTwoOid);
+
+    commitText(fixture, 'detached.txt', 'detached\n', 'New detached commit', '2026-08-27T12:00:00+09:00');
+    const detachedOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    current = snapshot.workingTrees.find((tree) => tree.currentWorktree === true);
+    facts = buildGraphFacts(snapshot, { showReflog: true });
+    head = facts.nodes.find((node) => node.oid === detachedOid);
+    const working = facts.nodes.find((node) => node.kind === 'working-tree');
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    const layoutHead = layout.nodes.find((node) => node.oid === detachedOid);
+
+    expect(current).toMatchObject({ detached: true, headOid: detachedOid });
+    expect(head).toMatchObject({ kind: 'commit', previousRoute: false, historicalKind: undefined, refBadges: [], headState: 'detached' });
+    expect(facts.nodes.some((node) => node.historicalKind === 'unreferenced' && node.oid === detachedOid)).toBe(false);
+    expect(facts.edges).toContainEqual(expect.objectContaining({
+      type: 'working-tree',
+      fromNodeId: working?.id,
+      toNodeId: `commit:${detachedOid}`,
+    }));
+    expect(layout.tracks.find((track) => track.id === layoutHead?.trackId)?.family).not.toBe('historical');
+    expect(createGraphColorResolver(layout).colorForNode(layoutHead!)).not.toBe(HISTORICAL_ROUTE_COLOR);
+
+    const noReflogFacts = buildGraphFacts(await new GitClient().readSnapshot(fixture.root, 30, false), { showReflog: false });
+    expect(noReflogFacts.nodes.find((node) => node.oid === detachedOid)).toMatchObject({ kind: 'commit', historicalKind: undefined });
+
+    fixture.run(['switch', 'main']);
+    snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    facts = buildGraphFacts(snapshot, { showReflog: true });
+    head = facts.nodes.find((node) => node.oid === detachedOid);
+    const attachedHead = facts.nodes.find((node) => node.oid === mainTwoOid);
+    expect(snapshot.workingTrees.find((tree) => tree.currentWorktree === true)).toMatchObject({ detached: false, branch: 'main', headOid: mainTwoOid });
+    expect(head).toMatchObject({ kind: 'reflog-commit', historicalKind: 'unreferenced', historicalRouteHead: true });
+    expect(head?.headState).toBeUndefined();
+    expect(attachedHead?.headState).toBe('attached');
+
+    const afterLeaveNoReflog = await new GitClient().readSnapshot(fixture.root, 30, false);
+    expect(buildGraphFacts(afterLeaveNoReflog, { showReflog: false }).nodes.some((node) => node.oid === detachedOid)).toBe(false);
+  });
+
   it('represents an actual linked worktree as a commit-row annotation', async () => {
     fixture = createGitFixture();
     commitFixture(fixture, 'initial', '2026-08-27T09:00:00+09:00');

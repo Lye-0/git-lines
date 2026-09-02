@@ -67,7 +67,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
   const badges = refEvent ? [] : node.refBadges ?? node.refIds.map((name) => specialRefBadge(name));
   const routeName = routeNameForNode(node, tracks);
   const commitMeta = node.commit
-    ? commitMetaText(node.commit.oid, routeName, relativeTime(node.commit.committerDate))
+    ? commitMetaText(node.commit.oid, routeName, relativeTime(node.commit.committerDate), node.headState)
     : undefined;
   const ariaLabel = [title, working?.operation ? `+ ${working.operation}` : undefined, subtitle, commitMeta, linkedWorktreeInfo].filter(Boolean).join(', ');
   const workingStats = node.kind === 'working-tree' && showWorkingTreeStats && node.workingTree && isCurrentWorktree(node.workingTree)
@@ -122,7 +122,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
             </div>}
           </div>
           {subtitle && <span className="row-subtitle" title={subtitle}>{subtitle}</span>}
-          {commitMeta && <span className="commit-meta" title={routeName ?? commitMeta}>{commitMeta}</span>}
+          {commitMeta && <span className="commit-meta" title={commitMeta}>{commitMeta}</span>}
         </div>
       </div>
     </div>

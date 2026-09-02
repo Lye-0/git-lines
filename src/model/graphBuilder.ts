@@ -7,9 +7,16 @@ export interface GraphBuilderOptions {
   primaryBranch?: string | null;
 }
 
-function reachableFromRefs(snapshot: RepositorySnapshot, commits: Map<string, { parentOids: string[] }>): Set<string> {
+function reachableFromRefs(
+  snapshot: RepositorySnapshot,
+  commits: Map<string, { parentOids: string[] }>,
+  additionalRoots: Iterable<string> = [],
+): Set<string> {
   const reachable = new Set<string>();
-  const queue = snapshot.refs.filter(isUserFacingRef).map((ref) => ref.oid).filter((oid): oid is string => Boolean(oid));
+  const queue = [
+    ...snapshot.refs.filter(isUserFacingRef).map((ref) => ref.oid).filter((oid): oid is string => Boolean(oid)),
+    ...additionalRoots,
+  ];
   while (queue.length) {
     const oid = queue.shift() as string;
     if (reachable.has(oid)) continue;
@@ -239,11 +246,20 @@ function operationForWorkingTree(tree: RepositorySnapshot['workingTrees'][number
 export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuilderOptions = {}): GraphFactModel {
   const currentSelection = currentWorktreeSelection(snapshot);
   const currentBranch = currentSelection?.tree.branch;
+  const currentHeadOid = currentSelection?.tree.headOid;
+  const currentHeadState = currentSelection
+    ? currentSelection.tree.detached ? 'detached' as const : 'attached' as const
+    : undefined;
   const visibleCount = Math.min(snapshot.visibleCommitCount, snapshot.commits.length);
   const visibleCommits = snapshot.commits.slice(0, visibleCount);
   const visibleOids = new Set(visibleCommits.map((commit) => commit.oid));
   const allCommitMap = new Map(snapshot.commits.map((commit) => [commit.oid, commit]));
-  const allReachableOids = reachableFromRefs(snapshot, allCommitMap);
+  // A detached HEAD is a live root even though it has no branch ref.  Include
+  // the currently opened worktree's actual HEAD alongside normal refs; when
+  // HEAD is attached this is the same OID as its local branch and the Set
+  // naturally deduplicates it.
+  const currentHeadRoots = currentSelection?.tree.headOid ? [currentSelection.tree.headOid] : [];
+  const allReachableOids = reachableFromRefs(snapshot, allCommitMap, currentHeadRoots);
   const commits = options.showReflog === false
     ? visibleCommits.filter((commit) => allReachableOids.has(commit.oid))
     : [...visibleCommits, ...snapshot.commits.slice(visibleCount).filter((commit) => !visibleOids.has(commit.oid))];
@@ -253,7 +269,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     if (tree.worktreeId === currentSelection?.tree.worktreeId || !tree.headOid) continue;
     linkedWorktreesByHead.set(tree.headOid, [...(linkedWorktreesByHead.get(tree.headOid) ?? []), tree]);
   }
-  const reachableOids = options.showReflog === false ? allReachableOids : reachableFromRefs(snapshot, commitMap);
+  const reachableOids = options.showReflog === false ? allReachableOids : reachableFromRefs(snapshot, commitMap, currentHeadRoots);
   const localReachable = reachableFromRefType(snapshot, commitMap, 'local');
   const remoteReachable = reachableFromRefType(snapshot, commitMap, 'remote');
   const previousRoute = options.showReflog === false
@@ -284,6 +300,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       label: commit.subject,
       commit,
       syncState: syncStateFor(commit.oid, localReachable, remoteReachable),
+      headState: commit.oid === currentHeadOid ? currentHeadState : undefined,
       previousRoute: previousRouteOids.has(commit.oid),
       historicalKind: historical?.kind,
       historicalRouteId: historical?.routeId,

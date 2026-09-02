@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import type { GitCommit, OperationState, WorkingTreeState } from '../../../src/git/gitTypes';
+import type { GraphHeadState } from '../../../src/model/graphModel';
 import type { DetailMessage } from '../types';
-import { commitDescription, detailFileChanges, shortHash } from './detailPresentation';
+import { commitDescription, detailFileChanges, detailHeadLabel, detailRouteLabel, shortHash } from './detailPresentation';
 import type { DetailRefBadge } from './detailPresentation';
 import { linkedWorktreeBranchLabel, linkedWorktreeStatusLabel, operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import type { HistoryEvent } from '../../../src/git/gitTypes';
@@ -12,7 +13,7 @@ function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'unknown';
 }
 
-export function DetailPanel({ detail, event, workingTree, operation, sourceCommits = [], linkedWorktrees = [], title, routeName, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; workingTree?: WorkingTreeState; operation?: OperationState; sourceCommits?: GitCommit[]; linkedWorktrees?: WorkingTreeState[]; title?: string; routeName?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
+export function DetailPanel({ detail, event, workingTree, operation, sourceCommits = [], linkedWorktrees = [], title, routeName, headState, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; workingTree?: WorkingTreeState; operation?: OperationState; sourceCommits?: GitCommit[]; linkedWorktrees?: WorkingTreeState[]; title?: string; routeName?: string; headState?: GraphHeadState; refBadges?: DetailRefBadge[]; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   if (workingTree) {
     const summary = summarizeWorkingTree(workingTree);
@@ -157,7 +158,11 @@ export function DetailPanel({ detail, event, workingTree, operation, sourceCommi
     <dl className="detail-meta">
       <div>
         <dt>Branch / Route</dt>
-        <dd className="detail-route-value" title={routeName}>{routeName || 'Unknown route'}</dd>
+        <dd className="detail-route-value" title={routeName}>{detailRouteLabel(routeName)}</dd>
+      </div>
+      <div>
+        <dt>HEAD</dt>
+        <dd>{detailHeadLabel(headState)}</dd>
       </div>
       <div>
         <dt>Author</dt>

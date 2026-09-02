@@ -40,6 +40,19 @@ describe('Branch / Route presentation', () => {
     expect(commitMetaText('3ee40307abcdef', longRoute, '2d ago')).toBe(`3ee40307 · ${longRoute} · 2d ago`);
   });
 
+  it('keeps HEAD state at the end of commit metadata', () => {
+    expect(commitMetaText('e8233b59abcdef', 'main', '609d ago', 'attached')).toBe('e8233b59 · main · 609d ago · HEAD');
+    expect(commitMetaText('c5f74144abcdef', 'main', '25m ago', 'detached')).toBe('c5f74144 · main · 25m ago · HEAD (detached)');
+  });
+
+  it('preserves an empty route column for a detached commit without a branch', () => {
+    expect(commitMetaText('c5f74144abcdef', undefined, '25m ago', 'detached')).toBe('c5f74144 ·  · 25m ago · HEAD (detached)');
+  });
+
+  it('does not expose the internal detached route as a branch name', () => {
+    expect(routeNameForTrack({ id: 'detached', label: 'HEAD (detached)', refNames: [], detached: true })).toBeUndefined();
+  });
+
   it('does not include the author in list metadata', () => {
     const metadata = commitMetaText('3ee40307abcdef', 'feature-04', '608d ago');
 

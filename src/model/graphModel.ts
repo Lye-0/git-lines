@@ -13,6 +13,9 @@ export type GraphNodeKind =
 
 export type GraphSyncState = 'shared' | 'local-only' | 'remote-only';
 
+/** How the current checkout reaches a commit shown in the graph. */
+export type GraphHeadState = 'attached' | 'detached';
+
 /** Why a commit is retained outside the current live ref graph. */
 export type HistoricalRouteKind = 'previous' | 'deleted-branch' | 'unreferenced';
 
@@ -32,6 +35,8 @@ export interface GraphNode {
   commit?: GitCommit;
   /** Synchronization reachability for real commit nodes. */
   syncState?: GraphSyncState;
+  /** Set only on the commit currently pointed to by the opened worktree's HEAD. */
+  headState?: GraphHeadState;
   /** Commit belongs to the old route produced by a reset or amend event. */
   previousRoute?: boolean;
   /** Explicit reason for a non-live route, when Git metadata supports it. */
@@ -87,6 +92,8 @@ export interface GraphTrack {
   refNames: string[];
   /** Historical side-route classification, when this is not a live track. */
   historicalKind?: HistoricalRouteKind;
+  /** Internal live route created for a detached HEAD; it has no branch name. */
+  detached?: boolean;
 }
 
 export interface GraphFactModel {

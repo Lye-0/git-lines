@@ -19,8 +19,8 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 `GraphNode`の種類は次のとおり。commit nodeには表示用に正規化したref badgeと、local/remoteからの到達性に基づく`syncState`（`shared` / `local-only` / `remote-only`）を持たせるが、full refは事実モデルに保持する。symbolic ref、`ORIG_HEAD`などのpseudo refは通常のbranch badgeやlaneに含めない。
 
-- `commit` — current refsから読み込んだ実在commit
-- `reflog-commit` — 現在のuser-facing refから到達できず、reflogから確認でき、objectが残っているcommit。Reset/Amend/完了Rebaseの旧経路だけ`previousRoute`を持ち、行表示では`PREVIOUS`になる。それ以外の同一first-parent経路は`historicalKind`（明示的な削除証拠がある場合は`deleted-branch`、それ以外は`unreferenced`）と`historicalRouteId`でside routeにまとめ、route先頭だけ分類badgeを表示する
+- `commit` — current refs、または現在のdetached HEADから到達できる実在commit。detached HEADがbranch refを持たないcommitを直接指していても、現在状態のlive rootとして扱う
+- `reflog-commit` — 現在のuser-facing refと現在のdetached HEADのどちらからも到達できず、reflogから確認でき、objectが残っているcommit。Reset/Amend/完了Rebaseの旧経路だけ`previousRoute`を持ち、行表示では`PREVIOUS`になる。それ以外の同一first-parent経路は`historicalKind`（明示的な削除証拠がある場合は`deleted-branch`、それ以外は`unreferenced`）と`historicalRouteId`でside routeにまとめ、route先頭だけ分類badgeを表示する
 - `working-tree` — commit objectではない現在状態。未完了operationがある場合は`GraphNode.operation`として同じノードに付与する
 - `operation` — 未完了operationのsource commitへ張る点線edgeの種別。現在のGraphBuilderは独立したoperation nodeを生成しない
 - `fast-forward-event` / `history-event` — reflogから確認できるref移動の時系列行。commitとは別モデルで、`anchorCommitId`は移動先、`eventBoundaryCommitId`は操作後の新しい履歴区間の直下、`eventStartCommitId`はその区間の直上にある注釈接続元を参照する
@@ -37,10 +37,10 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 1. rowは全可視nodeで一意である。
 2. parent nodeはchildより下に置く。timestamp逆転があってもDAG制約を優先する。
 3. ready queueのcommitter date、kind、stable idを用いて同じ入力から同じ順序を得る。
-4. primary branchのfirst-parent chainはlane 0に固定する。mergeの2番目以降のparentは、現在refが残っていなくてもGitのparent関係からmerged side routeとして復元し、feature-only ancestryを別laneへ置く。現在のrefはbranch identityとbadgeの根拠であり、main laneの連続性や削除済みbranchの履歴を決める唯一の根拠にはしない。削除済みside routeはref名を推測せず、明示的な削除reflogがなければ`UNREFERENCED`へフォールバックし、root OIDを内部identityにしたHistorical side laneへ置く。
+4. primary branchのfirst-parent chainはlane 0に固定する。mergeの2番目以降のparentは、現在refが残っていなくてもGitのparent関係からmerged side routeとして復元し、feature-only ancestryを別laneへ置く。現在のrefはbranch identityとbadgeの根拠であり、main laneの連続性や削除済みbranchの履歴を決める唯一の根拠にはしない。削除済みside routeはref名を推測せず、明示的な削除reflogがなければ`UNREFERENCED`へフォールバックし、root OIDを内部identityにしたHistorical side laneへ置く。現在のdetached HEADが名前付きrefから分岐している場合は、branch refを新設せず、DAG edgeを自然に接続する内部live routeへ割り当てる。
 5. 非primary laneはbranch identityごとに永久予約せず、parent / Working Tree / operation / Ref Eventの表示線を含む連続したY区間をbranch segmentとして割り当てる。古いmerge side pathから先にtrackを確定し、後続mergeのside pathが同じ履歴へ戻る場合はそのtrackへ遷移させる。segmentのY範囲が重ならない場合は同じlaneを再利用し、merge nodeだけで境界が接するsegmentも同じlaneを共有できる。重なる場合はlane 1から左側の空きlaneを選び、同一segment内のnodeは同じlaneを維持する。
 6. local/remoteの同一branch familyは同系色とし、同一oidまたはtip同士がDAG上で祖先/子孫関係にある場合はref badgeだけを複数持つ一つのRoute/trackへ統合する。tip同士が比較可能でないdivergedな場合だけ別Route/trackとし、laneを再利用してもfamilyのbase hueとRoute variationを維持する。live Routeのfamily色はgrayを含まない固定palette（cyan / green / purple / yellow / orange / blue / pink / lime）から選び、main/masterとfeatureは従来の意味を保つ候補を優先する。それ以外はfamily名のstable hashを初期候補にし、現在表示中のRouteのY区間が重なるfamilyだけを競合として別palette色へ解決する。Y区間が重ならないfamilyは同じpalette色を再利用でき、全色が競合する場合だけ安全な明度・彩度variationへfallbackする。live variationは最低彩度・最低明度を下回らない範囲に固定し、gray / near-grayは`HISTORICAL_ROUTE_COLOR`のhistorical / PREVIOUS Routeだけに予約する。commitのlocal/remote到達性が片側だけの場合は`syncState`で未同期とし、node内部の固定斜めgradientだけを変える。gradientの軸は左上→右下、境界は左下→右上に固定する。
-7. Working Treeはstatusが返す実際のchecked-out HEAD OIDをcommit nodeへ接続し、lane描画とは独立にcheckout中branchのlocal refをanchorの識別根拠として優先する。remote-tracking refが先行していてもremote tipへ接続しない。同じoidを指す新規branch作成直後でも、commit nodeは増やさずWorking Treeだけをbranch専用segmentへ置き、最初のcommitが作られたら同じsegment laneを引き継ぐ。
+7. Working Treeはstatusが返す実際のchecked-out HEAD OIDをcommit nodeへ接続し、lane描画とは独立にcheckout中branchのlocal refをanchorの識別根拠として優先する。remote-tracking refが先行していてもremote tipへ接続しない。detached HEADのOIDはbranch refがなくてもlive rootへ加え、そこからのcommitをHistoricalへ落とさない。同じoidを指す新規branch作成直後でも、commit nodeは増やさずWorking Treeだけをbranch専用segmentへ置き、最初のcommitが作られたら同じsegment laneを引き継ぐ。
 8. paginationでは最初から取得した先行commitのrow / laneを可能な限り維持し、追加parentを下へappendする。既存nodeのlaneを優先しつつ、新しく現れたsegmentには空いている左端laneを割り当てる。current Git stateの更新時だけ再レイアウトを許可する。
 
 lane claimはvisual trackの補助情報であり、「commitがbranchに所属する」というGitの事実を表さない。Reset/AmendでfromOid側に残ったreflog commitはcurrent Routeとは別のhistorical Routeとしてgrayのside laneへ置き、通常行では`PREVIOUS` badgeをmessageの横に表示する。削除・renameなどの理由が確定できないreflog-only経路は`UNREFERENCED`として同じside-lane機構へ渡し、route先頭だけbadgeを表示する。merge済みで現在もDAGから到達可能なside routeはhistoricalではなくlive routeとして扱い、grayを使わない。branch作成地点やdeleted branch名はreflogに明示的な証拠がない限り表示しない。
@@ -60,7 +60,7 @@ Linked worktreeは追加の`working-tree` nodeやtrackを作らない。`GitClie
 ## Runtime flow
 
 1. `Git Lines: Open`で最初のworkspace folderをrepository候補にする。
-2. `GitClient.readSnapshot`がroot、refs、最新30 commit、各worktree status、operation、reflog、shallow boundaryを読み込む。`git log --numstat`の一括レスポンスから可視commitごとの変更パス数とtracked additions/deletionsを保持し、通常のcommit単位の追加Git呼び出しは行わない。完了Cherry-pick / Revertのsource / target evidenceに限り、対象to commit本文を一括で追加取得する。statusからWorking Treeの変更パス数を保持し、各worktreeにつき一度の`git diff --numstat HEAD`でtracked additions/deletionsを取得する（unborn HEADではcached diffへfallback）。
+2. `GitClient.readSnapshot`がroot、refs、`HEAD`を含む最新30 commit、各worktree status、operation、reflog、shallow boundaryを読み込む。`git log --numstat`の一括レスポンスから可視commitごとの変更パス数とtracked additions/deletionsを保持し、通常のcommit単位の追加Git呼び出しは行わない。完了Cherry-pick / Revertのsource / target evidenceに限り、対象to commit本文を一括で追加取得する。statusからWorking Treeの変更パス数を保持し、各worktreeにつき一度の`git diff --numstat HEAD`でtracked additions/deletionsを取得する（unborn HEADではcached diffへfallback）。
 3. `buildGraphFacts`がcommit dedup、ref association、Working Tree（必要ならoperation付き）/event nodeを作る。
 4. `createGraphLayout`がrow→branch segment lane→edge routingの順に計算し、WebviewへpostMessageする。グラフ幅は実際に表示されるnodeの最大laneだけから決まり、track数やevent文字列長で不要に拡大しない。
 5. Webviewはcommit選択時だけdetail/filesをon-demand取得し、グラフ専用のスクロール領域を持つ。通常時はWorking Tree rowと各commit rowへ、同じcontent構造と固定3列のchanges columnを使って一括取得済みのfiles/additions/deletionsを表示する。commit選択時はWorking Treeの変更量を隠してsubject・short hash・同一commitのref badge・変更量・author・parent・Git name-status一覧・追加本文を階層化した約400pxのCommit Detailへ切り替える。Changed Filesはdetail panelの残り高さを使い、行を上詰めにして必要時だけ内部スクロールする。下端手前で次ページを自動取得し、手動refresh・focus・Git metadata watchでも再読込する。

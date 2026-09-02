@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildGraphFacts } from '../../src/model/graphBuilder.js';
 import type { RepositorySnapshot } from '../../src/git/gitTypes.js';
+import { createGraphLayout } from '../../src/layout/graphLayout.js';
 
 const oid = (letter: string) => letter.repeat(40);
 const snapshot: RepositorySnapshot = {
@@ -22,6 +23,7 @@ describe('graph fact builder', () => {
     const facts = buildGraphFacts(snapshot);
     expect(facts.nodes.filter((node) => node.oid === oid('b') && node.kind === 'commit')).toHaveLength(1);
     expect(facts.nodes.find((node) => node.oid === oid('b'))?.refIds).toEqual(['main', 'v1']);
+    expect(facts.nodes.find((node) => node.oid === oid('b'))?.headState).toBe('attached');
     expect(facts.edges.some((edge) => edge.type === 'parent')).toBe(true);
   });
 
@@ -54,6 +56,79 @@ describe('graph fact builder', () => {
     expect(working?.oid).toBe(oid('a'));
     expect(workingEdge?.toNodeId).toBe(`commit:${oid('a')}`);
     expect(workingEdge?.toNodeId).not.toBe(`commit:${oid('c')}`);
+  });
+
+  it('keeps a detached HEAD at an existing commit live without creating a branch ref', () => {
+    const detachedSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('a'), branch: undefined, detached: true }],
+    };
+
+    const facts = buildGraphFacts(detachedSnapshot, { showReflog: false });
+    const head = facts.nodes.find((node) => node.oid === oid('a'));
+
+    expect(detachedSnapshot.workingTrees[0]).toMatchObject({ detached: true, headOid: oid('a') });
+    expect(head).toMatchObject({ kind: 'commit', previousRoute: false, historicalKind: undefined, headState: 'detached' });
+    expect(head?.refBadges).toEqual([]);
+  });
+
+  it('treats a newly-created detached HEAD commit as a live DAG root', () => {
+    const detachedOid = oid('d');
+    const detachedSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: detachedOid, parentOids: [oid('a')], subject: 'detached commit', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oid('b'), parentOids: [oid('a')], subject: 'Main commit two', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        { oid: oid('a'), parentOids: [], subject: 'Main commit one', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      ],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('b') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: detachedOid, branch: undefined, detached: true }],
+      reflogs: [],
+      visibleCommitCount: 3,
+    };
+
+    const facts = buildGraphFacts(detachedSnapshot, { showReflog: false });
+    const head = facts.nodes.find((node) => node.oid === detachedOid);
+    const working = facts.nodes.find((node) => node.kind === 'working-tree');
+    const layout = createGraphLayout(facts, {
+      visibleCommitCount: detachedSnapshot.visibleCommitCount,
+      hasMore: detachedSnapshot.hasMore,
+      primaryBranch: facts.primaryBranch,
+    });
+
+    expect(head).toMatchObject({ kind: 'commit', previousRoute: false, historicalKind: undefined, refBadges: [], headState: 'detached' });
+    expect(working?.workingTree).toMatchObject({ detached: true, headOid: detachedOid });
+    expect(facts.edges).toContainEqual(expect.objectContaining({
+      type: 'working-tree',
+      fromNodeId: working?.id,
+      toNodeId: `commit:${detachedOid}`,
+    }));
+    expect(layout.nodes.find((node) => node.oid === detachedOid)?.trackId).not.toBe('family:main');
+    expect(layout.tracks.find((track) => track.id === layout.nodes.find((node) => node.oid === detachedOid)?.trackId)?.family).not.toBe('historical');
+  });
+
+  it('promotes a detached commit to UNREFERENCED only after HEAD leaves it', () => {
+    const detachedOid = oid('d');
+    const leftDetachedSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: detachedOid, parentOids: [oid('a')], subject: 'detached commit', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        { oid: oid('b'), parentOids: [oid('a')], subject: 'Main commit two', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        { oid: oid('a'), parentOids: [], subject: 'Main commit one', authorName: 'A', authorDate: 2, committerName: 'A', committerDate: 2 },
+      ],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('b') }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: oid('b'), branch: 'main', detached: false }],
+      reflogs: [{ refName: 'HEAD', newOid: detachedOid, selector: 'HEAD@{1}', timestamp: 4, subject: 'commit: detached commit' }],
+      visibleCommitCount: 3,
+    };
+
+    const facts = buildGraphFacts(leftDetachedSnapshot, { showReflog: true });
+    const detached = facts.nodes.find((node) => node.oid === detachedOid);
+    const main = facts.nodes.find((node) => node.oid === oid('b'));
+
+    expect(detached).toMatchObject({ kind: 'reflog-commit', historicalKind: 'unreferenced', historicalRouteHead: true });
+    expect(detached?.headState).toBeUndefined();
+    expect(main?.headState).toBe('attached');
   });
 
   it('attaches linked worktrees to their commit row without adding a second graph node', () => {
