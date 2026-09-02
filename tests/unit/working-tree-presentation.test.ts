@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkingTreeState } from '../../src/git/gitTypes.js';
-import { operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from '../../webview/src/components/workingTreePresentation';
+import { linkedWorktreeStatusLabel, linkedWorktreeTooltip, operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from '../../webview/src/components/workingTreePresentation';
 
 const tree = (overrides: Partial<WorkingTreeState> = {}): WorkingTreeState => ({
   worktreeId: 'worktree-0',
@@ -35,5 +35,19 @@ describe('working tree summary presentation', () => {
     expect(operationInProgressLabel({ type: 'cherry-pick' })).toBe('Cherry-pick in progress');
     expect(operationInProgressLabel({ type: 'rebase' })).toBe('Rebase in progress');
     expect(operationInProgressLabel({ type: 'revert' })).toBe('Revert in progress');
+  });
+
+  it('describes linked worktrees separately from branch and Working Tree state', () => {
+    const linked = tree({ worktreeId: 'worktree-1', path: 'C:/linked', branch: 'feature', currentWorktree: false });
+    expect(linkedWorktreeStatusLabel(linked)).toBe('Clean');
+    expect(linkedWorktreeStatusLabel({ ...linked, clean: false, unstaged: 1 })).toBe('Dirty');
+    expect(linkedWorktreeStatusLabel({ ...linked, inaccessible: true })).toBe('Unavailable');
+    expect(linkedWorktreeTooltip([linked])).toBe([
+      'Label: Linked Worktree',
+      'Checked out in another worktree',
+      'Branch: feature',
+      'Path: C:/linked',
+      'Status: Clean',
+    ].join('\n'));
   });
 });

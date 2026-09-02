@@ -119,7 +119,7 @@ export class GraphPanel {
         type: 'graph',
         layout,
         repository: next.repository,
-        currentBranch: next.workingTrees[0]?.branch,
+        currentBranch: next.workingTrees.find((tree) => tree.currentWorktree === true)?.branch ?? next.workingTrees[0]?.branch,
         workingTrees: next.workingTrees,
         reflogEnabled: this.showReflog,
         density: this.density,

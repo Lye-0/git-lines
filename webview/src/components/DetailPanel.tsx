@@ -4,7 +4,7 @@ import type { GitCommit, OperationState, WorkingTreeState } from '../../../src/g
 import type { DetailMessage } from '../types';
 import { commitDescription, detailFileChanges, shortHash } from './detailPresentation';
 import type { DetailRefBadge } from './detailPresentation';
-import { operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
+import { linkedWorktreeBranchLabel, linkedWorktreeStatusLabel, operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import type { HistoryEvent } from '../../../src/git/gitTypes';
 import { eventDetailFields, eventDetailTitle } from './eventDetailPresentation';
 
@@ -12,7 +12,7 @@ function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'unknown';
 }
 
-export function DetailPanel({ detail, event, workingTree, operation, sourceCommits = [], title, routeName, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; workingTree?: WorkingTreeState; operation?: OperationState; sourceCommits?: GitCommit[]; title?: string; routeName?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
+export function DetailPanel({ detail, event, workingTree, operation, sourceCommits = [], linkedWorktrees = [], title, routeName, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; workingTree?: WorkingTreeState; operation?: OperationState; sourceCommits?: GitCommit[]; linkedWorktrees?: WorkingTreeState[]; title?: string; routeName?: string; refBadges?: DetailRefBadge[]; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   if (workingTree) {
     const summary = summarizeWorkingTree(workingTree);
@@ -172,6 +172,18 @@ export function DetailPanel({ detail, event, workingTree, operation, sourceCommi
         <dd>{detail.parentOids.length ? <span className="detail-parent-list">{detail.parentOids.map((parent) => <code key={parent} title={parent}>{shortHash(parent, 12)}</code>)}</span> : 'None (root commit)'}</dd>
       </div>
     </dl>
+
+    {linkedWorktrees.length > 0 && <section className="detail-section detail-linked-worktree-section" aria-labelledby="linked-worktree-heading">
+      <div className="detail-section-header"><h3 id="linked-worktree-heading">Linked Worktree</h3><span>{linkedWorktrees.length}</span></div>
+      {linkedWorktrees.map((linked) => <article className="linked-worktree-detail" key={linked.worktreeId}>
+        <p className="linked-worktree-description">Checked out in another worktree</p>
+        <dl className="linked-worktree-meta">
+          <div><dt>Branch in worktree</dt><dd title={linkedWorktreeBranchLabel(linked)}>{linkedWorktreeBranchLabel(linked)}</dd></div>
+          <div><dt>Path</dt><dd title={linked.path}>{linked.path}</dd></div>
+          <div><dt>Status</dt><dd>{linkedWorktreeStatusLabel(linked)}</dd></div>
+        </dl>
+      </article>)}
+    </section>}
 
     <section className="detail-section detail-files-section" aria-labelledby="changed-files-heading">
       <div className="detail-section-header"><h3 id="changed-files-heading">Changed files</h3><span>{fileChanges.length}</span></div>

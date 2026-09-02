@@ -56,6 +56,8 @@ export interface GraphNode {
   /** A ref-only operation shown in the post-Working-Tree operation timeline. */
   refOnly?: boolean;
   workingTree?: WorkingTreeState;
+  /** Worktrees checked out elsewhere and attached to this commit row. */
+  linkedWorktrees?: WorkingTreeState[];
   operation?: OperationState;
   refBadges?: GraphRefBadge[];
 }

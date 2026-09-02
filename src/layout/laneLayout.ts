@@ -428,7 +428,8 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
       }
     }
     if (refName === 'HEAD') {
-      const checkedOutBranch = facts.workingTrees.find((tree) => !tree.inaccessible && tree.branch)?.branch;
+      const checkedOutBranch = facts.workingTrees.find((tree) => tree.currentWorktree === true && !tree.inaccessible && tree.branch)?.branch
+        ?? facts.workingTrees.find((tree) => !tree.inaccessible && tree.branch)?.branch;
       const branchRef = facts.refs.find((ref) => ref.type === 'local' && (ref.shortName === checkedOutBranch || normalizeRefName(ref.fullName) === checkedOutBranch));
       if (branchRef) return refTrack.get(branchRef.fullName);
     }

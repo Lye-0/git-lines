@@ -226,8 +226,12 @@ export class GitClient {
     } catch {
       // Bare or old Git installations may not provide worktree metadata.
     }
+    const repositoryRoot = path.normalize(repository.root).toLocaleLowerCase();
+    const hasCurrentPath = parsed.some((worktree) => path.normalize(worktree.path).toLocaleLowerCase() === repositoryRoot);
     const states: WorkingTreeState[] = [];
     for (const [index, worktree] of parsed.entries()) {
+      const currentWorktree = path.normalize(worktree.path).toLocaleLowerCase() === repositoryRoot
+        || (!hasCurrentPath && index === 0);
       try {
         const output = await this.runner.runChecked(['status', '--porcelain=v2', '--branch', '-z'], {
           cwd: worktree.path,
@@ -235,7 +239,7 @@ export class GitClient {
         });
         const state = toWorkingTreeState(worktree.path, parsePorcelainV2(output), `worktree-${index}`);
         const stats = await this.readWorkingTreeStats(worktree.path);
-        states.push({ ...state, ...stats, headOid: state.headOid ?? worktree.headOid, branch: state.branch ?? worktree.branch, mainWorktree: index === 0, locked: worktree.locked, prunable: worktree.prunable });
+        states.push({ ...state, ...stats, headOid: state.headOid ?? worktree.headOid, branch: state.branch ?? worktree.branch, currentWorktree, mainWorktree: index === 0, locked: worktree.locked, prunable: worktree.prunable });
       } catch {
         states.push({
           worktreeId: `worktree-${index}`,
@@ -252,6 +256,7 @@ export class GitClient {
           deletions: 0,
           clean: true,
           inaccessible: true,
+          currentWorktree,
           mainWorktree: index === 0,
           locked: worktree.locked,
           prunable: worktree.prunable,
@@ -259,7 +264,7 @@ export class GitClient {
       }
     }
     return states.length ? states : [{
-      worktreeId: 'worktree-0', path: repository.root, detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, changedFiles: 0, additions: 0, deletions: 0, clean: true, mainWorktree: true,
+      worktreeId: 'worktree-0', path: repository.root, detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, changedFiles: 0, additions: 0, deletions: 0, clean: true, currentWorktree: true, mainWorktree: true,
     }];
   }
 

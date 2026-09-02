@@ -61,6 +61,9 @@ export interface WorkingTreeState {
   deletions?: number;
   clean: boolean;
   inaccessible?: boolean;
+  /** True when this is the worktree from which the current graph was opened. */
+  currentWorktree?: boolean;
+  /** True for Git's primary worktree, independent of the currently opened path. */
   mainWorktree?: boolean;
   locked?: string;
   prunable?: string;

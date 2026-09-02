@@ -1,4 +1,4 @@
-import type { HistoryEvent, OperationState, RepositorySnapshot } from '../git/gitTypes.js';
+import type { HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
 import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind } from './graphModel.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
@@ -50,6 +50,22 @@ interface HistoricalRouteInfo {
   kind: HistoricalRouteKind;
   routeId: string;
   head: boolean;
+}
+
+function normalizedWorktreePath(value: string): string {
+  return value.replaceAll('\\', '/').replace(/\/+$/, '').toLocaleLowerCase();
+}
+
+function currentWorktreeSelection(snapshot: RepositorySnapshot): { tree: RepositorySnapshot['workingTrees'][number]; index: number } | undefined {
+  const currentIndex = snapshot.workingTrees.findIndex((tree) => tree.currentWorktree === true);
+  if (currentIndex >= 0) return { tree: snapshot.workingTrees[currentIndex], index: currentIndex };
+  const root = normalizedWorktreePath(snapshot.repository.root);
+  const rootIndex = snapshot.workingTrees.findIndex((tree) => normalizedWorktreePath(tree.path) === root);
+  if (rootIndex >= 0) return { tree: snapshot.workingTrees[rootIndex], index: rootIndex };
+  const fallbackIndex = snapshot.workingTrees.findIndex((tree) => tree.mainWorktree !== false);
+  if (fallbackIndex >= 0) return { tree: snapshot.workingTrees[fallbackIndex], index: fallbackIndex };
+  const tree = snapshot.workingTrees[0];
+  return tree ? { tree, index: 0 } : undefined;
 }
 
 /**
@@ -207,21 +223,22 @@ function primaryBranch(snapshot: RepositorySnapshot, configured?: string | null)
   for (const candidate of ['main', 'master']) {
     if (snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === candidate)) return candidate;
   }
-  const current = snapshot.workingTrees.find((tree) => !tree.inaccessible && tree.branch)?.branch;
-  if (current && snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === current)) return current;
+  const currentBranch = currentWorktreeSelection(snapshot)?.tree.branch;
+  if (currentBranch && snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === currentBranch)) return currentBranch;
   return snapshot.refs.filter((ref) => ref.type === 'local').map((ref) => normalizeRefName(ref.fullName)).sort()[0];
 }
 
-function operationForWorkingTree(tree: RepositorySnapshot['workingTrees'][number], index: number, operations: OperationState[]): OperationState | undefined {
+function operationForWorkingTree(tree: RepositorySnapshot['workingTrees'][number], isCurrent: boolean, operations: OperationState[]): OperationState | undefined {
   const sameHead = tree.headOid ? operations.find((operation) => operation.headOid === tree.headOid) : undefined;
   // OperationStateReader currently reads the repository's active operation
-  // files, so the main worktree is the only safe fallback when Git cannot
+  // files, so the current worktree is the only safe fallback when Git cannot
   // provide a matching HEAD (for example during an unborn/rebase state).
-  return sameHead ?? (index === 0 ? operations[0] : undefined);
+  return sameHead ?? (isCurrent ? operations[0] : undefined);
 }
 
 export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuilderOptions = {}): GraphFactModel {
-  const currentBranch = snapshot.workingTrees.find((tree) => !tree.inaccessible && tree.branch)?.branch;
+  const currentSelection = currentWorktreeSelection(snapshot);
+  const currentBranch = currentSelection?.tree.branch;
   const visibleCount = Math.min(snapshot.visibleCommitCount, snapshot.commits.length);
   const visibleCommits = snapshot.commits.slice(0, visibleCount);
   const visibleOids = new Set(visibleCommits.map((commit) => commit.oid));
@@ -231,6 +248,11 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     ? visibleCommits.filter((commit) => allReachableOids.has(commit.oid))
     : [...visibleCommits, ...snapshot.commits.slice(visibleCount).filter((commit) => !visibleOids.has(commit.oid))];
   const commitMap = new Map(commits.map((commit) => [commit.oid, commit]));
+  const linkedWorktreesByHead = new Map<string, WorkingTreeState[]>();
+  for (const tree of snapshot.workingTrees) {
+    if (tree.worktreeId === currentSelection?.tree.worktreeId || !tree.headOid) continue;
+    linkedWorktreesByHead.set(tree.headOid, [...(linkedWorktreesByHead.get(tree.headOid) ?? []), tree]);
+  }
   const reachableOids = options.showReflog === false ? allReachableOids : reachableFromRefs(snapshot, commitMap);
   const localReachable = reachableFromRefType(snapshot, commitMap, 'local');
   const remoteReachable = reachableFromRefType(snapshot, commitMap, 'remote');
@@ -266,6 +288,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       historicalKind: historical?.kind,
       historicalRouteId: historical?.routeId,
       historicalRouteHead: historical?.head,
+      linkedWorktrees: linkedWorktreesByHead.get(commit.oid),
     };
   });
   const nodeByOid = new Map(nodes.filter((node) => node.oid).map((node) => [node.oid as string, node]));
@@ -282,29 +305,31 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       if (parentNode) edges.push({ id: `parent:${commit.oid}:${parentOid}`, type: 'parent', fromNodeId: `commit:${commit.oid}`, toNodeId: parentNode.id });
     }
   }
-  for (const [index, tree] of snapshot.workingTrees.entries()) {
-    const operation = operationForWorkingTree(tree, index, snapshot.operations);
+  if (currentSelection) {
+    const tree = currentSelection.tree;
+    const operation = operationForWorkingTree(tree, true, snapshot.operations);
     const node: GraphNode = {
       id: `working:${tree.worktreeId}`,
       kind: 'working-tree',
-      label: index === 0 ? 'Working Tree' : 'Worktree',
+      label: 'Working Tree',
       refIds: [],
       refBadges: [],
       oid: tree.headOid,
-      timestamp: Number.MAX_SAFE_INTEGER - index,
+      timestamp: Number.MAX_SAFE_INTEGER,
       workingTree: tree,
       operation,
     };
     addNode(node);
     const headNode = tree.headOid ? nodeByOid.get(tree.headOid) : undefined;
     if (headNode) edges.push({ id: `working:${tree.worktreeId}:${headNode.id}`, type: 'working-tree', fromNodeId: node.id, toNodeId: headNode.id });
-    if (!operation) continue;
-    // The in-progress operation is an aspect of this Working Tree, not a
-    // second current-state node. Keep each source relationship visible as a
-    // dotted edge, but make the Working Tree the direct source of that edge.
-    for (const sourceOid of operation?.sourceOids ?? []) {
-      const source = nodeByOid.get(sourceOid);
-      if (source) edges.push({ id: `${node.id}:operation:${operation.type}:source:${sourceOid}`, type: 'operation', fromNodeId: node.id, toNodeId: source.id, label: 'operation source' });
+    if (operation) {
+      // The in-progress operation is an aspect of this Working Tree, not a
+      // second current-state node. Keep each source relationship visible as a
+      // dotted edge, but make the Working Tree the direct source of that edge.
+      for (const sourceOid of operation.sourceOids) {
+        const source = nodeByOid.get(sourceOid);
+        if (source) edges.push({ id: `${node.id}:operation:${operation.type}:source:${sourceOid}`, type: 'operation', fromNodeId: node.id, toNodeId: source.id, label: 'operation source' });
+      }
     }
   }
   const events = options.showReflog === false

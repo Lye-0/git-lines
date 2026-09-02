@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphNode } from '../../src/model/graphModel';
-import { isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from '../../webview/src/components/nodePresentation';
+import { isLinkedWorktreeCommit, isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from '../../webview/src/components/nodePresentation';
 
 const oid = (letter: string) => letter.repeat(40);
 
@@ -32,6 +32,13 @@ describe('unsynchronized node presentation', () => {
     expect(isSelectedCommit(node, node.oid)).toBe(true);
     expect(unsyncedGradientForNode(node, '#2563eb', 'node-sync-gradient-selected')).toBeDefined();
     expect(nodeFillStyle('url(#node-sync-gradient-selected)')).toEqual({ fill: 'url(#node-sync-gradient-selected)' });
+  });
+
+  it('marks the real linked-worktree commit node for the rounded-square symbol', () => {
+    const linked = { ...commit(), linkedWorktrees: [{ worktreeId: 'linked', path: 'C:/linked', detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, clean: true }] };
+    expect(isLinkedWorktreeCommit(linked)).toBe(true);
+    expect(isLinkedWorktreeCommit({ ...linked, linkedWorktrees: [] })).toBe(false);
+    expect(isLinkedWorktreeCommit({ ...linked, kind: 'working-tree' })).toBe(false);
   });
 
   it.each([

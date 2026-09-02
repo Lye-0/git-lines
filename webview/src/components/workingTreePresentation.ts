@@ -29,6 +29,29 @@ export function workingTreeStateLabel(tree: WorkingTreeState): string {
   return tree.clean ? 'Clean' : 'Changes';
 }
 
+export function linkedWorktreeBranchLabel(tree: WorkingTreeState): string {
+  return tree.detached ? 'HEAD (detached)' : tree.branch ?? 'No branch';
+}
+
+/** Uses an explicit linked-worktree vocabulary so it cannot be mistaken for a branch badge. */
+export function linkedWorktreeStatusLabel(tree: WorkingTreeState): string {
+  if (tree.inaccessible) return 'Unavailable';
+  if (tree.clean) return 'Clean';
+  if (tree.conflicted > 0) return `Dirty · ${tree.conflicted} conflict${tree.conflicted === 1 ? '' : 's'}`;
+  return 'Dirty';
+}
+
+export function linkedWorktreeTooltip(trees: ReadonlyArray<WorkingTreeState>): string | undefined {
+  if (trees.length === 0) return undefined;
+  return trees.map((tree) => [
+    'Label: Linked Worktree',
+    'Checked out in another worktree',
+    `Branch: ${linkedWorktreeBranchLabel(tree)}`,
+    `Path: ${tree.path}`,
+    `Status: ${linkedWorktreeStatusLabel(tree)}`,
+  ].join('\n')).join('\n\n');
+}
+
 export function operationInProgressLabel(operation: Pick<OperationState, 'type'>): string {
   const name = operation.type === 'cherry-pick'
     ? 'Cherry-pick'

@@ -56,6 +56,58 @@ describe('graph fact builder', () => {
     expect(workingEdge?.toNodeId).not.toBe(`commit:${oid('c')}`);
   });
 
+  it('attaches linked worktrees to their commit row without adding a second graph node', () => {
+    const linkedSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [
+        { oid: oid('c'), parentOids: [oid('b')], subject: 'feature commit', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+        ...snapshot.commits,
+      ],
+      refs: [
+        { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('b') },
+        { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: oid('c') },
+      ],
+      workingTrees: [
+        { ...snapshot.workingTrees[0], currentWorktree: true, mainWorktree: true },
+        { ...snapshot.workingTrees[0], worktreeId: 'worktree-1', path: 'C:/linked', headOid: oid('c'), branch: 'feature', currentWorktree: false, mainWorktree: false },
+      ],
+      visibleCommitCount: 3,
+    };
+
+    const facts = buildGraphFacts(linkedSnapshot);
+    const feature = facts.nodes.find((node) => node.oid === oid('c'));
+
+    expect(facts.nodes.filter((node) => node.kind === 'working-tree')).toHaveLength(1);
+    expect(facts.nodes.find((node) => node.id === 'working:worktree-1')).toBeUndefined();
+    expect(feature?.linkedWorktrees).toEqual([expect.objectContaining({
+      worktreeId: 'worktree-1',
+      branch: 'feature',
+      path: 'C:/linked',
+      headOid: oid('c'),
+    })]);
+    expect(facts.edges.filter((edge) => edge.type === 'working-tree')).toHaveLength(1);
+  });
+
+  it('uses the opened linked worktree as the single current Working Tree when it is not first', () => {
+    const linkedSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      repository: { ...snapshot.repository, root: 'C:/linked' },
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: oid('b') }],
+      workingTrees: [
+        { ...snapshot.workingTrees[0], worktreeId: 'worktree-0', path: 'C:/repo', headOid: oid('b'), branch: 'main', currentWorktree: false, mainWorktree: true },
+        { ...snapshot.workingTrees[0], worktreeId: 'worktree-1', path: 'C:/linked', headOid: oid('b'), branch: 'main', currentWorktree: true, mainWorktree: false },
+      ],
+    };
+
+    const facts = buildGraphFacts(linkedSnapshot);
+    const working = facts.nodes.find((node) => node.kind === 'working-tree');
+    const commit = facts.nodes.find((node) => node.oid === oid('b'));
+
+    expect(working?.id).toBe('working:worktree-1');
+    expect(working?.workingTree?.path).toBe('C:/linked');
+    expect(commit?.linkedWorktrees).toEqual([expect.objectContaining({ path: 'C:/repo', currentWorktree: false })]);
+  });
+
   it('keeps a reachable commit normal even when it was loaded beyond the visible page', () => {
     const facts = buildGraphFacts({ ...snapshot, visibleCommitCount: 1 });
     expect(facts.nodes.find((node) => node.oid === oid('a'))?.kind).toBe('commit');

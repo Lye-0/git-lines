@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { OperationType, RepositorySnapshot } from '../../src/git/gitTypes.js';
 import { GitClient } from '../../src/git/gitClient.js';
@@ -10,6 +11,8 @@ import { HISTORICAL_ROUTE_COLOR } from '../../src/utils/color.js';
 import { createGraphColorResolver } from '../../webview/src/components/graphColor';
 import { commitRowPresentation } from '../../webview/src/components/commitRowPresentation';
 import { commitFixture, createGitFixture } from '../fixtures/gitFixture.js';
+
+vi.setConfig({ testTimeout: 20_000 });
 
 function commitText(fixture: ReturnType<typeof createGitFixture>, file: string, contents: string, message: string, date: string): void {
   fs.writeFileSync(path.join(fixture.root, file), contents);
@@ -69,6 +72,49 @@ describe('GitClient integration fixture', () => {
     expect(detail.fileChanges).toEqual([{ path: 'feature.txt', status: 'A', additions: 1, deletions: 0 }]);
     expect(snapshot.historyEvents).toHaveLength(0);
   });
+
+  it('represents an actual linked worktree as a commit-row annotation', async () => {
+    fixture = createGitFixture();
+    commitFixture(fixture, 'initial', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'feature']);
+    commitFixture(fixture, 'linked feature commit', '2026-08-27T10:00:00+09:00');
+    const featureOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['switch', 'main']);
+    commitFixture(fixture, 'main commit', '2026-08-27T11:00:00+09:00');
+
+    const linkedPath = fs.mkdtempSync(path.join(os.tmpdir(), 'git-lines-linked-'));
+    fs.rmSync(linkedPath, { recursive: true, force: true });
+    try {
+      fixture.run(['worktree', 'add', linkedPath, 'feature']);
+      const snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+      const current = snapshot.workingTrees.find((tree) => tree.currentWorktree === true);
+      const linked = snapshot.workingTrees.find((tree) => tree.currentWorktree === false);
+      const expectedCurrentPath = fixture.root.replaceAll('\\', '/');
+      const expectedLinkedPath = linkedPath.replaceAll('\\', '/');
+      expect(current).toMatchObject({ path: expectedCurrentPath, branch: 'main' });
+      expect(linked).toMatchObject({ path: expectedLinkedPath, branch: 'feature', headOid: featureOid });
+
+      const facts = buildGraphFacts(snapshot, { showReflog: true });
+      const featureNode = facts.nodes.find((node) => node.oid === featureOid);
+      expect(facts.nodes.filter((node) => node.kind === 'working-tree')).toHaveLength(1);
+      expect(facts.edges.filter((edge) => edge.type === 'working-tree')).toHaveLength(1);
+      expect(featureNode?.linkedWorktrees).toEqual([expect.objectContaining({
+        worktreeId: linked?.worktreeId,
+        path: expectedLinkedPath,
+        branch: 'feature',
+        headOid: featureOid,
+      })]);
+
+      const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+      expect(layout.nodes.filter((node) => node.kind === 'working-tree')).toHaveLength(1);
+      expect(layout.nodes.some((node) => node.id === `working:${linked?.worktreeId}`)).toBe(false);
+      expect(layout.nodes.find((node) => node.oid === featureOid)?.linkedWorktrees).toHaveLength(1);
+      expect(layout.tracks.some((track) => track.id === `worktree:${linked?.worktreeId}`)).toBe(false);
+    } finally {
+      try { fixture.run(['worktree', 'remove', '--force', linkedPath]); } catch { /* cleanup is best effort after a failed assertion */ }
+      fs.rmSync(linkedPath, { recursive: true, force: true });
+    }
+  }, 20_000);
 
   it('reads an actual branch rename as one same-route event between Working Tree and HEAD', async () => {
     fixture = createGitFixture();

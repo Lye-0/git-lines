@@ -2,7 +2,7 @@ import React, { type CSSProperties } from 'react';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventLabelParts, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
-import { operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
+import { linkedWorktreeTooltip, operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import { commitChangeStats } from './commitStatsPresentation';
 import { commitMetaText, commitRowPresentation } from './commitRowPresentation';
 import { ChangeStatsGrid } from './ChangeStatsGrid';
@@ -24,13 +24,18 @@ function relativeTime(timestamp: number | undefined): string | undefined {
   return future ? `in ${value}` : `${value} ago`;
 }
 
+function isCurrentWorktree(tree: NonNullable<GraphNode['workingTree']>): boolean {
+  return tree.currentWorktree === true || (tree.currentWorktree === undefined && tree.mainWorktree !== false);
+}
+
 function workingSummary(node: GraphNode): { title: string; detail: string; operation?: string } | undefined {
   const tree = node.workingTree;
   if (!tree) return undefined;
   const location = tree.detached ? 'HEAD (detached)' : tree.branch ? `${tree.branch} ★` : 'No branch';
   const state = workingTreeStateLabel(tree);
-  const title = tree.mainWorktree === false ? 'Worktree' : 'Working Tree';
-  const pathDetail = tree.mainWorktree === false ? ` · ${tree.path}` : '';
+  const linked = !isCurrentWorktree(tree);
+  const title = linked ? 'Worktree' : 'Working Tree';
+  const pathDetail = linked ? ` · ${tree.path}` : '';
   const operation = node.operation ? operationInProgressLabel(node.operation) : undefined;
   return { title, detail: `${location} · ${state}${pathDetail}`, operation };
 }
@@ -49,6 +54,8 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
   const rowPresentation = commitRowPresentation(node);
   const previousRoute = rowPresentation.previousRoute;
   const historicalBadgeLabel = rowPresentation.historicalBadgeLabel;
+  const linkedWorktrees = node.linkedWorktrees ?? [];
+  const linkedWorktreeInfo = linkedWorktreeTooltip(linkedWorktrees);
   // The title already identifies these state rows ("Working Tree" or
   // "Merge in progress"); repeating a second kind label only adds noise.
   const kind = refEvent || node.kind === 'working-tree' || node.kind === 'operation' ? undefined : kindLabel(node.kind);
@@ -62,8 +69,8 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
   const commitMeta = node.commit
     ? commitMetaText(node.commit.oid, routeName, relativeTime(node.commit.committerDate))
     : undefined;
-  const ariaLabel = [title, working?.operation ? `+ ${working.operation}` : undefined, subtitle, commitMeta].filter(Boolean).join(', ');
-  const workingStats = node.kind === 'working-tree' && showWorkingTreeStats && node.workingTree && node.workingTree.mainWorktree !== false
+  const ariaLabel = [title, working?.operation ? `+ ${working.operation}` : undefined, subtitle, commitMeta, linkedWorktreeInfo].filter(Boolean).join(', ');
+  const workingStats = node.kind === 'working-tree' && showWorkingTreeStats && node.workingTree && isCurrentWorktree(node.workingTree)
     ? summarizeWorkingTree(node.workingTree)
     : undefined;
   const changeStats = (node.kind === 'commit' || node.kind === 'reflog-commit')
@@ -95,7 +102,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
       {eventButton}
     </div>;
   }
-  const content = <div className={`row-content${selected ? ' selected' : ''}${changeStats ? ' has-change-stats' : ''}`}>
+  const content = <div className={`row-content${selected ? ' selected' : ''}${changeStats ? ' has-change-stats' : ''}${linkedWorktrees.length > 0 ? ' linked-worktree-row' : ''}`} title={linkedWorktreeInfo}>
     <div className="row-content-main">
       <div className="row-primary">
         {kind && <span className="row-kind">{kind}</span>}
@@ -103,6 +110,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
           <div className="row-heading">
             {rowPresentation.previousBadgeLabel && <span className="previous-badge" title="Previous route">{rowPresentation.previousBadgeLabel}</span>}
             {historicalBadgeLabel && <span className="previous-badge" title="Historical route classification">{historicalBadgeLabel}</span>}
+            {linkedWorktrees.length > 0 && <span className="linked-worktree-label" title={linkedWorktreeInfo}><span className="linked-worktree-icon" aria-hidden="true">□</span> Linked Worktree{linkedWorktrees.length > 1 ? ` ×${linkedWorktrees.length}` : ''}</span>}
             <span className={`subject${previousRoute ? ' previous-subject' : ''}`} title={node.subject ?? node.label}>{title}</span>
             {working?.operation && <span className="working-operation" title={working.operation}>{`(+ ${working.operation})`}</span>}
             {badges.length > 0 && <div className="row-meta">
@@ -120,7 +128,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
     </div>
     {changeStats && <ChangeStatsGrid stats={changeStats} className="row-change-stats" ariaLabel={`${changeStats.files} files, ${changeStats.additions} additions, ${changeStats.deletions} deletions`} />}
   </div>;
-  const secondaryWorktree = node.workingTree?.mainWorktree === false;
+  const secondaryWorktree = node.workingTree ? !isCurrentWorktree(node.workingTree) : false;
   const compact = rowHeight <= 32;
   return <div className={`commit-row row-${node.kind}${previousRoute ? ' previous-row' : ''}${compact ? ' compact-row' : ''}${secondaryWorktree ? ' secondary-worktree' : ''}${hidden ? ' filtered-out' : ''}`} style={rowStyle}>
     {isSelectableWorkingTree ? <button type="button" className="row-button" aria-label={ariaLabel} aria-pressed={selected} onClick={() => onSelectWorkingTree!(node.id)}>{content}</button> : isSelectable ? <button type="button" className="row-button" aria-label={ariaLabel} aria-pressed={selected} onClick={() => onSelect(node.oid!)}>{content}</button> : content}

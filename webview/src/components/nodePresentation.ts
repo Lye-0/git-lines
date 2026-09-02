@@ -19,6 +19,11 @@ export function isUnsyncedCommit(node: Pick<GraphNode, 'kind' | 'syncState'>): b
   return node.kind === 'commit' && (node.syncState === 'local-only' || node.syncState === 'remote-only');
 }
 
+/** Linked worktrees change the symbol of the real commit node, never the graph topology. */
+export function isLinkedWorktreeCommit(node: Pick<GraphNode, 'kind' | 'linkedWorktrees'>): boolean {
+  return (node.kind === 'commit' || node.kind === 'reflog-commit') && (node.linkedWorktrees?.length ?? 0) > 0;
+}
+
 export function isSelectedCommit(node: Pick<GraphNode, 'kind' | 'id' | 'oid'>, selected?: string): boolean {
   return Boolean(selected
     && (node.kind === 'commit' || node.kind === 'reflog-commit')

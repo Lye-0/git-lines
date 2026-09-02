@@ -6,10 +6,16 @@ import { branchColor } from '../../../src/utils/color';
 import { gradientForEdge } from './edgePresentation';
 import { eventTooltip, isRefEvent } from './eventPresentation';
 import { createGraphColorResolver } from './graphColor';
-import { isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from './nodePresentation';
+import { isLinkedWorktreeCommit, isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from './nodePresentation';
 
 function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): ReactNode {
-  if (node.kind === 'commit') return <circle className={`node-symbol node-dot${fill ? ' node-unsynced' : ''}`} r="6.5" style={nodeFillStyle(fill)} />;
+  if (node.kind === 'commit') {
+    const linked = isLinkedWorktreeCommit(node);
+    const className = `node-symbol node-dot${linked ? ' node-linked-worktree' : ''}${fill ? ' node-unsynced' : ''}`;
+    return linked
+      ? <rect className={className} x="-6.5" y="-6.5" width="13" height="13" rx="2" style={nodeFillStyle(fill)} />
+      : <circle className={className} r="6.5" style={nodeFillStyle(fill)} />;
+  }
   if (node.kind === 'working-tree' || node.kind === 'operation') return <circle className="node-symbol node-hollow" r="6.5" />;
   if (node.kind === 'fast-forward-event' || node.kind === 'history-event') {
     return <path className="node-symbol node-diamond" d="M 0 -6.5 L 6.5 0 L 0 6.5 L -6.5 0 Z" />;
@@ -103,7 +109,9 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree 
     <g className="graph-node-masks" aria-hidden="true">
       {layout.nodes.filter((node) => isUnsyncedCommit(node)).map((node) => {
         const p = point(node.id);
-        return <circle key={`node-mask-${node.id}`} className="node-mask node-unsynced-mask" transform={`translate(${p.x},${p.y})`} r="6.5" />;
+        return isLinkedWorktreeCommit(node)
+          ? <rect key={`node-mask-${node.id}`} className="node-mask node-unsynced-mask" transform={`translate(${p.x},${p.y})`} x="-6.5" y="-6.5" width="13" height="13" rx="2" />
+          : <circle key={`node-mask-${node.id}`} className="node-mask node-unsynced-mask" transform={`translate(${p.x},${p.y})`} r="6.5" />;
       })}
     </g>
     <g className="graph-nodes">{layout.nodes.map(renderNode)}</g>
