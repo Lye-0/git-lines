@@ -66,9 +66,9 @@ function assertArrowClearsTarget(source: GraphNode, target: GraphNode, annotatio
 
 describe('history relation arrow geometry', () => {
   it('derives the target inset from node radius, arrow size, and a visible gap', () => {
-    expect(HISTORY_RELATION_ARROW_SIZE).toBe(3);
+    expect(HISTORY_RELATION_ARROW_SIZE).toBe(4);
     expect(historyRelationTargetInset()).toBe(COMMIT_NODE_RADIUS + HISTORY_RELATION_ARROW_SIZE + HISTORY_RELATION_ARROW_GAP);
-    expect(historyRelationTargetInset()).toBe(11.5);
+    expect(historyRelationTargetInset()).toBe(12.5);
   });
 
   it('clears the target node when NEW sits above-left of OLD after an annotation row', () => {

@@ -85,7 +85,7 @@ h1, h2, p { margin: 0; }
 .node-reflog-commit .node-symbol { font-size: 16px; }
 .node-fast-forward-event .node-symbol, .node-history-event .node-symbol { font-size: 14px; }
 .node-fast-forward-event, .node-history-event { opacity: .84; pointer-events: auto; cursor: help; }
-.node-selected .node-symbol { font-size: 20px; }
+.node-selected .node-symbol-text { font-size: 20px; }
 .node-ring { opacity: .95; fill: none; }
 .node-reflog-commit { opacity: .63; }
 .node-history-boundary { opacity: .55; }

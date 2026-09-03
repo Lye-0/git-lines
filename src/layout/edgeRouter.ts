@@ -108,7 +108,7 @@ function curvePath(curve: CubicCurve): string {
 /** Matches the commit node circle radius rendered by GraphSvg. */
 export const COMMIT_NODE_RADIUS = 6.5;
 /** Keep the overlay arrow small; placement, not size, is what makes it readable. */
-export const HISTORY_RELATION_ARROW_SIZE = 3;
+export const HISTORY_RELATION_ARROW_SIZE = 4;
 /** Visible gap between the arrow tip and the target node disk. */
 export const HISTORY_RELATION_ARROW_GAP = 2;
 const HISTORY_RELATION_ARROW_LENGTH_RATIO = 1.8;
