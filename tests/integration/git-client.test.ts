@@ -52,6 +52,24 @@ function assertEventBoundary(layout: ReturnType<typeof createGraphLayout>, event
   expect(event?.row).toBeLessThan(boundary?.row ?? Number.MAX_SAFE_INTEGER);
 }
 
+function assertExactOverlay(
+  facts: ReturnType<typeof buildGraphFacts>,
+  layout: ReturnType<typeof createGraphLayout>,
+  kind: 'cherry-pick' | 'revert',
+  sourceOid: string,
+  targetOid: string,
+): void {
+  expect(facts.historyRelations).toContainEqual(expect.objectContaining({ kind, sourceOid, targetOid, evidence: 'reflog' }));
+  expect(facts.nodes.some((node) => node.event?.type === kind && node.event.toOid === targetOid)).toBe(false);
+  const sourceNode = layout.nodes.find((node) => node.oid === sourceOid);
+  const targetNode = layout.nodes.find((node) => node.oid === targetOid);
+  expect(layout.historyRelationPaths).toContainEqual(expect.objectContaining({
+    sourceNodeId: sourceNode?.id,
+    targetNodeId: targetNode?.id,
+  }));
+  expect(layout.operationAnnotationRows?.some((row) => facts.historyRelations?.some((relation) => relation.id === row.relationId && relation.kind === kind))).toBe(true);
+}
+
 describe('GitClient integration fixture', () => {
   let fixture: ReturnType<typeof createGitFixture> | undefined;
   afterEach(() => fixture?.dispose());
@@ -278,21 +296,21 @@ describe('GitClient integration fixture', () => {
     const facts = buildGraphFacts(snapshot, { showReflog: true });
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
     const working = layout.nodes.find((node) => node.kind === 'working-tree');
-    const resetNode = reset ? layout.nodes.find((node) => node.id === reset.id) : undefined;
-    const moveNode = move ? layout.nodes.find((node) => node.id === move.id) : undefined;
-    const commitRows = layout.nodes.filter((node) => node.kind === 'commit' || node.kind === 'reflog-commit').map((node) => node.row ?? Number.MAX_SAFE_INTEGER);
     expect(working?.workingTree).toMatchObject({ branch: 'main', headOid: mainTwoOid });
-    expect(resetNode).toMatchObject({ refOnly: true, historicalEvent: false });
-    expect(moveNode).toMatchObject({ refOnly: true, historicalEvent: false });
-    expect(moveNode?.row).toBeLessThan(resetNode?.row ?? Number.MAX_SAFE_INTEGER);
-    expect(resetNode?.row).toBeLessThan(Math.min(...commitRows));
-    expect(moveNode?.row).toBeLessThan(Math.min(...commitRows));
-    expect(layout.edgePaths?.some((path) => path.id === `${move?.id}:annotation`)).toBe(false);
-    expect(layout.edgePaths?.some((path) => path.id === `${reset?.id}:annotation`)).toBe(false);
+    expect(facts.refMovementRelations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'reset', fromOid: mainTwoOid, toOid: mainOneOid }),
+      expect.objectContaining({ kind: 'branch-move', fromOid: mainOneOid, toOid: mainTwoOid }),
+    ]));
+    expect(facts.nodes.some((node) => node.event?.type === 'reset' || node.event?.type === 'branch-move')).toBe(false);
+    expect(layout.refMovementPaths).toHaveLength(2);
+    expect(layout.refMovementPaths?.some((path) => path.kind === 'reset' && path.sourceNodeId === `commit:${mainTwoOid}` && path.targetNodeId === `commit:${mainOneOid}`)).toBe(true);
+    expect(layout.refMovementPaths?.some((path) => path.kind === 'branch-move' && path.sourceNodeId === `commit:${mainOneOid}` && path.targetNodeId === `commit:${mainTwoOid}`)).toBe(true);
+    expect(layout.operationAnnotationRows).toHaveLength(2);
     expect(layout.edgePaths?.filter((path) => path.id === `working:${working?.workingTree?.worktreeId}:commit:${mainTwoOid}`)).toHaveLength(1);
 
     const hiddenFacts = buildGraphFacts(snapshot, { showReflog: false });
     expect(hiddenFacts.events).toEqual([]);
+    expect(hiddenFacts.refMovementRelations).toEqual([]);
     expect(hiddenFacts.nodes.some((node) => node.event?.type === 'reset' || node.event?.type === 'branch-move')).toBe(false);
   });
 
@@ -492,9 +510,14 @@ describe('GitClient integration fixture', () => {
     expect(events[0]).toMatchObject({ refName: 'refs/heads/main', fromOid: oldTip, toOid: newTip, boundaryOid: oldTip, sourceOid });
     const facts = buildGraphFacts(snapshot, { showReflog: true });
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
-    assertEventBoundary(layout, events[0]?.id ?? '', newTip, oldTip);
+    assertExactOverlay(facts, layout, 'cherry-pick', sourceOid, newTip);
+    expect(facts.nodes.find((node) => node.oid === sourceOid)).toMatchObject({ kind: 'commit', previousRoute: false });
     expect(facts.edges).not.toContainEqual(expect.objectContaining({ type: 'history-event', fromNodeId: `commit:${sourceOid}` }));
     expect(facts.edges).not.toContainEqual(expect.objectContaining({ type: 'parent', fromNodeId: `commit:${newTip}`, toNodeId: `commit:${sourceOid}` }));
+    const hidden = buildGraphFacts(snapshot, { showReflog: false });
+    expect(hidden.historyRelations).toEqual([]);
+    expect(hidden.nodes.find((node) => node.oid === sourceOid)?.kind).toBe('commit');
+    expect(hidden.nodes.find((node) => node.oid === newTip)?.kind).toBe('commit');
   });
 
   it('resolves a completed conflicted cherry-pick from the branch reflog', async () => {
@@ -533,6 +556,8 @@ describe('GitClient integration fixture', () => {
     const facts = buildGraphFacts(snapshot, { showReflog: true });
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
     assertEventBoundary(layout, events[0]?.id ?? '', newTip, oldTip);
+    expect(facts.historyRelations?.some((relation) => relation.kind === 'cherry-pick')).toBe(false);
+    expect(facts.nodes.find((node) => node.id === events[0]?.id)?.kind).toBe('history-event');
     expect(facts.edges).not.toContainEqual(expect.objectContaining({ type: 'history-event', fromNodeId: `commit:${sourceOid}` }));
     expect(facts.edges).not.toContainEqual(expect.objectContaining({ type: 'parent', fromNodeId: `commit:${newTip}`, toNodeId: `commit:${sourceOid}` }));
   });
@@ -551,7 +576,16 @@ describe('GitClient integration fixture', () => {
     expect(events[0]).toMatchObject({ refName: 'refs/heads/main', fromOid: oldTip, toOid: newTip, boundaryOid: oldTip, targetOid: oldTip });
     const facts = buildGraphFacts(snapshot, { showReflog: true });
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
-    assertEventBoundary(layout, events[0]?.id ?? '', newTip, oldTip);
+    assertExactOverlay(facts, layout, 'revert', oldTip, newTip);
+    const revertPath = layout.historyRelationPaths?.find((path) => path.kind === 'revert');
+    expect(revertPath?.arrowD).toBe('');
+    expect(revertPath?.sourceMarkerD).toMatch(/^M /);
+    expect(facts.nodes.find((node) => node.oid === oldTip)).toMatchObject({ kind: 'commit', previousRoute: false });
+    const hidden = buildGraphFacts(snapshot, { showReflog: false });
+    expect(hidden.historyRelations).toEqual([]);
+    expect(createGraphLayout(hidden, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch }).historyRelationPaths).toEqual([]);
+    expect(hidden.nodes.find((node) => node.oid === oldTip)?.kind).toBe('commit');
+    expect(hidden.nodes.find((node) => node.oid === newTip)?.kind).toBe('commit');
   });
 
   it('resolves a completed conflicted revert from the branch reflog', async () => {
@@ -586,7 +620,52 @@ describe('GitClient integration fixture', () => {
 
     const facts = buildGraphFacts(snapshot, { showReflog: true });
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    assertExactOverlay(facts, layout, 'revert', targetOid, newTip);
+    expect(facts.nodes.find((node) => node.oid === targetOid)).toMatchObject({ kind: 'commit', previousRoute: false });
+  });
+
+  it('does not invent a cherry-pick overlay after a plain cherry-pick without -x', async () => {
+    fixture = createGitFixture();
+    commitText(fixture, 'base.txt', 'base\n', 'base', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'source']);
+    commitText(fixture, 'source.txt', 'source\n', 'source change', '2026-08-27T10:00:00+09:00');
+    const sourceOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['switch', 'main']);
+    const oldTip = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['cherry-pick', '--no-edit', sourceOid], { GIT_COMMITTER_DATE: '2026-08-27T11:00:00+09:00' });
+    const newTip = fixture.run(['rev-parse', 'HEAD']).trim();
+
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    const events = snapshot.historyEvents.filter((event) => event.type === 'cherry-pick');
+    expect(events).toHaveLength(1);
+    expect(events[0]?.sourceOid).toBeUndefined();
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    expect(facts.historyRelations).toEqual([]);
     assertEventBoundary(layout, events[0]?.id ?? '', newTip, oldTip);
+  });
+
+  it('keeps exact cherry-pick and revert overlays together on one graph', async () => {
+    fixture = createGitFixture();
+    commitText(fixture, 'base.txt', 'base\n', 'base', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'source']);
+    commitText(fixture, 'source.txt', 'source\n', 'source change', '2026-08-27T10:00:00+09:00');
+    const sourceOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['switch', 'main']);
+    fixture.run(['cherry-pick', '-x', '--no-edit', sourceOid], { GIT_COMMITTER_DATE: '2026-08-27T11:00:00+09:00' });
+    const cherryOid = fixture.run(['rev-parse', 'HEAD']).trim();
+    fixture.run(['revert', '--no-edit', cherryOid], { GIT_COMMITTER_DATE: '2026-08-27T12:00:00+09:00' });
+    const revertOid = fixture.run(['rev-parse', 'HEAD']).trim();
+
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 30, true);
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
+    assertExactOverlay(facts, layout, 'cherry-pick', sourceOid, cherryOid);
+    assertExactOverlay(facts, layout, 'revert', cherryOid, revertOid);
+    expect(facts.historyRelations).toHaveLength(2);
+    expect(layout.operationAnnotationRows).toHaveLength(2);
+    expect(facts.nodes.find((node) => node.oid === sourceOid)?.previousRoute).toBe(false);
+    expect(facts.nodes.find((node) => node.oid === cherryOid)?.previousRoute).toBe(false);
   });
 
   it('places a multi-commit rebase event at the bottom of the rewritten range', async () => {
@@ -682,8 +761,10 @@ describe('GitClient integration fixture', () => {
     expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
     const resetEvent = snapshot.historyEvents.find((event) => event.type === 'reset' && event.toOid === snapshot.workingTrees[0]?.headOid);
     expect(resetEvent?.boundaryOid).toBe(snapshot.workingTrees[0]?.headOid);
-    const resetEventNode = resetEvent ? layout.nodes.find((node) => node.id === resetEvent.id) : undefined;
-    expect(resetEventNode?.row).toBeLessThan(currentLayoutNode?.row ?? Number.MAX_SAFE_INTEGER);
+    expect(facts.refMovementRelations).toContainEqual(expect.objectContaining({ kind: 'reset', fromOid: oldTip, toOid: snapshot.workingTrees[0]?.headOid }));
+    expect(layout.nodes.find((node) => node.id === resetEvent?.id)).toBeUndefined();
+    expect(oldLayoutNode?.ghostRefBadges?.map((badge) => badge.name)).toEqual(['main']);
+    expect(layout.refMovementPaths).toEqual([expect.objectContaining({ kind: 'reset', sourceNodeId: oldLayoutNode?.id, targetNodeId: currentLayoutNode?.id })]);
   });
 
   it('repositions an older reset event when a later reset makes its destination historical', async () => {
@@ -706,25 +787,25 @@ describe('GitClient integration fixture', () => {
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
     const firstReset = facts.events.find((event) => event.type === 'reset' && event.fromOid === firstFromOid && event.toOid === firstDestinationOid);
     const secondReset = facts.events.find((event) => event.type === 'reset' && event.fromOid === secondFromOid && event.toOid === initialOid);
-    const firstEventNode = firstReset ? layout.nodes.find((node) => node.id === firstReset.id) : undefined;
-    const secondEventNode = secondReset ? layout.nodes.find((node) => node.id === secondReset.id) : undefined;
     const firstDestinationNode = layout.nodes.find((node) => node.oid === firstDestinationOid);
     const initialNode = layout.nodes.find((node) => node.oid === initialOid);
-    const firstEventTrack = layout.tracks.find((track) => track.id === firstEventNode?.trackId);
-    const secondEventTrack = layout.tracks.find((track) => track.id === secondEventNode?.trackId);
-    const colors = createGraphColorResolver(layout);
+    const firstFromNode = layout.nodes.find((node) => node.oid === firstFromOid);
+    const secondFromNode = layout.nodes.find((node) => node.oid === secondFromOid);
 
     expect(firstReset).toBeDefined();
     expect(secondReset).toBeDefined();
-    expect(firstEventNode?.historicalEvent).toBe(true);
-    expect(secondEventNode?.historicalEvent).toBe(false);
-    expect(firstEventTrack?.family).toBe('historical');
-    expect(secondEventTrack?.family).toBe('main');
-    expect(firstEventNode?.trackId).toBe(firstDestinationNode?.trackId);
-    expect(secondEventNode?.trackId).toBe(initialNode?.trackId);
-    expect(firstEventNode?.trackId).not.toBe(secondEventNode?.trackId);
-    expect(colors.colorForNode(firstEventNode!)).toBe(HISTORICAL_ROUTE_COLOR);
-    expect(colors.colorForNode(secondEventNode!)).not.toBe(HISTORICAL_ROUTE_COLOR);
+    expect(facts.refMovementRelations).toHaveLength(2);
+    expect(facts.refMovementRelations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'reset', fromOid: firstFromOid, toOid: firstDestinationOid }),
+      expect.objectContaining({ kind: 'reset', fromOid: secondFromOid, toOid: initialOid }),
+    ]));
+    expect(layout.nodes.some((node) => node.event?.type === 'reset')).toBe(false);
+    expect(firstDestinationNode?.previousRoute).toBe(true);
+    expect(initialNode?.previousRoute).toBe(false);
+    expect(initialNode?.refBadges?.map((badge) => badge.name)).toContain('main');
+    expect(firstFromNode?.ghostRefBadges?.map((badge) => badge.name)).toContain('main');
+    expect(secondFromNode?.ghostRefBadges?.map((badge) => badge.name)).toContain('main');
+    expect(layout.refMovementPaths).toHaveLength(2);
   });
 
   it('places an amended reflog commit on a gray previous route and emits one overlay relation', async () => {

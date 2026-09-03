@@ -48,12 +48,15 @@ h1, h2, p { margin: 0; }
 .graph-scroll { min-width: 0; min-height: 0; flex: 1 1 auto; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
 .graph-canvas { position: relative; min-height: 100%; }
 .graph-svg { position: absolute; top: 0; left: 0; display: block; overflow: visible; pointer-events: none; }
+.ref-movement-endpoint-badges { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: visible; }
+.ref-movement-endpoint-badge { position: absolute; transform: translateY(-50%); pointer-events: none; }
 .graph-edges { pointer-events: none; }
 .graph-history-relation-lines { pointer-events: none; }
 .graph-history-relation-annotations { pointer-events: none; }
 .history-relation-lines, .history-relation-annotation { color: var(--operation-overlay-accent); }
 .history-relation-path { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
 .history-relation-arrow { fill: currentColor; stroke: none; opacity: .9; }
+.history-relation-cross { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: .9; }
 .history-relation-annotation { pointer-events: auto; cursor: help; }
 .history-relation-diamond { fill: var(--graph-bg); stroke: currentColor; stroke-width: 1.5; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 .history-relation-label { fill: currentColor; font-size: 12px; font-weight: 600; dominant-baseline: central; paint-order: stroke; stroke: var(--graph-bg); stroke-width: 3px; stroke-linejoin: round; }
@@ -64,6 +67,7 @@ h1, h2, p { margin: 0; }
 .commit-row.operation-annotation-row:focus-visible .row-content { background: color-mix(in srgb, var(--graph-text) 6%, var(--graph-surface)); }
 .commit-row.operation-annotation-row .row-content.selected { background: color-mix(in srgb, var(--graph-accent) 13%, var(--graph-surface)); border-color: color-mix(in srgb, var(--graph-accent) 30%, var(--graph-border)); }
 .operation-annotation-detail { display: block; max-width: min(100%, var(--changes-column-content-width, 1413px)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--operation-overlay-accent); background: color-mix(in srgb, var(--operation-overlay-accent) 8%, var(--graph-surface)); border: 1px solid color-mix(in srgb, var(--operation-overlay-accent) 34%, var(--graph-border)); border-radius: 6px; padding: 5px 9px; font-size: 11px; font-weight: 600; }
+.operation-annotation-detail .event-revert-target { color: inherit; }
 .operation-annotation-row .row-content.selected .operation-annotation-detail { border-color: color-mix(in srgb, var(--operation-overlay-accent) 68%, var(--graph-border)); background: color-mix(in srgb, var(--operation-overlay-accent) 14%, var(--graph-surface)); }
 .operation-annotation-detail:hover { background: color-mix(in srgb, var(--operation-overlay-accent) 13%, var(--graph-surface)); }
 .graph-node-masks { pointer-events: none; }
@@ -133,6 +137,8 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .ref-badge-tag { border-radius: 999px; opacity: .86; }
 .ref-badge-tag::before { content: '◆'; margin-right: 4px; font-size: 9px; }
 .ref-badge-special { color: var(--graph-muted); border-color: var(--graph-border); opacity: .7; }
+.ref-badge-ghost { border-style: dashed; border-width: 1.5px; border-color: color-mix(in srgb, var(--badge-color, var(--graph-accent)) 88%, var(--graph-text)); background: color-mix(in srgb, var(--badge-color, var(--graph-accent)) 18%, transparent); color: var(--badge-color, var(--graph-accent)); font-weight: 600; opacity: .94; }
+.ref-movement-endpoint-badge { max-width: 180px; padding: 0 4px; border-width: 1.5px; border-radius: 3px; font-size: 10px; line-height: 14px; }
 .row-history-event .row-content, .row-fast-forward-event .row-content { background: transparent; }
 .row-history-event .event-row-content, .row-fast-forward-event .event-row-content { position: relative; width: fit-content; max-width: 100%; padding-top: 0; padding-bottom: 0; }
 .row-history-event .event-row-content::before, .row-fast-forward-event .event-row-content::before { content: ''; position: absolute; inset: 0 0 0 10px; border-radius: 6px; background: color-mix(in srgb, var(--graph-accent) 4%, transparent); pointer-events: none; }

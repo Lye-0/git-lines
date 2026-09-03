@@ -1,7 +1,7 @@
 import type { GraphFactModel, GraphLayout } from '../model/graphModel.js';
 import { computeLaneLayout } from './laneLayout.js';
 import { computeRowLayout } from './rowLayout.js';
-import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeEdges, routeHistoryRelations } from './edgeRouter.js';
+import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeEdges, routeHistoryRelations, routeRefMovements } from './edgeRouter.js';
 import { insertOperationAnnotationRows } from './operationRows.js';
 
 export interface GraphLayoutOptions {
@@ -26,7 +26,8 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   const rowHeight = options.rowHeight ?? 38;
   const laneWidth = options.laneWidth ?? 34;
   const historyRelations = facts.historyRelations ?? [];
-  const operationRows = insertOperationAnnotationRows(laidOutNodes, historyRelations);
+  const refMovementRelations = facts.refMovementRelations ?? [];
+  const operationRows = insertOperationAnnotationRows(laidOutNodes, [...historyRelations, ...refMovementRelations]);
   const annotationRows = new Map(operationRows.rows.map((row) => [row.relationId, row.row]));
   const routedNodes = placeRebaseEventsOnParentCurves(
     placeBranchRenameEventsOnWorkingTreeCurves(operationRows.nodes, facts.edges, { rowHeight, laneWidth }),
@@ -44,6 +45,8 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
     edgePaths: routeEdges(routedNodes, facts.edges, { rowHeight, laneWidth }),
     historyRelations,
     historyRelationPaths: routeHistoryRelations(routedNodes, historyRelations, { rowHeight, laneWidth, annotationRows }),
+    refMovementRelations,
+    refMovementPaths: routeRefMovements(routedNodes, refMovementRelations, { rowHeight, laneWidth, annotationRows }),
     operationAnnotationRows: operationRows.rows,
   };
 }

@@ -1,5 +1,6 @@
-import type { HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
+import type { GitCommit, HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
 import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind, HistoryRelation } from './graphModel.js';
+import { buildRefMovementRelations, ghostRefBadgesByOid, isCompleteRefMovement, isRefMovementEvent } from './refMovement.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
 export interface GraphBuilderOptions {
@@ -61,6 +62,39 @@ interface HistoricalRouteInfo {
 
 function normalizedWorktreePath(value: string): string {
   return value.replaceAll('\\', '/').replace(/\/+$/, '').toLocaleLowerCase();
+}
+
+function overlayEndpoints(event: HistoryEvent): { kind: HistoryRelation['kind']; sourceOid: string; targetOid: string } | undefined {
+  if (event.type === 'amend' && event.fromOid) return { kind: 'amend', sourceOid: event.fromOid, targetOid: event.toOid };
+  if (event.type === 'cherry-pick' && event.sourceOid) return { kind: 'cherry-pick', sourceOid: event.sourceOid, targetOid: event.toOid };
+  if (event.type === 'revert' && event.targetOid) return { kind: 'revert', sourceOid: event.targetOid, targetOid: event.toOid };
+  return undefined;
+}
+
+function isVisibleExactOverlay(event: HistoryEvent, commits: Map<string, GitCommit>): boolean {
+  const endpoints = overlayEndpoints(event);
+  return Boolean(endpoints && commits.has(endpoints.sourceOid) && commits.has(endpoints.targetOid));
+}
+
+function buildHistoryRelations(events: HistoryEvent[], commits: Map<string, GitCommit>): HistoryRelation[] {
+  const seen = new Set<string>();
+  return events.flatMap((event) => {
+    const endpoints = overlayEndpoints(event);
+    if (!endpoints || !commits.has(endpoints.sourceOid) || !commits.has(endpoints.targetOid)) return [];
+    const key = `${endpoints.kind}\0${endpoints.sourceOid}\0${endpoints.targetOid}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{
+      id: event.id,
+      kind: endpoints.kind,
+      sourceOid: endpoints.sourceOid,
+      targetOid: endpoints.targetOid,
+      refName: event.refName,
+      timestamp: event.timestamp,
+      rawReflogMessage: event.rawReflogMessage ?? event.subject,
+      evidence: 'reflog' as const,
+    }];
+  });
 }
 
 function currentWorktreeSelection(snapshot: RepositorySnapshot): { tree: RepositorySnapshot['workingTrees'][number]; index: number } | undefined {
@@ -283,23 +317,12 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       ...unreferencedRouteSelection(snapshot, commitMap, reachableOids, previousRouteOids).entries(),
     ]);
   const events = options.showReflog === false ? [] : snapshot.historyEvents;
-  // Amend is a proven old-object -> new-object transformation, but it is not
-  // a timeline node.  Keep the exact reflog-derived event in `events` for the
-  // detail view and expose a complete overlay relation only when both real
-  // endpoint commits are part of the current graph page.
-  const historyRelations: HistoryRelation[] = events.flatMap((event) => {
-    if (event.type !== 'amend' || !event.fromOid || !commitMap.has(event.fromOid) || !commitMap.has(event.toOid)) return [];
-    return [{
-      id: event.id,
-      kind: 'amend' as const,
-      sourceOid: event.fromOid,
-      targetOid: event.toOid,
-      refName: event.refName,
-      timestamp: event.timestamp,
-      rawReflogMessage: event.rawReflogMessage ?? event.subject,
-      evidence: 'reflog' as const,
-    }];
-  });
+  // Exact overlays are proven source -> target transformations, not timeline
+  // nodes.  Keep the reflog-derived event in `events` for the detail view and
+  // emit a relation only when both endpoint commits are on this graph page.
+  const historyRelations = buildHistoryRelations(events, commitMap);
+  const refMovementRelations = buildRefMovementRelations(events, commitMap);
+  const ghostsByOid = ghostRefBadgesByOid(refMovementRelations, snapshot.refs, currentBranch);
   const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
     if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
@@ -324,6 +347,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       historicalRouteId: historical?.routeId,
       historicalRouteHead: historical?.head,
       linkedWorktrees: linkedWorktreesByHead.get(commit.oid),
+      ghostRefBadges: ghostsByOid.get(commit.oid) ?? [],
     };
   });
   const nodeByOid = new Map(nodes.filter((node) => node.oid).map((node) => [node.oid as string, node]));
@@ -367,7 +391,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       }
     }
   }
-  for (const event of events.filter((candidate) => candidate.type !== 'amend')) {
+  for (const event of events.filter((candidate) => candidate.type !== 'amend' && !isVisibleExactOverlay(candidate, commitMap) && !isCompleteRefMovement(candidate, commitMap) && !(isRefMovementEvent(candidate) && candidate.fromOid === candidate.toOid))) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
     const eventStart = event.eventStartOid ? nodeByOid.get(event.eventStartOid) : undefined;
@@ -417,6 +441,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     operations: snapshot.operations,
     events,
     historyRelations,
+    refMovementRelations,
     primaryBranch: primaryBranch(snapshot, options.primaryBranch),
     shallowBoundaryOids: snapshot.shallowBoundaryOids,
   };

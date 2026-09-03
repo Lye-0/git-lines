@@ -1,13 +1,13 @@
 import type { ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
-import { pointForNode, routeEdges, routeHistoryRelations } from '../../../src/layout/edgeRouter';
+import { pointForNode, routeEdges, routeHistoryRelations, routeRefMovements } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
 import { branchColor } from '../../../src/utils/color';
 import { gradientForEdge } from './edgePresentation';
 import { eventTooltip, isRefEvent } from './eventPresentation';
 import { createGraphColorResolver } from './graphColor';
 import { isSelectedCommit, isUnsyncedCommit, nodeFillStyle, nodeMarkGeometry, nodeRingGeometry, unsyncedGradientForNode } from './nodePresentation';
-import { operationOverlayColor } from './operationPresentation';
+import { operationAnnotationTooltip, operationKindLabel, operationOverlayColor } from './operationPresentation';
 
 function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): ReactNode {
   const mark = nodeMarkGeometry(node);
@@ -27,15 +27,6 @@ function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): Re
   return <text className="node-symbol node-symbol-text" x={center.x} y={center.y} textAnchor="middle" fill="currentColor">{mark.text}</text>;
 }
 
-function relationTooltip(relation: NonNullable<GraphLayout['historyRelations']>[number]): string {
-  const lines = ['Amend'];
-  if (relation.refName) lines.push(`Branch / ref\n${relation.refName.replace(/^refs\/heads\//, '')}`);
-  lines.push(`Old\n${relation.sourceOid}`, `New\n${relation.targetOid}`);
-  if (relation.rawReflogMessage) lines.push(`Reflog\n${relation.rawReflogMessage}`);
-  if (Number.isFinite(relation.timestamp)) lines.push(`Occurred\n${new Date(relation.timestamp).toLocaleString()}`);
-  return lines.join('\n');
-}
-
 export function GraphSvg({ layout, width, height, selected, selectedWorkingTree, selectedEvent, onSelectEvent }: { layout: GraphLayout; width: number; height?: number; selected?: string; selectedWorkingTree?: string; selectedEvent?: string; onSelectEvent?: (id: string) => void }) {
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
   const edgeById = new Map(layout.edges.map((edge) => [edge.id, edge]));
@@ -53,7 +44,9 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
   const historyRelations = layout.historyRelations ?? [];
   const annotationRows = new Map((layout.operationAnnotationRows ?? []).map((row) => [row.relationId, row.row]));
   const relationPaths = layout.historyRelationPaths ?? routeHistoryRelations(layout.nodes, historyRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
-  const relationById = new Map(historyRelations.map((relation) => [relation.id, relation]));
+  const refMovementRelations = layout.refMovementRelations ?? [];
+  const refMovementPaths = layout.refMovementPaths ?? routeRefMovements(layout.nodes, refMovementRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
+  const relationById = new Map([...historyRelations, ...refMovementRelations].map((relation) => [relation.id, relation]));
   const gradients = visiblePaths.flatMap((edge, index) => {
     const definition = edgeById.get(edge.edgeId ?? edge.id);
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
@@ -111,23 +104,24 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       {renderNodeSymbol(node, syncGradient ? `url(#${syncGradient.id})` : undefined)}
     </g>;
   };
-  const renderHistoryRelationLines = (path: NonNullable<GraphLayout['historyRelationPaths']>[number]) => {
+  const renderHistoryRelationLines = (path: NonNullable<GraphLayout['historyRelationPaths']>[number] | NonNullable<GraphLayout['refMovementPaths']>[number]) => {
     const relation = relationById.get(path.relationId);
     if (!relation) return null;
     return <g key={path.id} className="history-relation-lines" color={operationOverlayColor(relation.kind)}>
       <path className="history-relation-path" d={path.d} pointerEvents="none" />
-      <path className="history-relation-arrow" d={path.arrowD} pointerEvents="none" />
+      {path.arrowD ? <path className="history-relation-arrow" d={path.arrowD} pointerEvents="none" /> : null}
+      {'sourceMarkerD' in path && path.sourceMarkerD ? <path className="history-relation-cross" d={path.sourceMarkerD} pointerEvents="none" /> : null}
     </g>;
   };
-  const renderHistoryRelationAnnotation = (path: NonNullable<GraphLayout['historyRelationPaths']>[number]) => {
+  const renderHistoryRelationAnnotation = (path: NonNullable<GraphLayout['historyRelationPaths']>[number] | NonNullable<GraphLayout['refMovementPaths']>[number]) => {
     const relation = relationById.get(path.relationId);
     if (!relation) return null;
     const selectedRelation = selectedEvent === relation.id;
-    const tooltip = relationTooltip(relation);
+    const tooltip = operationAnnotationTooltip(relation);
     return <g key={`${path.id}:annotation`} className={`history-relation-annotation${selectedRelation ? ' selected' : ''}`} color={operationOverlayColor(relation.kind)} transform={`translate(${path.labelX},${path.labelY})`} onClick={() => onSelectEvent?.(relation.id)}>
       <title>{tooltip}</title>
       <path className="history-relation-diamond" d="M 0 -6 L 6 0 L 0 6 L -6 0 Z" />
-      <text className="history-relation-label" x="10" y="1">Amend</text>
+      <text className="history-relation-label" x="10" y="1">{operationKindLabel(relation.kind)}</text>
     </g>;
   };
   const canvasHeight = height ?? Math.max(50, layout.nodes.reduce((max, node) => Math.max(max, (node.row ?? 0) + 1), 0) * layout.rowHeight);
@@ -142,7 +136,7 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       </linearGradient>)}
     </defs>}
     <g className="graph-edges">{visiblePaths.map(renderEdge)}</g>
-    <g className="graph-history-relation-lines">{relationPaths.map(renderHistoryRelationLines)}</g>
+    <g className="graph-history-relation-lines">{relationPaths.map(renderHistoryRelationLines)}{refMovementPaths.map(renderHistoryRelationLines)}</g>
     <g className="graph-node-masks" aria-hidden="true">
       {layout.nodes.filter((node) => isUnsyncedCommit(node)).map((node) => {
         const p = point(node.id);
@@ -153,6 +147,6 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       })}
     </g>
     <g className="graph-nodes">{layout.nodes.map(renderNode)}</g>
-    <g className="graph-history-relation-annotations">{relationPaths.map(renderHistoryRelationAnnotation)}</g>
+    <g className="graph-history-relation-annotations">{relationPaths.map(renderHistoryRelationAnnotation)}{refMovementPaths.map(renderHistoryRelationAnnotation)}</g>
   </svg>;
 }

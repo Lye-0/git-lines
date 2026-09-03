@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { branchColor } from '../../src/utils/color.js';
 import type { HistoryRelation } from '../../src/model/graphModel.js';
-import { OPERATION_OVERLAY_ACCENT, operationAnnotationLabel, operationOverlayColor } from '../../webview/src/components/operationPresentation';
+import { OPERATION_OVERLAY_ACCENT, operationAnnotationLabel, operationAnnotationParts, operationKindLabel, operationOverlayColor, operationRelationMarker } from '../../webview/src/components/operationPresentation';
 
 const styles = readFileSync(resolve(process.cwd(), 'webview/src/styles.css'), 'utf8');
 
@@ -20,9 +20,18 @@ describe('operation overlay presentation', () => {
 
   it('uses a dedicated accent instead of either endpoint branch color', () => {
     expect(operationOverlayColor('amend')).toBe(OPERATION_OVERLAY_ACCENT);
+    expect(operationOverlayColor('cherry-pick')).toBe(OPERATION_OVERLAY_ACCENT);
+    expect(operationOverlayColor('revert')).toBe(OPERATION_OVERLAY_ACCENT);
     expect(operationOverlayColor('amend')).toBe('var(--operation-overlay-accent)');
     expect(operationOverlayColor('amend')).not.toBe(branchColor('main'));
     expect(operationOverlayColor('amend')).not.toBe(branchColor('feature'));
+    expect(operationRelationMarker('amend')).toBe('arrow');
+    expect(operationRelationMarker('cherry-pick')).toBe('arrow');
+    expect(operationRelationMarker('revert')).toBe('source-cross');
+    expect(operationOverlayColor('reset')).toBe(OPERATION_OVERLAY_ACCENT);
+    expect(operationOverlayColor('branch-move')).toBe(OPERATION_OVERLAY_ACCENT);
+    expect(operationRelationMarker('reset')).toBe('arrow');
+    expect(operationRelationMarker('branch-move')).toBe('arrow');
   });
 
   it('applies the same accent to the relation line, arrowhead, diamond, and label', () => {
@@ -30,6 +39,7 @@ describe('operation overlay presentation', () => {
     expect(styles).toContain('.history-relation-lines, .history-relation-annotation { color: var(--operation-overlay-accent); }');
     expect(styles).toContain('.history-relation-path { fill: none; stroke: currentColor;');
     expect(styles).toContain('.history-relation-arrow { fill: currentColor; stroke: none;');
+    expect(styles).toContain('.history-relation-cross { fill: none; stroke: currentColor;');
     expect(styles).toContain('.history-relation-diamond { fill: var(--graph-bg); stroke: currentColor;');
     expect(styles).toContain('.history-relation-label { fill: currentColor;');
   });
@@ -41,9 +51,43 @@ describe('operation overlay presentation', () => {
   });
 
   it('renders the annotation row label with the operation transition', () => {
+    expect(operationKindLabel('amend')).toBe('Amend');
+    expect(operationKindLabel('cherry-pick')).toBe('Cherry-pick');
+    expect(operationKindLabel('revert')).toBe('Revert');
+    expect(operationKindLabel('reset')).toBe('Reset');
+    expect(operationKindLabel('branch-move')).toBe('Branch move');
+    expect(operationAnnotationLabel({
+      id: 'reset:one',
+      kind: 'reset',
+      refName: 'refs/heads/main',
+      fromOid: '3a5fd462' + '0'.repeat(32),
+      toOid: '1250fde5' + '0'.repeat(32),
+      timestamp: 1,
+      evidence: 'reflog',
+      removedCommitCount: 2,
+      removedRangeStartOid: 'd873771c' + '0'.repeat(32),
+      removedRangeEndOid: '3a5fd462' + '0'.repeat(32),
+    })).toBe('Reset · main: d873771c … 3a5fd462 (2 commits) → 1250fde5');
+    expect(operationAnnotationLabel({
+      id: 'move:one',
+      kind: 'branch-move',
+      refName: 'refs/heads/main',
+      fromOid: amend.sourceOid,
+      toOid: amend.targetOid,
+      timestamp: 1,
+      evidence: 'reflog',
+    })).toBe('Branch move · main: 3d285090 → ca53af21');
     expect(operationAnnotationLabel(amend)).toBe('Amend · main: 3d285090 → ca53af21');
     expect(operationAnnotationLabel({ ...amend, refName: 'HEAD' })).toBe('Amend · 3d285090 → ca53af21');
+    expect(operationAnnotationLabel({ ...amend, kind: 'cherry-pick', refName: 'refs/heads/main' })).toBe('Cherry-pick · 3d285090 → ca53af21');
+    expect(operationAnnotationLabel({ ...amend, kind: 'revert', refName: 'refs/heads/main' })).toBe('Revert · 3d285090 → ca53af21');
+    expect(operationAnnotationParts({ ...amend, kind: 'revert' })).toEqual([
+      { text: 'Revert · ' },
+      { text: '3d285090', className: 'event-revert-target' },
+      { text: ' → ca53af21' },
+    ]);
     expect(styles).toContain('.operation-annotation-detail');
     expect(styles).toContain('text-overflow: ellipsis;');
+    expect(styles).toContain('.event-revert-target { text-decoration: line-through;');
   });
 });

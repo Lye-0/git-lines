@@ -65,6 +65,8 @@ export interface GraphNode {
   linkedWorktrees?: WorkingTreeState[];
   operation?: OperationState;
   refBadges?: GraphRefBadge[];
+  /** Historical ref positions for Ref Movement overlays. Never current live refs. */
+  ghostRefBadges?: GraphRefBadge[];
 }
 
 export type GraphEdgeType = 'parent' | 'operation' | 'working-tree' | 'history-event';
@@ -82,18 +84,43 @@ export interface GraphEdge {
 
 /**
  * A Git-proven history transformation that is intentionally kept outside the
- * commit DAG and its timeline rows.  The first overlay phase currently
- * exposes only explicit amend reflog transitions.
+ * commit DAG and its timeline rows.  Overlay arrows are emitted only when both
+ * endpoints are explicit Git evidence currently loaded in the graph.
  */
 export interface HistoryRelation {
   id: string;
-  kind: 'amend';
+  kind: 'amend' | 'cherry-pick' | 'revert';
   sourceOid: string;
   targetOid: string;
   refName?: string;
   timestamp: number;
   rawReflogMessage?: string;
   evidence: 'reflog';
+}
+
+/**
+ * A proven Git ref movement.  Endpoints are historical/current ref positions,
+ * not a commit rewrite from source commit to target commit.
+ */
+export interface RefMovementRelation {
+  id: string;
+  kind: 'reset' | 'branch-move';
+  refName: string;
+  fromOid: string;
+  toOid: string;
+  timestamp: number;
+  rawReflogMessage?: string;
+  evidence: 'reflog';
+  resetMode?: 'soft' | 'mixed' | 'hard';
+  removedCommitCount?: number;
+  removedRangeStartOid?: string;
+  removedRangeEndOid?: string;
+}
+
+export type OverlayRelation = HistoryRelation | RefMovementRelation;
+
+export function isRefMovementRelation(relation: OverlayRelation): relation is RefMovementRelation {
+  return relation.kind === 'reset' || relation.kind === 'branch-move';
 }
 
 export interface GraphTrack {
@@ -120,8 +147,10 @@ export interface GraphFactModel {
   workingTrees: WorkingTreeState[];
   operations: OperationState[];
   events: HistoryEvent[];
-  /** Operation overlays do not participate in rows, lanes, or DAG edges. */
+  /** Commit-operation overlays do not participate in rows, lanes, or DAG edges. */
   historyRelations?: HistoryRelation[];
+  /** Ref-position overlays; distinct from commit HistoryRelation. */
+  refMovementRelations?: RefMovementRelation[];
   primaryBranch?: string;
   shallowBoundaryOids: string[];
 }

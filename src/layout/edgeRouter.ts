@@ -1,6 +1,6 @@
-import type { GraphEdge, GraphNode, HistoryRelation } from '../model/graphModel.js';
+import type { GraphEdge, GraphNode, HistoryRelation, RefMovementRelation } from '../model/graphModel.js';
 import { normalizeRefName } from '../model/refDisplay.js';
-import type { EdgePath, HistoryRelationPath } from './layoutTypes.js';
+import type { EdgePath, HistoryRelationPath, RefMovementPath } from './layoutTypes.js';
 
 export interface EdgeRouterOptions {
   rowHeight?: number;
@@ -72,9 +72,20 @@ function operationCurve(a: Point, b: Point): CubicCurve {
   };
 }
 
-function historyRelationCurve(a: Point, b: Point): CubicCurve {
+function historyRelationCurve(a: Point, b: Point, lateralNudge = 0): CubicCurve {
   const direction = b.y >= a.y ? 1 : -1;
   const delta = Math.min(42, Math.max(10, Math.abs(b.y - a.y) * 0.2));
+  if (lateralNudge !== 0) {
+    // Bow the overlay to the message side so a same-lane revert does not sit
+    // on the parent edge.  Both controls shift the same way (a C, not an S).
+    const bulge = Math.abs(lateralNudge);
+    return {
+      p0: a,
+      p1: { x: a.x + bulge, y: a.y + direction * delta },
+      p2: { x: b.x + bulge, y: b.y - direction * delta },
+      p3: b,
+    };
+  }
   // Let the curve turn toward the target before its final segment.  Keeping
   // this offset small preserves the existing short relation shape while
   // giving the terminal tangent a useful horizontal component when the
@@ -85,6 +96,47 @@ function historyRelationCurve(a: Point, b: Point): CubicCurve {
     p0: a,
     p1: { x: a.x + lateralDirection * lateral, y: a.y + direction * delta },
     p2: { x: b.x - lateralDirection * lateral, y: b.y - direction * delta },
+    p3: b,
+  };
+}
+
+/** Ref Movement uses a deliberately separate geometry contract from history
+ * relations: it always has a small, readable bow, even when both endpoints
+ * share a lane. */
+export const REF_MOVEMENT_MIN_BULGE = 10;
+export const REF_MOVEMENT_MAX_BULGE = 24;
+export const REF_MOVEMENT_PAIR_SEPARATION = 8;
+const REF_MOVEMENT_TARGET_CONTROL_FACTOR = 0.35;
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function refMovementBaseBulge(a: Point, b: Point): number {
+  const horizontalDistance = Math.abs(b.x - a.x);
+  if (horizontalDistance < 1) {
+    const verticalDistance = Math.abs(b.y - a.y);
+    return verticalDistance >= HISTORY_RELATION_SAME_LANE_MIN_SPAN
+      ? HISTORY_RELATION_SAME_LANE_NUDGE
+      : REF_MOVEMENT_MIN_BULGE;
+  }
+  const direction = Math.sign(b.x - a.x);
+  return direction * Math.min(18, horizontalDistance * 0.18);
+}
+
+/** A single cubic is kept intact so the diamond can sit on a C1-continuous
+ * path rather than splitting the relation into two visible segments. */
+function refMovementCurve(a: Point, b: Point, lateralOffset: number, sameLane: boolean): CubicCurve {
+  const direction = b.y >= a.y ? 1 : -1;
+  const delta = Math.min(42, Math.max(10, Math.abs(b.y - a.y) * 0.2));
+  const lateral = clamp((sameLane ? refMovementBaseBulge(a, { x: a.x, y: b.y }) : refMovementBaseBulge(a, b)) + lateralOffset, -REF_MOVEMENT_MAX_BULGE, REF_MOVEMENT_MAX_BULGE);
+  return {
+    p0: a,
+    p1: { x: a.x + lateral, y: a.y + direction * delta },
+    // Keep most of the bow through the middle of the curve.  Returning the
+    // target control toward the target x avoids the inward hook caused by
+    // pulling an already inset endpoint back from a full lateral bulge.
+    p2: { x: b.x + lateral * REF_MOVEMENT_TARGET_CONTROL_FACTOR, y: b.y - direction * delta },
     p3: b,
   };
 }
@@ -128,6 +180,38 @@ function historyRelationSourceInset(): number {
   return COMMIT_NODE_RADIUS + HISTORY_RELATION_ARROW_GAP;
 }
 
+/** Half-length of each revert cancel-mark arm. Smaller than the ◇ glyph. */
+export const HISTORY_RELATION_CROSS_SIZE = 3.5;
+/**
+ * Matches the commit selection ring so the revert mark sits outside it.
+ * Keep this in lockstep with `NODE_SELECTION_RING_RADIUS`.
+ */
+export const HISTORY_RELATION_SELECTION_RING = 10;
+/** Local horizontal bulge when a same-lane revert would track a parent edge. */
+export const HISTORY_RELATION_SAME_LANE_NUDGE = 14;
+const HISTORY_RELATION_SAME_LANE_MIN_SPAN = 48;
+const SMALL_OVERLAY_NODE_RADIUS = 4;
+
+function overlayEndpointRadius(node: Pick<GraphNode, 'kind' | 'linkedWorktrees'>): number {
+  if (node.kind === 'reflog-commit' && !(node.linkedWorktrees?.length)) return SMALL_OVERLAY_NODE_RADIUS;
+  return COMMIT_NODE_RADIUS;
+}
+
+/**
+ * Distance from the TARGET commit center to the revert ×.  Derived from the
+ * visible node disk, the selection ring, the mark size, and a readable gap.
+ */
+export function historyRelationSourceCrossInset(node: Pick<GraphNode, 'kind' | 'linkedWorktrees'>): number {
+  const outer = Math.max(overlayEndpointRadius(node), HISTORY_RELATION_SELECTION_RING);
+  return outer + HISTORY_RELATION_CROSS_SIZE + HISTORY_RELATION_ARROW_GAP;
+}
+
+function revertSameLaneNudge(a: Point, b: Point): number {
+  if (Math.abs(a.x - b.x) >= 1) return 0;
+  if (Math.abs(a.y - b.y) < HISTORY_RELATION_SAME_LANE_MIN_SPAN) return 0;
+  return HISTORY_RELATION_SAME_LANE_NUDGE;
+}
+
 function insetPoint(from: Point, to: Point, distance: number): Point {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -143,6 +227,19 @@ function insetFromAlong(origin: Point, direction: Point, distance: number): Poin
     x: origin.x - (direction.x / length) * distance,
     y: origin.y - (direction.y / length) * distance,
   };
+}
+
+function insetAlong(origin: Point, direction: Point, distance: number): Point {
+  const length = Math.hypot(direction.x, direction.y);
+  if (length < Number.EPSILON) return origin;
+  return {
+    x: origin.x + (direction.x / length) * distance,
+    y: origin.y + (direction.y / length) * distance,
+  };
+}
+
+function crossPath(center: Point, size = HISTORY_RELATION_CROSS_SIZE): string {
+  return `M ${center.x - size} ${center.y - size} L ${center.x + size} ${center.y + size} M ${center.x + size} ${center.y - size} L ${center.x - size} ${center.y + size}`;
 }
 
 function arrowPath(tip: Point, tangent: Point, size = HISTORY_RELATION_ARROW_SIZE): string {
@@ -476,6 +573,38 @@ export function routeHistoryRelations(nodes: GraphNode[], relations: HistoryRela
     const targetPoint = pointForNode(target, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const distance = Math.hypot(targetPoint.x - sourcePoint.x, targetPoint.y - sourcePoint.y);
     if (distance < Number.EPSILON) return [];
+    const annotationRow = options.annotationRows?.get(relation.id);
+    const labelFor = (curve: CubicCurve) => annotationRow === undefined
+      ? cubicPoint(curve, 0.42)
+      : cubicPoint(curve, parameterAtY(curve, 18 + annotationRow * rowHeight));
+
+    if (relation.kind === 'revert') {
+      const sourceInset = Math.min(historyRelationSourceCrossInset(source), distance / 2);
+      const targetInset = Math.min(
+        overlayEndpointRadius(target) + HISTORY_RELATION_ARROW_GAP,
+        Math.max(0, (distance - sourceInset) / 2),
+      );
+      const nudge = revertSameLaneNudge(sourcePoint, targetPoint);
+      const draft = historyRelationCurve(sourcePoint, targetPoint, nudge);
+      const start = insetAlong(sourcePoint, cubicDerivative(draft, 0), sourceInset);
+      const approach = cubicDerivative(historyRelationCurve(start, targetPoint, nudge), 1);
+      const end = insetFromAlong(targetPoint, approach, targetInset);
+      const curve = historyRelationCurve(start, end, nudge);
+      const labelPoint = labelFor(curve);
+      return [{
+        id: `${relation.id}:overlay`,
+        relationId: relation.id,
+        kind: relation.kind,
+        sourceNodeId: source.id,
+        targetNodeId: target.id,
+        d: curvePath(curve),
+        arrowD: '',
+        sourceMarkerD: crossPath(start),
+        labelX: labelPoint.x,
+        labelY: labelPoint.y,
+      }];
+    }
+
     // Source keeps the previous node-clearing inset.  The target inset is
     // derived from the commit radius, the small arrow size, and a readable
     // gap so the triangle sits before the node instead of under it.
@@ -493,10 +622,7 @@ export function routeHistoryRelations(nodes: GraphNode[], relations: HistoryRela
     // A virtual annotation row gives the operation text stable vertical
     // space.  Keep its graph marker on the same relation curve; the row never
     // becomes an endpoint or a DAG edge.
-    const annotationRow = options.annotationRows?.get(relation.id);
-    const labelPoint = annotationRow === undefined
-      ? cubicPoint(curve, 0.42)
-      : cubicPoint(curve, parameterAtY(curve, 18 + annotationRow * rowHeight));
+    const labelPoint = labelFor(curve);
     return [{
       id: `${relation.id}:overlay`,
       relationId: relation.id,
@@ -506,6 +632,135 @@ export function routeHistoryRelations(nodes: GraphNode[], relations: HistoryRela
       d: curvePath(curve),
       // The arrow direction is the actual terminal Bezier tangent, not a
       // fixed screen-space angle or a chord approximation.
+      arrowD: arrowPath(curve.p3, tangent),
+      labelX: labelPoint.x,
+      labelY: labelPoint.y,
+    }];
+  });
+}
+
+/** Gap between the commit disk and the graph-side ref badge. */
+export const REF_MOVEMENT_BADGE_GAP = 7;
+/** Keep the curve endpoint just outside the badge edge. */
+export const REF_MOVEMENT_ANCHOR_GAP = 3;
+const REF_BADGE_MAX_WIDTH = 240;
+const REF_BADGE_HORIZONTAL_PADDING = 12;
+const REF_BADGE_CHARACTER_WIDTH = 7.2;
+
+export function estimatedRefBadgeWidth(name: string, kind: 'local' | 'remote' | 'tag' | 'special' = 'local', isDefault = false): number {
+  const tagMarkerWidth = kind === 'tag' ? 14 : 0;
+  const defaultSuffixWidth = isDefault ? 70 : 0;
+  return Math.min(REF_BADGE_MAX_WIDTH, Math.ceil((name.length * REF_BADGE_CHARACTER_WIDTH) + tagMarkerWidth + defaultSuffixWidth + REF_BADGE_HORIZONTAL_PADDING));
+}
+
+/** Compact metrics shared by the graph-side endpoint badge and its anchor. */
+export const REF_MOVEMENT_BADGE_MAX_WIDTH = 180;
+const REF_MOVEMENT_BADGE_HORIZONTAL_PADDING = 8;
+const REF_MOVEMENT_BADGE_CHARACTER_WIDTH = 6.4;
+
+export function estimatedRefMovementBadgeWidth(name: string, kind: 'local' | 'remote' | 'tag' | 'special' = 'local', isDefault = false): number {
+  const tagMarkerWidth = kind === 'tag' ? 12 : 0;
+  const defaultSuffixWidth = isDefault ? 60 : 0;
+  return Math.min(REF_MOVEMENT_BADGE_MAX_WIDTH, Math.ceil((name.length * REF_MOVEMENT_BADGE_CHARACTER_WIDTH) + tagMarkerWidth + defaultSuffixWidth + REF_MOVEMENT_BADGE_HORIZONTAL_PADDING));
+}
+
+export function refMovementBadgeOffset(): number {
+  return COMMIT_NODE_RADIUS + REF_MOVEMENT_BADGE_GAP;
+}
+
+export function refMovementAnchorOffset(badgeWidth: number): number {
+  const badgeLeft = refMovementBadgeOffset();
+  return badgeLeft + Math.max(0, badgeWidth) * 0.25;
+}
+
+/** Default offset for a short local name such as `main`. */
+export const REF_MOVEMENT_ANCHOR_OFFSET = refMovementAnchorOffset(estimatedRefMovementBadgeWidth('main'));
+const REF_MOVEMENT_ENDPOINT_INSET = HISTORY_RELATION_ARROW_SIZE + HISTORY_RELATION_ARROW_GAP;
+
+export const REF_MOVEMENT_BADGE_HEIGHT = 14 + 1.5 * 2;
+
+/**
+ * Places an endpoint on the node-to-badge line. The vertical side is selected
+ * from the direction toward the other endpoint, so a downward relation leaves
+ * the source below its badge and enters the target above its badge.
+ */
+export function getRefMovementAnchor(node: GraphNode, otherNode: GraphNode, options: EdgeRouterOptions = {}, badgeWidth = estimatedRefMovementBadgeWidth('main')): { x: number; y: number } {
+  const point = pointForNode(node, options);
+  const otherPoint = pointForNode(otherNode, options);
+  const direction = Math.sign(otherPoint.y - point.y);
+  return {
+    x: point.x + refMovementAnchorOffset(badgeWidth),
+    y: point.y + direction * (REF_MOVEMENT_BADGE_HEIGHT / 2 + REF_MOVEMENT_ANCHOR_GAP),
+  };
+}
+
+function refMovementPairKey(relation: RefMovementRelation): string {
+  return [relation.fromOid, relation.toOid].sort().join('\0');
+}
+
+function pairOffsetByRelationId(relations: RefMovementRelation[]): Map<string, number> {
+  const groups = new Map<string, RefMovementRelation[]>();
+  for (const relation of relations) {
+    const group = groups.get(refMovementPairKey(relation)) ?? [];
+    group.push(relation);
+    groups.set(refMovementPairKey(relation), group);
+  }
+  const offsets = new Map<string, number>();
+  for (const group of groups.values()) {
+    const center = (group.length - 1) / 2;
+    group.forEach((relation, index) => {
+      offsets.set(relation.id, (index - center) * REF_MOVEMENT_PAIR_SEPARATION);
+    });
+  }
+  return offsets;
+}
+
+/**
+ * Routes Reset / Branch move overlays between ref-position anchors, not
+ * commit-node centers.  Incomplete endpoints are omitted rather than guessed.
+ */
+export function routeRefMovements(nodes: GraphNode[], relations: RefMovementRelation[], options: EdgeRouterOptions = {}): RefMovementPath[] {
+  const byOid = new Map(nodes
+    .filter((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid)
+    .map((node) => [node.oid as string, node]));
+  const rowHeight = options.rowHeight ?? 38;
+  const laneWidth = options.laneWidth ?? 34;
+  const pairOffsets = pairOffsetByRelationId(relations);
+  return relations.flatMap<RefMovementPath>((relation) => {
+    const source = byOid.get(relation.fromOid);
+    const target = byOid.get(relation.toOid);
+    if (!source || !target) return [];
+    const badgeWidth = estimatedRefMovementBadgeWidth(normalizeRefName(relation.refName));
+    const sourcePoint = getRefMovementAnchor(source, target, { rowHeight, laneWidth, leftPadding: options.leftPadding }, badgeWidth);
+    const targetPoint = getRefMovementAnchor(target, source, { rowHeight, laneWidth, leftPadding: options.leftPadding }, badgeWidth);
+    const distance = Math.hypot(targetPoint.x - sourcePoint.x, targetPoint.y - sourcePoint.y);
+    if (distance < Number.EPSILON) return [];
+    const annotationRow = options.annotationRows?.get(relation.id);
+    const labelFor = (curve: CubicCurve) => annotationRow === undefined
+      ? cubicPoint(curve, 0.42)
+      : cubicPoint(curve, parameterAtY(curve, 18 + annotationRow * rowHeight));
+    const targetInset = Math.min(REF_MOVEMENT_ENDPOINT_INSET, distance / 2);
+    const sourceInset = Math.min(HISTORY_RELATION_ARROW_GAP, Math.max(0, (distance - targetInset) / 3));
+    const pairOffset = pairOffsets.get(relation.id) ?? 0;
+    const sameLane = Math.abs(targetPoint.x - sourcePoint.x) < 1;
+    const start = insetPoint(sourcePoint, targetPoint, sourceInset);
+    // Iterate the endpoint inset against the actual cubic tangent.  This
+    // keeps the arrow tip outside the ref anchor without replacing the
+    // single smooth path with a second segment.
+    let curve = refMovementCurve(start, targetPoint, pairOffset, sameLane);
+    for (let iteration = 0; iteration < 3; iteration += 1) {
+      const end = insetFromAlong(targetPoint, cubicDerivative(curve, 1), targetInset);
+      curve = refMovementCurve(start, end, pairOffset, sameLane);
+    }
+    const tangent = cubicDerivative(curve, 1);
+    const labelPoint = labelFor(curve);
+    return [{
+      id: `${relation.id}:ref-move`,
+      relationId: relation.id,
+      kind: relation.kind,
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      d: curvePath(curve),
       arrowD: arrowPath(curve.p3, tangent),
       labelX: labelPoint.x,
       labelY: labelPoint.y,

@@ -3,6 +3,8 @@ import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { GraphSvg } from './GraphSvg';
 import { CommitRow } from './CommitRow';
 import { changesColumnStartForLayout, graphWidthForLayout, timelineContentWidthForLayout, TIMELINE_MIN_WIDTH } from './graphMetrics';
+import { layoutGraphSideRefEndpoints } from './refMovementPresentation';
+import { RefMovementEndpointBadges } from './RefMovementEndpointBadges';
 import { routeNameForNode } from './routePresentation';
 import { linkedWorktreeStatusLabel, operationInProgressLabel } from './workingTreePresentation';
 import { OperationAnnotationRow } from './OperationAnnotationRow';
@@ -33,8 +35,9 @@ export function GraphViewport({ layout, filter, selected, selectedWorkingTree, s
   // segment or reserve width for a track with no visible segment.
   const graphWidth = graphWidthForLayout(layout);
   const requiredChangesColumnStart = changesColumnStartForLayout(layout);
-  // The graph/content boundary is determined by branch lanes only.  Ref event
-  // labels are compacted inside the SVG and must never widen this column.
+  // The graph/content boundary includes graph-side endpoint badges and the
+  // operation labels rendered inside the SVG. This keeps those labels clear
+  // of the message-side annotation boxes.
   // Keep the content and fixed changes columns usable at any viewport size;
   // the graph-scroll container provides horizontal scrolling below this
   // minimum instead of collapsing rows or hiding stats.
@@ -44,7 +47,7 @@ export function GraphViewport({ layout, filter, selected, selectedWorkingTree, s
   // the user has a chance to scroll horizontally.
   const eventLabelWidth = Math.max(canvasMinWidth, viewportWidth || graphWidth);
   const operationRows = (layout.operationAnnotationRows ?? []).flatMap((row) => {
-    const relation = layout.historyRelations?.find((candidate) => candidate.id === row.relationId);
+    const relation = [...(layout.historyRelations ?? []), ...(layout.refMovementRelations ?? [])].find((candidate) => candidate.id === row.relationId);
     return relation ? [{ ...row, relation }] : [];
   });
   const rowCount = Math.max(1, ...layout.nodes.map((node) => (node.row ?? 0) + 1), ...operationRows.map((row) => row.row + 1));
@@ -94,8 +97,9 @@ export function GraphViewport({ layout, filter, selected, selectedWorkingTree, s
     <div ref={scrollRef} className="graph-scroll" role="region" aria-label="Scrollable Git Lines graph" aria-busy={loading} tabIndex={0}>
       <div className="graph-canvas" style={{ minWidth: canvasMinWidth, minHeight: canvasHeight }}>
         <GraphSvg layout={layout} width={graphWidth} height={canvasHeight} selected={selected} selectedWorkingTree={selectedWorkingTree} selectedEvent={selectedEvent} onSelectEvent={onSelectEvent} />
+        <RefMovementEndpointBadges layout={layout} tracks={layout.tracks} />
         <div className="rows" style={{ marginLeft: graphWidth, width: `calc(100% - ${graphWidth}px)`, minHeight: canvasHeight, '--required-changes-column-start': `${requiredChangesColumnStart}px` } as CSSProperties}>
-          {layout.nodes.slice().sort((a, b) => (a.row ?? 0) - (b.row ?? 0)).map((node) => { const tree = node.workingTree; const routeName = routeNameForNode(node, layout.tracks); const operationLabel = node.operation ? operationInProgressLabel(node.operation) : undefined; const linkedWorktreeTerms = (node.linkedWorktrees ?? []).flatMap((linked) => ['linked worktree', linked.branch, linked.path, linkedWorktreeStatusLabel(linked)]); const haystack = [node.subject, node.label, node.oid, routeName, tree?.branch, tree?.path, tree?.detached ? 'detached' : '', tree?.clean ? 'clean' : '', operationLabel, ...linkedWorktreeTerms, ...(node.operation?.sourceOids ?? []), ...node.refIds, ...(node.refBadges?.map((badge) => badge.fullName) ?? [])].filter(Boolean).join(' ').toLocaleLowerCase(); const selectable = node.kind === 'commit' || node.kind === 'reflog-commit'; const selectableWorkingTree = node.kind === 'working-tree'; const selectableEvent = Boolean(node.event && (node.kind === 'fast-forward-event' || node.kind === 'history-event')); return <CommitRow key={node.id} node={node} rowHeight={layout.rowHeight} tracks={layout.tracks} eventLabelWidth={eventLabelWidth} eventLabelX={graphWidth} selected={(selectable && node.oid === selected) || (selectableWorkingTree && node.id === selectedWorkingTree)} selectedEvent={selectableEvent && node.id === selectedEvent} hidden={Boolean(needle) && !haystack.includes(needle)} showWorkingTreeStats={showWorkingTreeStats} onSelect={onSelect} onSelectWorkingTree={onSelectWorkingTree} onSelectEvent={onSelectEvent} />; })}
+          {layout.nodes.slice().sort((a, b) => (a.row ?? 0) - (b.row ?? 0)).map((node) => { const tree = node.workingTree; const routeName = routeNameForNode(node, layout.tracks); const operationLabel = node.operation ? operationInProgressLabel(node.operation) : undefined; const linkedWorktreeTerms = (node.linkedWorktrees ?? []).flatMap((linked) => ['linked worktree', linked.branch, linked.path, linkedWorktreeStatusLabel(linked)]); const haystack = [node.subject, node.label, node.oid, routeName, tree?.branch, tree?.path, tree?.detached ? 'detached' : '', tree?.clean ? 'clean' : '', operationLabel, ...linkedWorktreeTerms, ...(node.operation?.sourceOids ?? []), ...node.refIds, ...(node.refBadges?.map((badge) => badge.fullName) ?? []), ...(node.ghostRefBadges?.map((badge) => badge.fullName) ?? [])].filter(Boolean).join(' ').toLocaleLowerCase(); const selectable = node.kind === 'commit' || node.kind === 'reflog-commit'; const selectableWorkingTree = node.kind === 'working-tree'; const selectableEvent = Boolean(node.event && (node.kind === 'fast-forward-event' || node.kind === 'history-event')); const graphSideRefFullNames = new Set(layoutGraphSideRefEndpoints({ nodes: [node], refMovementRelations: layout.refMovementRelations }).map((endpoint) => endpoint.badge.fullName)); return <CommitRow key={node.id} node={node} rowHeight={layout.rowHeight} tracks={layout.tracks} eventLabelWidth={eventLabelWidth} eventLabelX={graphWidth} selected={(selectable && node.oid === selected) || (selectableWorkingTree && node.id === selectedWorkingTree)} selectedEvent={selectableEvent && node.id === selectedEvent} hidden={Boolean(needle) && !haystack.includes(needle)} showWorkingTreeStats={showWorkingTreeStats} graphSideRefFullNames={graphSideRefFullNames} onSelect={onSelect} onSelectWorkingTree={onSelectWorkingTree} onSelectEvent={onSelectEvent} />; })}
           {operationRows.map(({ relation, ...row }) => { const haystack = operationAnnotationLabel(relation).toLocaleLowerCase(); return <OperationAnnotationRow key={row.id} relation={relation} row={row.row} rowHeight={layout.rowHeight} selected={relation.id === selectedEvent} hidden={Boolean(needle) && !haystack.includes(needle)} onSelectEvent={onSelectEvent} />; })}
         </div>
       </div>

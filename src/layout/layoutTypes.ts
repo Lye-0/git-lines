@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode, GraphTrack, HistoryRelation } from '../model/graphModel.js';
+import type { GraphEdge, GraphNode, GraphTrack, HistoryRelation, RefMovementRelation } from '../model/graphModel.js';
 
 export interface GraphLayout {
   nodes: GraphNode[];
@@ -12,6 +12,8 @@ export interface GraphLayout {
   /** Presentation-only operation paths; they never affect row or lane layout. */
   historyRelations?: HistoryRelation[];
   historyRelationPaths?: HistoryRelationPath[];
+  refMovementRelations?: RefMovementRelation[];
+  refMovementPaths?: RefMovementPath[];
   /** Visual-only rows for operation annotations; never DAG nodes or lane claims. */
   operationAnnotationRows?: OperationAnnotationRow[];
 }
@@ -43,6 +45,21 @@ export interface HistoryRelationPath {
   id: string;
   relationId: string;
   kind: HistoryRelation['kind'];
+  sourceNodeId: string;
+  targetNodeId: string;
+  d: string;
+  /** Triangle at NEW for amend / cherry-pick. Empty for revert. */
+  arrowD: string;
+  /** Cancel mark at TARGET for revert. Absent for amend / cherry-pick. */
+  sourceMarkerD?: string;
+  labelX: number;
+  labelY: number;
+}
+
+export interface RefMovementPath {
+  id: string;
+  relationId: string;
+  kind: RefMovementRelation['kind'];
   sourceNodeId: string;
   targetNodeId: string;
   d: string;

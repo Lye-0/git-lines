@@ -21,4 +21,21 @@ describe('graph metrics', () => {
     expect(manyRefsStart).toBeGreaterThan(1180);
     expect(timelineContentWidthForLayout(manyRefs)).toBeGreaterThan(timelineContentWidthForLayout(oneRef));
   });
+
+  it('keeps overlay annotation labels in the same content-width contract as commit rows', () => {
+    const commitsOnly = { nodes: [nodeWithBadges(['main'])], historyRelations: [] };
+    const withOverlay = {
+      nodes: [nodeWithBadges(['main'])],
+      historyRelations: [{
+        id: 'history:cherry-pick:1',
+        kind: 'cherry-pick' as const,
+        sourceOid: 's'.repeat(40),
+        targetOid: 'c'.repeat(40),
+        timestamp: 1,
+        evidence: 'reflog' as const,
+      }],
+    };
+    expect(changesColumnStartForLayout(withOverlay)).toBeGreaterThanOrEqual(changesColumnStartForLayout(commitsOnly));
+    expect(timelineContentWidthForLayout(withOverlay)).toBeGreaterThanOrEqual(timelineContentWidthForLayout(commitsOnly));
+  });
 });

@@ -1,4 +1,5 @@
-import type { GraphNode, HistoryRelation } from '../model/graphModel.js';
+import type { GraphNode, OverlayRelation } from '../model/graphModel.js';
+import { isRefMovementRelation } from '../model/graphModel.js';
 import type { OperationAnnotationRow } from './layoutTypes.js';
 
 interface OperationRowCandidate {
@@ -10,19 +11,25 @@ function isCommitNode(node: GraphNode | undefined): boolean {
   return node?.kind === 'commit' || node?.kind === 'reflog-commit';
 }
 
+export function overlayEndpoints(relation: OverlayRelation): { id: string; sourceOid: string; targetOid: string } {
+  if (isRefMovementRelation(relation)) return { id: relation.id, sourceOid: relation.fromOid, targetOid: relation.toOid };
+  return { id: relation.id, sourceOid: relation.sourceOid, targetOid: relation.targetOid };
+}
+
 /**
  * Inserts presentation-only rows between the endpoints of visible operation
  * relations.  The insertion is applied after lane assignment, so it changes
  * only vertical spacing; the commit DAG, topology, and lane claims remain
  * exactly the same.
  */
-export function insertOperationAnnotationRows(nodes: GraphNode[], relations: HistoryRelation[]): { nodes: GraphNode[]; rows: OperationAnnotationRow[] } {
+export function insertOperationAnnotationRows(nodes: GraphNode[], relations: OverlayRelation[]): { nodes: GraphNode[]; rows: OperationAnnotationRow[] } {
   const byOid = new Map(nodes.filter((node) => isCommitNode(node) && node.oid).map((node) => [node.oid as string, node]));
   const seen = new Set<string>();
   const candidates: OperationRowCandidate[] = relations.flatMap((relation) => {
     if (seen.has(relation.id)) return [];
-    const source = byOid.get(relation.sourceOid);
-    const target = byOid.get(relation.targetOid);
+    const endpoints = overlayEndpoints(relation);
+    const source = byOid.get(endpoints.sourceOid);
+    const target = byOid.get(endpoints.targetOid);
     if (!source || !target || source.row === undefined || target.row === undefined) return [];
     seen.add(relation.id);
     const lowerRow = Math.min(source.row, target.row);

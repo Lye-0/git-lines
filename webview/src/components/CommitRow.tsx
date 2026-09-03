@@ -7,6 +7,7 @@ import { commitChangeStats } from './commitStatsPresentation';
 import { commitMetaText, commitRowPresentation } from './commitRowPresentation';
 import { ChangeStatsGrid } from './ChangeStatsGrid';
 import { routeNameForNode } from './routePresentation';
+import { messageSideGhostRefBadges, messageSideRefBadges } from './refMovementPresentation';
 
 function kindLabel(kind: GraphNode['kind']): string | undefined {
   if (kind === 'working-tree') return 'Working Tree';
@@ -45,7 +46,7 @@ function operationSummary(node: GraphNode): string | undefined {
   return node.operation.detail || (node.operation.sourceOids.length ? `${node.operation.sourceOids.length} source commit${node.operation.sourceOids.length === 1 ? '' : 's'}` : 'Waiting for Git to finish');
 }
 
-export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, onSelectWorkingTree, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true }: { node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; onSelectWorkingTree?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean }) {
+export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, onSelectWorkingTree, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true, graphSideRefFullNames }: { node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; onSelectWorkingTree?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean; graphSideRefFullNames?: Set<string> }) {
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const isSelectableWorkingTree = node.kind === 'working-tree' && Boolean(onSelectWorkingTree);
   const working = workingSummary(node);
@@ -64,7 +65,9 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
   // Ref Event text is rendered in the shared content column.  Repeating the
   // affected refs as badges would make the annotation look like a second ref
   // row; detailed affected-ref data remains available in its tooltip.
-  const badges = refEvent ? [] : node.refBadges ?? node.refIds.map((name) => specialRefBadge(name));
+  const movedRefNames = graphSideRefFullNames ?? new Set<string>();
+  const badges = refEvent ? [] : messageSideRefBadges({ ...node, refBadges: node.refBadges ?? node.refIds.map((name) => specialRefBadge(name)) }, movedRefNames);
+  const ghostBadges = refEvent ? [] : messageSideGhostRefBadges(node, movedRefNames);
   const routeName = routeNameForNode(node, tracks);
   const commitMeta = node.commit
     ? commitMetaText(node.commit.oid, routeName, relativeTime(node.commit.committerDate), node.headState)
@@ -113,11 +116,17 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
             {linkedWorktrees.length > 0 && <span className="linked-worktree-label" title={linkedWorktreeInfo}><span className="linked-worktree-icon" aria-hidden="true">□</span> Linked Worktree{linkedWorktrees.length > 1 ? ` ×${linkedWorktrees.length}` : ''}</span>}
             <span className={`subject${previousRoute ? ' previous-subject' : ''}`} title={node.subject ?? node.label}>{title}</span>
             {working?.operation && <span className="working-operation" title={working.operation}>{`(+ ${working.operation})`}</span>}
-            {badges.length > 0 && <div className="row-meta">
+            {(badges.length > 0 || ghostBadges.length > 0) && <div className="row-meta">
               {badges.map((badge) => {
                 const track = tracks.find((candidate) => candidate.refNames.includes(badge.fullName));
                 const style = { '--badge-color': track?.color } as CSSProperties;
                 return <span className={`ref-badge ref-badge-${badge.kind}${badge.isDefault ? ' default' : ''}`} style={style} key={badge.fullName} title={badge.name}>{badge.name}{badge.isDefault ? ' · default' : ''}</span>;
+              })}
+              {ghostBadges.map((badge) => {
+                const track = tracks.find((candidate) => candidate.refNames.includes(badge.fullName))
+                  ?? tracks.find((candidate) => candidate.family === badge.name);
+                const style = { '--badge-color': track?.color } as CSSProperties;
+                return <span className={`ref-badge ref-badge-${badge.kind} ref-badge-ghost`} style={style} key={`ghost:${badge.fullName}`} title={`Previous ${badge.name} position`} aria-hidden="true">{badge.name}</span>;
               })}
             </div>}
           </div>

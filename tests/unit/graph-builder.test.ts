@@ -275,13 +275,9 @@ describe('graph fact builder', () => {
       historyEvents: [{ id: 'history:reset:3:b', type: 'reset', refName: 'refs/heads/main', fromOid: oid('o'), toOid: oid('b'), timestamp: 3, subject: 'reset: moving to b' }],
     };
     const facts = buildGraphFacts(eventSnapshot);
-    const eventEdges = facts.edges.filter((edge) => edge.type === 'history-event');
-    expect(eventEdges).toHaveLength(1);
-    expect(eventEdges[0]).toMatchObject({ annotation: 'ref-event', fromNodeId: `commit:${oid('b')}`, toNodeId: 'history:reset:3:b' });
-    expect(facts.nodes.find((node) => node.id === 'history:reset:3:b')).toMatchObject({
-      anchorCommitId: `commit:${oid('b')}`,
-      targetRef: 'refs/heads/main',
-    });
+    expect(facts.nodes.find((node) => node.id === 'history:reset:3:b')).toBeUndefined();
+    expect(facts.edges.filter((edge) => edge.type === 'history-event')).toEqual([]);
+    expect(facts.refMovementRelations).toEqual([expect.objectContaining({ kind: 'reset', fromOid: oid('o'), toOid: oid('b') })]);
   });
 
   it('keeps Amend as a relation while retaining other ref events as timeline nodes', () => {
@@ -297,11 +293,11 @@ describe('graph fact builder', () => {
       ],
     });
     const eventNodes = facts.nodes.filter((node) => node.kind === 'history-event');
-    expect(eventNodes).toHaveLength(1);
-    expect(eventNodes[0]).toMatchObject({ event: { type: 'reset' }, anchorCommitId: `commit:${oid('b')}`, targetRef: 'refs/heads/main' });
+    expect(eventNodes).toEqual([]);
     expect(facts.events).toHaveLength(2);
     expect(facts.historyRelations).toEqual([expect.objectContaining({ kind: 'amend', sourceOid: oid('o'), targetOid: oid('b'), evidence: 'reflog' })]);
-    expect(facts.edges.filter((edge) => edge.type === 'history-event')).toHaveLength(1);
+    expect(facts.refMovementRelations).toEqual([expect.objectContaining({ kind: 'reset', fromOid: oid('o'), toOid: oid('b') })]);
+    expect(facts.edges.filter((edge) => edge.type === 'history-event')).toEqual([]);
   });
 
   it('keeps a live ref-only reset event without turning it into a historical route', () => {
@@ -316,8 +312,8 @@ describe('graph fact builder', () => {
     expect(facts.events).toHaveLength(2);
     expect(facts.events).toContainEqual(expect.objectContaining({ type: 'reset', fromOid: oid('a'), toOid: oid('b') }));
     expect(facts.historyRelations).toEqual([expect.objectContaining({ kind: 'amend', sourceOid: oid('a'), targetOid: oid('b'), evidence: 'reflog' })]);
-    expect(facts.nodes.filter((node) => node.kind === 'history-event')).toHaveLength(1);
-    expect(facts.nodes.find((node) => node.event?.type === 'reset')).toMatchObject({ refOnly: true, historicalEvent: false });
+    expect(facts.refMovementRelations).toEqual([expect.objectContaining({ kind: 'reset', fromOid: oid('a'), toOid: oid('b') })]);
+    expect(facts.nodes.filter((node) => node.kind === 'history-event')).toEqual([]);
     expect(facts.nodes.find((node) => node.oid === oid('a'))?.previousRoute).toBe(false);
   });
 
@@ -550,5 +546,181 @@ describe('graph fact builder', () => {
     expect(facts.nodes.find((node) => node.oid === oid('l'))?.syncState).toBe('local-only');
     expect(facts.nodes.find((node) => node.oid === oid('r'))?.syncState).toBe('remote-only');
     expect(facts.nodes.find((node) => node.oid === oid('a'))?.syncState).toBe('shared');
+  });
+
+  it('emits an exact cherry-pick overlay only when the source OID is recorded', () => {
+    const source = { oid: oid('s'), parentOids: [oid('a')], subject: 'source', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 };
+    const created = { oid: oid('c'), parentOids: [oid('b')], subject: 'cherry', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 };
+    const event = {
+      id: 'history:cherry-pick:5:c',
+      type: 'cherry-pick' as const,
+      refName: 'refs/heads/main',
+      fromOid: oid('b'),
+      toOid: created.oid,
+      sourceOid: source.oid,
+      timestamp: 5,
+      subject: 'commit (cherry-pick): source',
+    };
+    const exactSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [created, source, ...snapshot.commits],
+      refs: [
+        { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: created.oid },
+        { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: source.oid },
+      ],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: created.oid }],
+      historyEvents: [event],
+      visibleCommitCount: 4,
+    };
+
+    const facts = buildGraphFacts(exactSnapshot, { showReflog: true });
+    expect(facts.historyRelations).toEqual([expect.objectContaining({ kind: 'cherry-pick', sourceOid: source.oid, targetOid: created.oid, evidence: 'reflog' })]);
+    expect(facts.nodes.some((node) => node.id === event.id)).toBe(false);
+    expect(facts.nodes.find((node) => node.oid === source.oid)).toMatchObject({ kind: 'commit', previousRoute: false });
+    expect(facts.events).toEqual([event]);
+
+    const hidden = buildGraphFacts(exactSnapshot, { showReflog: false });
+    expect(hidden.historyRelations).toEqual([]);
+    expect(hidden.nodes.find((node) => node.oid === source.oid)?.kind).toBe('commit');
+    expect(hidden.nodes.find((node) => node.oid === created.oid)?.kind).toBe('commit');
+  });
+
+  it('keeps a cherry-pick history event when the source OID is not certain', () => {
+    const created = { oid: oid('c'), parentOids: [oid('b')], subject: 'cherry', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 };
+    const event = {
+      id: 'history:cherry-pick:5:c',
+      type: 'cherry-pick' as const,
+      refName: 'refs/heads/main',
+      fromOid: oid('b'),
+      toOid: created.oid,
+      timestamp: 5,
+      subject: 'commit (cherry-pick): source',
+    };
+    const facts = buildGraphFacts({
+      ...snapshot,
+      commits: [created, ...snapshot.commits],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: created.oid }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: created.oid }],
+      historyEvents: [event],
+      visibleCommitCount: 3,
+    }, { showReflog: true });
+
+    expect(facts.historyRelations).toEqual([]);
+    expect(facts.nodes.find((node) => node.id === event.id)?.kind).toBe('history-event');
+  });
+
+  it('does not invent a cherry-pick overlay when the recorded source is not on the page', () => {
+    const created = { oid: oid('c'), parentOids: [oid('b')], subject: 'cherry', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 };
+    const event = {
+      id: 'history:cherry-pick:5:c',
+      type: 'cherry-pick' as const,
+      refName: 'refs/heads/main',
+      fromOid: oid('b'),
+      toOid: created.oid,
+      sourceOid: oid('missing'),
+      timestamp: 5,
+      subject: 'commit (cherry-pick): source',
+    };
+    const facts = buildGraphFacts({
+      ...snapshot,
+      commits: [created, ...snapshot.commits],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: created.oid }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: created.oid }],
+      historyEvents: [event],
+      visibleCommitCount: 3,
+    }, { showReflog: true });
+
+    expect(facts.historyRelations).toEqual([]);
+    expect(facts.nodes.find((node) => node.id === event.id)?.kind).toBe('history-event');
+  });
+
+  it('emits an exact revert overlay without marking the target PREVIOUS', () => {
+    const created = { oid: oid('r'), parentOids: [oid('b')], subject: 'Revert "B"', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 };
+    const event = {
+      id: 'history:revert:5:r',
+      type: 'revert' as const,
+      refName: 'refs/heads/main',
+      fromOid: oid('b'),
+      toOid: created.oid,
+      targetOid: oid('b'),
+      timestamp: 5,
+      subject: 'commit: Revert "B"',
+    };
+    const revertSnapshot: RepositorySnapshot = {
+      ...snapshot,
+      commits: [created, ...snapshot.commits],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: created.oid }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: created.oid }],
+      historyEvents: [event],
+      visibleCommitCount: 3,
+    };
+
+    const facts = buildGraphFacts(revertSnapshot, { showReflog: true });
+    expect(facts.historyRelations).toEqual([expect.objectContaining({ kind: 'revert', sourceOid: oid('b'), targetOid: created.oid, evidence: 'reflog' })]);
+    expect(facts.nodes.some((node) => node.id === event.id)).toBe(false);
+    expect(facts.nodes.find((node) => node.oid === oid('b'))).toMatchObject({ kind: 'commit', previousRoute: false });
+
+    const hidden = buildGraphFacts(revertSnapshot, { showReflog: false });
+    expect(hidden.historyRelations).toEqual([]);
+    expect(createGraphLayout(hidden, { visibleCommitCount: hidden.commits.length, hasMore: false }).historyRelationPaths).toEqual([]);
+    expect(hidden.nodes.find((node) => node.oid === oid('b'))?.kind).toBe('commit');
+    expect(hidden.nodes.find((node) => node.oid === created.oid)?.kind).toBe('commit');
+  });
+
+  it('keeps a revert history event when the target OID is not certain', () => {
+    const created = { oid: oid('r'), parentOids: [oid('b')], subject: 'custom revert', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 };
+    const event = {
+      id: 'history:revert:5:r',
+      type: 'revert' as const,
+      refName: 'refs/heads/main',
+      fromOid: oid('b'),
+      toOid: created.oid,
+      timestamp: 5,
+      subject: 'commit: custom revert',
+    };
+    const facts = buildGraphFacts({
+      ...snapshot,
+      commits: [created, ...snapshot.commits],
+      refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: created.oid }],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: created.oid }],
+      historyEvents: [event],
+      visibleCommitCount: 3,
+    }, { showReflog: true });
+
+    expect(facts.historyRelations).toEqual([]);
+    expect(facts.nodes.find((node) => node.id === event.id)?.kind).toBe('history-event');
+    expect(createGraphLayout(facts, { visibleCommitCount: facts.commits.length, hasMore: false }).historyRelationPaths).toEqual([]);
+  });
+
+  it('keeps amend, cherry-pick, and revert overlays independent and does not collapse distinct kinds', () => {
+    const cherry = { oid: oid('c'), parentOids: [oid('b')], subject: 'cherry', authorName: 'A', authorDate: 5, committerName: 'A', committerDate: 5 };
+    const reverted = { oid: oid('r'), parentOids: [cherry.oid], subject: 'revert', authorName: 'A', authorDate: 6, committerName: 'A', committerDate: 6 };
+    const source = { oid: oid('s'), parentOids: [oid('a')], subject: 'source', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 };
+    const oldAmend = { oid: oid('o'), parentOids: [oid('a')], subject: 'old', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 };
+    const facts = buildGraphFacts({
+      ...snapshot,
+      commits: [reverted, cherry, source, oldAmend, ...snapshot.commits],
+      refs: [
+        { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: reverted.oid },
+        { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: source.oid },
+      ],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: reverted.oid }],
+      historyEvents: [
+        { id: 'history:amend:4:b', type: 'amend', refName: 'refs/heads/main', fromOid: oldAmend.oid, toOid: oid('b'), timestamp: 4, subject: 'commit (amend): B' },
+        { id: 'history:cherry-pick:5:c', type: 'cherry-pick', refName: 'refs/heads/main', fromOid: oid('b'), toOid: cherry.oid, sourceOid: source.oid, timestamp: 5, subject: 'commit (cherry-pick): source' },
+        { id: 'history:cherry-pick:5:c:head', type: 'cherry-pick', refName: 'HEAD', fromOid: oid('b'), toOid: cherry.oid, sourceOid: source.oid, timestamp: 5, subject: 'commit (cherry-pick): source' },
+        { id: 'history:revert:6:r', type: 'revert', refName: 'refs/heads/main', fromOid: cherry.oid, toOid: reverted.oid, targetOid: oid('b'), timestamp: 6, subject: 'commit: Revert "B"' },
+      ],
+      visibleCommitCount: 6,
+    }, { showReflog: true });
+
+    expect(facts.historyRelations).toEqual([
+      expect.objectContaining({ kind: 'amend', sourceOid: oldAmend.oid, targetOid: oid('b') }),
+      expect.objectContaining({ kind: 'cherry-pick', sourceOid: source.oid, targetOid: cherry.oid }),
+      expect.objectContaining({ kind: 'revert', sourceOid: oid('b'), targetOid: reverted.oid }),
+    ]);
+    expect(facts.nodes.filter((node) => node.kind === 'history-event')).toHaveLength(0);
+    expect(facts.nodes.find((node) => node.oid === source.oid)?.previousRoute).toBe(false);
+    expect(facts.nodes.find((node) => node.oid === oid('b'))?.previousRoute).toBe(false);
   });
 });
