@@ -1,5 +1,5 @@
 import type { GraphNode, OverlayRelation } from '../model/graphModel.js';
-import { isRefMovementRelation } from '../model/graphModel.js';
+import { isRebaseRelation, isRefMovementRelation } from '../model/graphModel.js';
 import type { OperationAnnotationRow } from './layoutTypes.js';
 
 interface OperationRowCandidate {
@@ -13,7 +13,39 @@ function isCommitNode(node: GraphNode | undefined): boolean {
 
 export function overlayEndpoints(relation: OverlayRelation): { id: string; sourceOid: string; targetOid: string } {
   if (isRefMovementRelation(relation)) return { id: relation.id, sourceOid: relation.fromOid, targetOid: relation.toOid };
+  if (isRebaseRelation(relation)) return { id: relation.id, sourceOid: relation.oldTipOid, targetOid: relation.newTipOid };
   return { id: relation.id, sourceOid: relation.sourceOid, targetOid: relation.targetOid };
+}
+
+function memberRows(oids: string[], byOid: Map<string, GraphNode>): number[] | undefined {
+  const rows = oids.map((oid) => byOid.get(oid)?.row);
+  if (rows.some((row) => row === undefined)) return undefined;
+  return rows as number[];
+}
+
+/**
+ * Vertical span that the overlay occupies for annotation placement.  Single
+ * relations use the two endpoint commits.  Grouped rebase uses the facing
+ * edges of the old/new member ranges so the row sits between the groups,
+ * not inside either chain.
+ */
+function overlayRowSpan(relation: OverlayRelation, byOid: Map<string, GraphNode>): { lowerRow: number; upperRow: number } | undefined {
+  if (isRebaseRelation(relation)) {
+    const oldRows = memberRows(relation.oldOids, byOid);
+    const newRows = memberRows(relation.newOids, byOid);
+    if (!oldRows || !newRows) return undefined;
+    const oldMin = Math.min(...oldRows);
+    const oldMax = Math.max(...oldRows);
+    const newMin = Math.min(...newRows);
+    const newMax = Math.max(...newRows);
+    if (newMax < oldMin) return { lowerRow: newMax, upperRow: oldMin };
+    if (oldMax < newMin) return { lowerRow: oldMax, upperRow: newMin };
+  }
+  const endpoints = overlayEndpoints(relation);
+  const source = byOid.get(endpoints.sourceOid);
+  const target = byOid.get(endpoints.targetOid);
+  if (!source || !target || source.row === undefined || target.row === undefined) return undefined;
+  return { lowerRow: Math.min(source.row, target.row), upperRow: Math.max(source.row, target.row) };
 }
 
 /**
@@ -27,13 +59,10 @@ export function insertOperationAnnotationRows(nodes: GraphNode[], relations: Ove
   const seen = new Set<string>();
   const candidates: OperationRowCandidate[] = relations.flatMap((relation) => {
     if (seen.has(relation.id)) return [];
-    const endpoints = overlayEndpoints(relation);
-    const source = byOid.get(endpoints.sourceOid);
-    const target = byOid.get(endpoints.targetOid);
-    if (!source || !target || source.row === undefined || target.row === undefined) return [];
+    const spanRows = overlayRowSpan(relation, byOid);
+    if (!spanRows) return [];
     seen.add(relation.id);
-    const lowerRow = Math.min(source.row, target.row);
-    const upperRow = Math.max(source.row, target.row);
+    const { lowerRow, upperRow } = spanRows;
     const span = upperRow - lowerRow;
     return [{
       relationId: relation.id,

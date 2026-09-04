@@ -30,8 +30,10 @@ describe('operation overlay presentation', () => {
     expect(operationRelationMarker('revert')).toBe('source-cross');
     expect(operationOverlayColor('reset')).toBe(OPERATION_OVERLAY_ACCENT);
     expect(operationOverlayColor('branch-move')).toBe(OPERATION_OVERLAY_ACCENT);
+    expect(operationOverlayColor('rebase')).toBe(OPERATION_OVERLAY_ACCENT);
     expect(operationRelationMarker('reset')).toBe('arrow');
     expect(operationRelationMarker('branch-move')).toBe('arrow');
+    expect(operationRelationMarker('rebase')).toBe('arrow');
   });
 
   it('applies the same accent to the relation line, arrowhead, diamond, and label', () => {
@@ -56,6 +58,7 @@ describe('operation overlay presentation', () => {
     expect(operationKindLabel('revert')).toBe('Revert');
     expect(operationKindLabel('reset')).toBe('Reset');
     expect(operationKindLabel('branch-move')).toBe('Branch move');
+    expect(operationKindLabel('rebase')).toBe('Rebase');
     expect(operationAnnotationLabel({
       id: 'reset:one',
       kind: 'reset',
@@ -81,6 +84,30 @@ describe('operation overlay presentation', () => {
     expect(operationAnnotationLabel({ ...amend, refName: 'HEAD' })).toBe('Amend · 3d285090 → ca53af21');
     expect(operationAnnotationLabel({ ...amend, kind: 'cherry-pick', refName: 'refs/heads/main' })).toBe('Cherry-pick · 3d285090 → ca53af21');
     expect(operationAnnotationLabel({ ...amend, kind: 'revert', refName: 'refs/heads/main' })).toBe('Revert · 3d285090 → ca53af21');
+    expect(operationAnnotationLabel({
+      id: 'rebase:one',
+      kind: 'rebase',
+      refName: 'refs/heads/feature',
+      oldOids: [amend.sourceOid],
+      newOids: [amend.targetOid],
+      oldTipOid: amend.sourceOid,
+      newTipOid: amend.targetOid,
+      timestamp: 1,
+      evidence: 'reflog',
+    })).toBe('Rebase · feature: 3d285090 → ca53af21');
+    expect(operationAnnotationLabel({
+      id: 'rebase:multi',
+      kind: 'rebase',
+      refName: 'refs/heads/feature',
+      oldOids: [amend.sourceOid, amend.targetOid, 'c'.repeat(40)],
+      newOids: ['d'.repeat(40), 'e'.repeat(40), 'f'.repeat(40)],
+      oldTipOid: 'c'.repeat(40),
+      newTipOid: 'f'.repeat(40),
+      timestamp: 1,
+      evidence: 'reflog',
+    })).toBe('Rebase · feature: 3 commits · cccccccc → ffffffff');
+    expect(styles).toContain('.rebase-group-outline {');
+    expect(styles).toContain('stroke: var(--operation-overlay-accent);');
     expect(operationAnnotationParts({ ...amend, kind: 'revert' })).toEqual([
       { text: 'Revert · ' },
       { text: '3d285090', className: 'event-revert-target' },

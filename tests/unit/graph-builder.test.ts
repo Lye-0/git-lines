@@ -447,6 +447,55 @@ describe('graph fact builder', () => {
       eventBoundaryCommitId: `commit:${oid('b')}`,
       eventStartCommitId: `commit:${oid('n')}`,
     });
+    expect(facts.rebaseRelations).toEqual([]);
+  });
+
+  it('promotes a completed linear rebase with a HEAD session into a Rebase overlay', () => {
+    const onto = oid('b');
+    const oldTip = oid('o');
+    const newTip = oid('n');
+    const facts = buildGraphFacts({
+      ...snapshot,
+      commits: [
+        { oid: newTip, parentOids: [onto], subject: 'rebased feature', authorName: 'A', authorDate: 4, committerName: 'A', committerDate: 4 },
+        ...snapshot.commits,
+        { oid: oldTip, parentOids: [oid('a')], subject: 'old feature', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
+      ],
+      refs: [
+        { fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: onto },
+        { fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: newTip },
+      ],
+      workingTrees: [{ ...snapshot.workingTrees[0], headOid: newTip, branch: 'feature' }],
+      historyEvents: [{
+        id: 'history:rebase:5:n',
+        type: 'rebase',
+        refName: 'refs/heads/feature',
+        fromOid: oldTip,
+        toOid: newTip,
+        boundaryOid: onto,
+        eventStartOid: newTip,
+        timestamp: 5,
+        subject: 'rebase (finish): refs/heads/feature onto ' + onto,
+        rawReflogMessage: 'rebase (finish): refs/heads/feature onto ' + onto,
+      }],
+      reflogs: [
+        { refName: 'HEAD', previousOid: onto, newOid: newTip, selector: 'HEAD@{0}', timestamp: 5, subject: 'rebase (finish): returning to refs/heads/feature' },
+        { refName: 'HEAD', previousOid: onto, newOid: newTip, selector: 'HEAD@{1}', timestamp: 4, subject: 'rebase (pick): old feature' },
+        { refName: 'HEAD', previousOid: oldTip, newOid: onto, selector: 'HEAD@{2}', timestamp: 3, subject: 'rebase (start): checkout main' },
+      ],
+      visibleCommitCount: 4,
+    }, { showReflog: true });
+    expect(facts.rebaseRelations).toEqual([expect.objectContaining({
+      kind: 'rebase',
+      oldOids: [oldTip],
+      newOids: [newTip],
+    })]);
+    expect(facts.nodes.find((node) => node.id === 'history:rebase:5:n')).toBeUndefined();
+    expect(facts.nodes.find((node) => node.oid === oldTip)).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
+    const layout = createGraphLayout(facts, { visibleCommitCount: 4, hasMore: false, primaryBranch: facts.primaryBranch });
+    expect(layout.rebaseGroupOutlines).toEqual([]);
+    expect(layout.rebaseRelationPaths).toHaveLength(1);
+    expect(layout.operationAnnotationRows).toHaveLength(1);
   });
 
   it('keeps a completed operation destination separate from its semantic row boundary', () => {

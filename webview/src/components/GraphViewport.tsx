@@ -7,6 +7,7 @@ import { layoutGraphSideRefEndpoints } from './refMovementPresentation';
 import { RefMovementEndpointBadges } from './RefMovementEndpointBadges';
 import { routeNameForNode } from './routePresentation';
 import { linkedWorktreeStatusLabel, operationInProgressLabel } from './workingTreePresentation';
+import { allOverlayRelations } from '../../../src/model/graphModel';
 import { OperationAnnotationRow } from './OperationAnnotationRow';
 import { operationAnnotationLabel } from './operationPresentation';
 
@@ -47,7 +48,7 @@ export function GraphViewport({ layout, filter, selected, selectedWorkingTree, s
   // the user has a chance to scroll horizontally.
   const eventLabelWidth = Math.max(canvasMinWidth, viewportWidth || graphWidth);
   const operationRows = (layout.operationAnnotationRows ?? []).flatMap((row) => {
-    const relation = [...(layout.historyRelations ?? []), ...(layout.refMovementRelations ?? [])].find((candidate) => candidate.id === row.relationId);
+    const relation = allOverlayRelations(layout).find((candidate) => candidate.id === row.relationId);
     return relation ? [{ ...row, relation }] : [];
   });
   const rowCount = Math.max(1, ...layout.nodes.map((node) => (node.row ?? 0) + 1), ...operationRows.map((row) => row.row + 1));

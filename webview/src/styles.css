@@ -51,6 +51,8 @@ h1, h2, p { margin: 0; }
 .ref-movement-endpoint-badges { position: absolute; inset: 0; pointer-events: none; z-index: 1; overflow: visible; }
 .ref-movement-endpoint-badge { position: absolute; transform: translateY(-50%); pointer-events: none; }
 .graph-edges { pointer-events: none; }
+.graph-rebase-group-outlines { pointer-events: none; }
+.rebase-group-outline { fill: color-mix(in srgb, var(--operation-overlay-accent) 7%, transparent); stroke: var(--operation-overlay-accent); stroke-width: 1.15; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; opacity: .62; }
 .graph-history-relation-lines { pointer-events: none; }
 .graph-history-relation-annotations { pointer-events: none; }
 .history-relation-lines, .history-relation-annotation { color: var(--operation-overlay-accent); }

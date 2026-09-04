@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
-import { pointForNode, routeEdges, routeHistoryRelations, routeRefMovements } from '../../../src/layout/edgeRouter';
+import { pointForNode, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
 import { branchColor } from '../../../src/utils/color';
 import { gradientForEdge } from './edgePresentation';
@@ -8,6 +8,7 @@ import { eventTooltip, isRefEvent } from './eventPresentation';
 import { createGraphColorResolver } from './graphColor';
 import { isSelectedCommit, isUnsyncedCommit, nodeFillStyle, nodeMarkGeometry, nodeRingGeometry, unsyncedGradientForNode } from './nodePresentation';
 import { operationAnnotationTooltip, operationKindLabel, operationOverlayColor } from './operationPresentation';
+import { allOverlayRelations } from '../../../src/model/graphModel';
 
 function renderNodeSymbol(node: GraphLayout['nodes'][number], fill?: string): ReactNode {
   const mark = nodeMarkGeometry(node);
@@ -46,7 +47,13 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
   const relationPaths = layout.historyRelationPaths ?? routeHistoryRelations(layout.nodes, historyRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
   const refMovementRelations = layout.refMovementRelations ?? [];
   const refMovementPaths = layout.refMovementPaths ?? routeRefMovements(layout.nodes, refMovementRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
-  const relationById = new Map([...historyRelations, ...refMovementRelations].map((relation) => [relation.id, relation]));
+  const rebaseRelations = layout.rebaseRelations ?? [];
+  const rebaseOverlay = layout.rebaseRelationPaths && layout.rebaseGroupOutlines
+    ? { paths: layout.rebaseRelationPaths, outlines: layout.rebaseGroupOutlines }
+    : routeRebaseRelations(layout.nodes, rebaseRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
+  const rebaseRelationPaths = rebaseOverlay.paths;
+  const rebaseGroupOutlines = rebaseOverlay.outlines;
+  const relationById = new Map(allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations }).map((relation) => [relation.id, relation]));
   const gradients = visiblePaths.flatMap((edge, index) => {
     const definition = edgeById.get(edge.edgeId ?? edge.id);
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
@@ -136,7 +143,10 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       </linearGradient>)}
     </defs>}
     <g className="graph-edges">{visiblePaths.map(renderEdge)}</g>
-    <g className="graph-history-relation-lines">{relationPaths.map(renderHistoryRelationLines)}{refMovementPaths.map(renderHistoryRelationLines)}</g>
+    <g className="graph-rebase-group-outlines">{rebaseGroupOutlines.map((outline) => (
+      <path key={outline.id} className={`rebase-group-outline rebase-group-outline-${outline.role}`} d={outline.d} pointerEvents="none" />
+    ))}</g>
+    <g className="graph-history-relation-lines">{relationPaths.map(renderHistoryRelationLines)}{refMovementPaths.map(renderHistoryRelationLines)}{rebaseRelationPaths.map(renderHistoryRelationLines)}</g>
     <g className="graph-node-masks" aria-hidden="true">
       {layout.nodes.filter((node) => isUnsyncedCommit(node)).map((node) => {
         const p = point(node.id);
@@ -147,6 +157,6 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       })}
     </g>
     <g className="graph-nodes">{layout.nodes.map(renderNode)}</g>
-    <g className="graph-history-relation-annotations">{relationPaths.map(renderHistoryRelationAnnotation)}{refMovementPaths.map(renderHistoryRelationAnnotation)}</g>
+    <g className="graph-history-relation-annotations">{relationPaths.map(renderHistoryRelationAnnotation)}{refMovementPaths.map(renderHistoryRelationAnnotation)}{rebaseRelationPaths.map(renderHistoryRelationAnnotation)}</g>
   </svg>;
 }

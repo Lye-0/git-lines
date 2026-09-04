@@ -425,6 +425,7 @@ export function resolveHistoryEvents(entries: ReflogEntry[], commits: GitCommit[
           toRef: group.toRef,
         } : {}),
         ...(group.type === 'fast-forward' ? { commitCount: countCommitsBetween(group.fromOid, group.toOid, commitMap.values()), operation: operationName(representative.subject) } : {}),
+        ...(group.type === 'rebase' && boundaryOid ? { commitCount: countCommitsBetween(boundaryOid, group.toOid, commitMap.values()) } : {}),
         ...(sourceOid ? { sourceOid } : {}),
         ...(targetOid ? { targetOid } : {}),
         ...(resetRemoval ?? {}),

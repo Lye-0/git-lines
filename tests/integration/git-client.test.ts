@@ -52,6 +52,26 @@ function assertEventBoundary(layout: ReturnType<typeof createGraphLayout>, event
   expect(event?.row).toBeLessThan(boundary?.row ?? Number.MAX_SAFE_INTEGER);
 }
 
+function assertRebaseOverlay(
+  facts: ReturnType<typeof buildGraphFacts>,
+  layout: ReturnType<typeof createGraphLayout>,
+  oldOids: string[],
+  newOids: string[],
+): void {
+  expect(facts.rebaseRelations).toContainEqual(expect.objectContaining({
+    kind: 'rebase',
+    oldOids,
+    newOids,
+    oldTipOid: oldOids.at(-1),
+    newTipOid: newOids.at(-1),
+    evidence: 'reflog',
+  }));
+  expect(facts.nodes.some((node) => node.event?.type === 'rebase')).toBe(false);
+  expect(layout.rebaseRelationPaths?.some((path) => path.kind === 'rebase')).toBe(true);
+  expect(layout.operationAnnotationRows).toHaveLength(1);
+  expect(layout.operationAnnotationRows?.[0]?.relationId).toBe(facts.rebaseRelations?.[0]?.id);
+}
+
 function assertExactOverlay(
   facts: ReturnType<typeof buildGraphFacts>,
   layout: ReturnType<typeof createGraphLayout>,
@@ -454,10 +474,9 @@ describe('GitClient integration fixture', () => {
     const oldNode = facts.nodes.find((node) => node.oid === oldTip);
     const newNode = facts.nodes.find((node) => node.oid === newTip);
     const event = rebaseEvents[0];
-    const eventNode = event ? facts.nodes.find((node) => node.id === event.id) : undefined;
     expect(oldNode).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
     expect(newNode).toMatchObject({ kind: 'commit', previousRoute: false });
-    expect(eventNode).toMatchObject({ kind: 'history-event', historicalEvent: false, targetRef: 'refs/heads/feature' });
+    expect(facts.nodes.some((node) => node.id === event?.id && node.kind === 'history-event')).toBe(false);
 
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
     const oldLayoutNode = layout.nodes.find((node) => node.oid === oldTip);
@@ -465,32 +484,25 @@ describe('GitClient integration fixture', () => {
     const working = layout.nodes.find((node) => node.kind === 'working-tree');
     const oldTrack = layout.tracks.find((track) => track.id === oldLayoutNode?.trackId);
     const newTrack = layout.tracks.find((track) => track.id === newLayoutNode?.trackId);
-    const layoutEvent = event ? layout.nodes.find((node) => node.id === event.id) : undefined;
     expect(oldTrack?.family).toBe('historical');
     expect(newTrack?.family).toBe('feature');
     expect(oldTrack?.color).toBe(HISTORICAL_ROUTE_COLOR);
     expect(newTrack?.color).not.toBe(HISTORICAL_ROUTE_COLOR);
-    expect(layoutEvent?.trackId).toBe(newLayoutNode?.trackId);
     expect(rebaseEvents[0]?.boundaryOid).toBe(newBase);
-    assertEventBoundary(layout, event?.id ?? '', newTip, newBase);
+    assertRebaseOverlay(facts, layout, [oldTip], [newTip]);
+    expect(layout.rebaseGroupOutlines).toEqual([]);
     const singleRebaseParent = layout.edges.find((edge) => edge.type === 'parent'
       && edge.fromNodeId === newLayoutNode?.id
       && edge.toNodeId === layout.nodes.find((node) => node.oid === newBase)?.id);
     expect(singleRebaseParent).toBeDefined();
-    expect(layout.edgePaths?.some((path) => path.id === singleRebaseParent?.id)).toBe(false);
-    expect(layout.edgePaths?.filter((path) => path.edgeId === singleRebaseParent?.id)).toHaveLength(2);
-    expect(layout.edgePaths).toContainEqual(expect.objectContaining({
-      id: `${event?.id}:rebase:before`,
-      fromNodeId: newLayoutNode?.id,
-      toNodeId: layoutEvent?.id,
-    }));
-    expect(layout.edgePaths).toContainEqual(expect.objectContaining({
-      id: `${event?.id}:rebase:after`,
-      fromNodeId: layoutEvent?.id,
-      toNodeId: layout.nodes.find((node) => node.oid === newBase)?.id,
-    }));
+    expect(layout.edgePaths?.some((path) => path.id === singleRebaseParent?.id)).toBe(true);
+    expect(layout.edgePaths?.some((path) => path.id?.includes(':rebase:before'))).toBe(false);
     expect(working?.workingTree).toMatchObject({ branch: 'feature', headOid: newTip, clean: true });
     expect(facts.edges).toContainEqual(expect.objectContaining({ type: 'working-tree', fromNodeId: working?.id, toNodeId: newLayoutNode?.id }));
+    const hidden = buildGraphFacts(snapshot, { showReflog: false });
+    expect(hidden.rebaseRelations).toEqual([]);
+    expect(hidden.nodes.find((node) => node.oid === oldTip)).toBeUndefined();
+    expect(hidden.nodes.find((node) => node.oid === newTip)?.kind).toBe('commit');
   });
 
   it('places a completed cherry-pick event between the new commit and the old main tip', async () => {
@@ -690,12 +702,11 @@ describe('GitClient integration fixture', () => {
     expect(events[0]).toMatchObject({ refName: 'refs/heads/feature', fromOid: oldTip, toOid: newTip, boundaryOid: newBase });
     const facts = buildGraphFacts(snapshot, { showReflog: true });
     const layout = createGraphLayout(facts, { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, primaryBranch: facts.primaryBranch });
-    assertEventBoundary(layout, events[0]?.id ?? '', newFirst, newBase);
+    assertRebaseOverlay(facts, layout, [oldFirst, oldTip], [newFirst, newTip]);
+    expect(layout.rebaseGroupOutlines).toHaveLength(2);
     const newTipNode = layout.nodes.find((node) => node.oid === newTip)!;
     const newFirstNode = layout.nodes.find((node) => node.oid === newFirst)!;
-    const eventNode = layout.nodes.find((node) => node.id === events[0]?.id)!;
     expect(newTipNode.row).toBeLessThan(newFirstNode.row!);
-    expect(newFirstNode.row).toBeLessThan(eventNode.row!);
     const bottomRebaseParent = layout.edges.find((edge) => edge.type === 'parent'
       && edge.fromNodeId === newFirstNode.id
       && edge.toNodeId === layout.nodes.find((node) => node.oid === newBase)?.id);
@@ -703,11 +714,16 @@ describe('GitClient integration fixture', () => {
       && edge.fromNodeId === newTipNode.id
       && edge.toNodeId === newFirstNode.id);
     expect(bottomRebaseParent).toBeDefined();
-    expect(layout.edgePaths?.some((path) => path.id === bottomRebaseParent?.id)).toBe(false);
-    expect(layout.edgePaths?.filter((path) => path.edgeId === bottomRebaseParent?.id)).toHaveLength(2);
+    expect(layout.edgePaths?.some((path) => path.id === bottomRebaseParent?.id)).toBe(true);
     expect(layout.edgePaths?.some((path) => path.id === upperRebaseParent?.id)).toBe(true);
+    expect(layout.edgePaths?.some((path) => path.id?.includes(':rebase:before'))).toBe(false);
     expect(layout.nodes.find((node) => node.oid === oldFirst)).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
     expect(layout.nodes.find((node) => node.oid === oldTip)).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
+    expect(layout.nodes.find((node) => node.oid === newBase)?.kind).toBe('commit');
+    const hidden = buildGraphFacts(snapshot, { showReflog: false });
+    expect(hidden.rebaseRelations).toEqual([]);
+    expect(hidden.nodes.find((node) => node.oid === oldFirst)).toBeUndefined();
+    expect(hidden.nodes.find((node) => node.oid === newTip)?.kind).toBe('commit');
   });
 
   it('does not add a History Event for a completed real merge commit', async () => {

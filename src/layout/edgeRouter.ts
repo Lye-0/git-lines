@@ -1,6 +1,6 @@
-import type { GraphEdge, GraphNode, HistoryRelation, RefMovementRelation } from '../model/graphModel.js';
+import type { GraphEdge, GraphNode, HistoryRelation, RebaseRelation, RefMovementRelation } from '../model/graphModel.js';
 import { normalizeRefName } from '../model/refDisplay.js';
-import type { EdgePath, HistoryRelationPath, RefMovementPath } from './layoutTypes.js';
+import type { EdgePath, HistoryRelationPath, RebaseGroupOutline, RefMovementPath } from './layoutTypes.js';
 
 export interface EdgeRouterOptions {
   rowHeight?: number;
@@ -766,4 +766,181 @@ export function routeRefMovements(nodes: GraphNode[], relations: RefMovementRela
       labelY: labelPoint.y,
     }];
   });
+}
+
+export const REBASE_GROUP_PADDING = 8;
+
+export interface RebaseGroupBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+function roundedRectPath(bounds: RebaseGroupBounds, radius = 8): string {
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  const r = Math.min(radius, width / 2, height / 2);
+  const x = bounds.minX;
+  const y = bounds.minY;
+  return `M ${x + r} ${y} H ${x + width - r} Q ${x + width} ${y} ${x + width} ${y + r} V ${y + height - r} Q ${x + width} ${y + height} ${x + width - r} ${y + height} H ${x + r} Q ${x} ${y + height} ${x} ${y + height - r} V ${y + r} Q ${x} ${y} ${x + r} ${y} Z`;
+}
+
+export function rebaseGroupBounds(nodes: GraphNode[], oids: string[], options: EdgeRouterOptions = {}): RebaseGroupBounds | undefined {
+  const byOid = new Map(nodes
+    .filter((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid)
+    .map((node) => [node.oid as string, node]));
+  const members = oids.map((oid) => byOid.get(oid)).filter((node): node is GraphNode => Boolean(node));
+  if (members.length !== oids.length || members.length === 0) return undefined;
+  const points = members.map((node) => pointForNode(node, options));
+  const pad = overlayEndpointRadius(members[0]) + REBASE_GROUP_PADDING;
+  return {
+    minX: Math.min(...points.map((point) => point.x)) - pad,
+    maxX: Math.max(...points.map((point) => point.x)) + pad,
+    minY: Math.min(...points.map((point) => point.y)) - pad,
+    maxY: Math.max(...points.map((point) => point.y)) + pad,
+  };
+}
+
+function rectBoundaryPoint(bounds: RebaseGroupBounds, from: Point, toward: Point): Point {
+  const cx = (bounds.minX + bounds.maxX) / 2;
+  const cy = (bounds.minY + bounds.maxY) / 2;
+  const dx = toward.x - from.x;
+  const dy = toward.y - from.y;
+  if (Math.hypot(dx, dy) < Number.EPSILON) return { x: cx, y: cy };
+  const candidates: Point[] = [];
+  if (dx !== 0) {
+    for (const x of [bounds.minX, bounds.maxX]) {
+      const t = (x - from.x) / dx;
+      if (t < 0 || t > 1) continue;
+      const y = from.y + dy * t;
+      if (y >= bounds.minY - 0.01 && y <= bounds.maxY + 0.01) candidates.push({ x, y });
+    }
+  }
+  if (dy !== 0) {
+    for (const y of [bounds.minY, bounds.maxY]) {
+      const t = (y - from.y) / dy;
+      if (t < 0 || t > 1) continue;
+      const x = from.x + dx * t;
+      if (x >= bounds.minX - 0.01 && x <= bounds.maxX + 0.01) candidates.push({ x, y });
+    }
+  }
+  if (candidates.length === 0) return { x: cx, y: cy };
+  return candidates.reduce((best, candidate) => {
+    const bestDistance = Math.hypot(best.x - toward.x, best.y - toward.y);
+    const nextDistance = Math.hypot(candidate.x - toward.x, candidate.y - toward.y);
+    return nextDistance < bestDistance ? candidate : best;
+  });
+}
+
+function rebaseLabelPoint(curve: CubicCurve, annotationRow: number | undefined, rowHeight: number): Point {
+  const labelY = annotationRow === undefined ? cubicPoint(curve, 0.42).y : 18 + annotationRow * rowHeight;
+  const onCurve = cubicPoint(curve, parameterAtY(curve, labelY));
+  return { x: onCurve.x, y: labelY };
+}
+
+function rebaseGroupConnector(start: Point, rawEnd: Point, markerY: number | undefined): CubicCurve {
+  const endY = rawEnd.y;
+  const startY = start.y;
+  const through = markerY !== undefined
+    && markerY > Math.min(startY, endY)
+    && markerY < Math.max(startY, endY)
+    ? {
+      x: start.x + (rawEnd.x - start.x) * ((markerY - startY) / (endY - startY)),
+      y: markerY,
+    }
+    : undefined;
+  const draft = through
+    ? {
+      p0: start,
+      p1: { x: start.x + (through.x - start.x) * 0.55, y: start.y + (through.y - start.y) * 0.55 },
+      p2: { x: rawEnd.x + (through.x - rawEnd.x) * 0.55, y: rawEnd.y + (through.y - rawEnd.y) * 0.55 },
+      p3: rawEnd,
+    }
+    : historyRelationCurve(start, rawEnd);
+  const distance = Math.hypot(rawEnd.x - start.x, rawEnd.y - start.y);
+  const end = insetFromAlong(rawEnd, cubicDerivative(draft, 1), Math.min(HISTORY_RELATION_ARROW_SIZE + HISTORY_RELATION_ARROW_GAP, distance / 3));
+  if (!through) return historyRelationCurve(start, end);
+  return {
+    p0: start,
+    p1: { x: start.x + (through.x - start.x) * 0.55, y: start.y + (through.y - start.y) * 0.55 },
+    p2: { x: end.x + (through.x - end.x) * 0.55, y: end.y + (through.y - end.y) * 0.55 },
+    p3: end,
+  };
+}
+
+/**
+ * Routes completed Rebase overlays.  A single-commit rewrite uses the commit
+ * relation curve.  A multi-commit rewrite outlines each linear group and
+ * connects group boundaries, never commit centers.
+ */
+export function routeRebaseRelations(
+  nodes: GraphNode[],
+  relations: RebaseRelation[],
+  options: EdgeRouterOptions = {},
+): { paths: HistoryRelationPath[]; outlines: RebaseGroupOutline[] } {
+  const byOid = new Map(nodes
+    .filter((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid)
+    .map((node) => [node.oid as string, node]));
+  const rowHeight = options.rowHeight ?? 38;
+  const laneWidth = options.laneWidth ?? 34;
+  const routedOptions = { rowHeight, laneWidth, leftPadding: options.leftPadding };
+  const paths: HistoryRelationPath[] = [];
+  const outlines: RebaseGroupOutline[] = [];
+
+  for (const relation of relations) {
+    const source = byOid.get(relation.oldTipOid);
+    const target = byOid.get(relation.newTipOid);
+    if (!source || !target) continue;
+    const missingMember = [...relation.oldOids, ...relation.newOids].some((oid) => !byOid.has(oid));
+    if (missingMember) continue;
+    const annotationRow = options.annotationRows?.get(relation.id);
+    const grouped = relation.oldOids.length > 1 || relation.newOids.length > 1;
+
+    if (!grouped) {
+      const [path] = routeHistoryRelations(nodes, [{
+        id: relation.id,
+        kind: 'amend',
+        sourceOid: relation.oldTipOid,
+        targetOid: relation.newTipOid,
+        timestamp: relation.timestamp,
+        evidence: 'reflog',
+      }], options);
+      if (!path) continue;
+      paths.push({ ...path, kind: 'rebase' });
+      continue;
+    }
+
+    const oldBounds = rebaseGroupBounds(nodes, relation.oldOids, routedOptions);
+    const newBounds = rebaseGroupBounds(nodes, relation.newOids, routedOptions);
+    if (!oldBounds || !newBounds) continue;
+
+    const oldCenter = { x: (oldBounds.minX + oldBounds.maxX) / 2, y: (oldBounds.minY + oldBounds.maxY) / 2 };
+    const newCenter = { x: (newBounds.minX + newBounds.maxX) / 2, y: (newBounds.minY + newBounds.maxY) / 2 };
+    const start = rectBoundaryPoint(oldBounds, oldCenter, newCenter);
+    const rawEnd = rectBoundaryPoint(newBounds, newCenter, oldCenter);
+    const distance = Math.hypot(rawEnd.x - start.x, rawEnd.y - start.y);
+    if (distance < Number.EPSILON) continue;
+    const markerY = annotationRow === undefined ? undefined : 18 + annotationRow * rowHeight;
+    const curve = rebaseGroupConnector(start, rawEnd, markerY);
+    const tangent = cubicDerivative(curve, 1);
+    const labelPoint = rebaseLabelPoint(curve, annotationRow, rowHeight);
+    outlines.push(
+      { id: `${relation.id}:old-group`, relationId: relation.id, role: 'old', d: roundedRectPath(oldBounds) },
+      { id: `${relation.id}:new-group`, relationId: relation.id, role: 'new', d: roundedRectPath(newBounds) },
+    );
+    paths.push({
+      id: `${relation.id}:overlay`,
+      relationId: relation.id,
+      kind: 'rebase',
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      d: curvePath(curve),
+      arrowD: arrowPath(curve.p3, tangent),
+      labelX: labelPoint.x,
+      labelY: labelPoint.y,
+    });
+  }
+
+  return { paths, outlines };
 }

@@ -117,10 +117,47 @@ export interface RefMovementRelation {
   removedRangeEndOid?: string;
 }
 
-export type OverlayRelation = HistoryRelation | RefMovementRelation;
+/**
+ * A proven completed rebase that rewrote a linear commit range onto a new
+ * base.  Membership is group-to-group; oldOids[i] is not a mapped partner of
+ * newOids[i].
+ */
+export interface RebaseRelation {
+  id: string;
+  kind: 'rebase';
+  refName: string;
+  /** Oldest → newest commits replayed from the old tip, excluding the shared base. */
+  oldOids: string[];
+  /** Oldest → newest commits created on the new base, excluding onto. */
+  newOids: string[];
+  oldTipOid: string;
+  newTipOid: string;
+  ontoOid?: string;
+  timestamp: number;
+  rawReflogMessage?: string;
+  evidence: 'reflog';
+}
+
+export type OverlayRelation = HistoryRelation | RefMovementRelation | RebaseRelation;
 
 export function isRefMovementRelation(relation: OverlayRelation): relation is RefMovementRelation {
   return relation.kind === 'reset' || relation.kind === 'branch-move';
+}
+
+export function isRebaseRelation(relation: OverlayRelation): relation is RebaseRelation {
+  return relation.kind === 'rebase';
+}
+
+export function allOverlayRelations(model: {
+  historyRelations?: HistoryRelation[];
+  refMovementRelations?: RefMovementRelation[];
+  rebaseRelations?: RebaseRelation[];
+}): OverlayRelation[] {
+  return [
+    ...(model.historyRelations ?? []),
+    ...(model.refMovementRelations ?? []),
+    ...(model.rebaseRelations ?? []),
+  ];
 }
 
 export interface GraphTrack {
@@ -151,6 +188,8 @@ export interface GraphFactModel {
   historyRelations?: HistoryRelation[];
   /** Ref-position overlays; distinct from commit HistoryRelation. */
   refMovementRelations?: RefMovementRelation[];
+  /** Grouped commit-rewrite overlays for completed linear rebases. */
+  rebaseRelations?: RebaseRelation[];
   primaryBranch?: string;
   shallowBoundaryOids: string[];
 }

@@ -1,5 +1,5 @@
-import type { OverlayRelation, RefMovementRelation } from '../../../src/model/graphModel';
-import { isRefMovementRelation } from '../../../src/model/graphModel';
+import type { OverlayRelation, RebaseRelation, RefMovementRelation } from '../../../src/model/graphModel';
+import { isRebaseRelation, isRefMovementRelation } from '../../../src/model/graphModel';
 import { normalizeRefName } from '../../../src/model/refDisplay';
 
 export type OperationOverlayKind = OverlayRelation['kind'];
@@ -27,6 +27,7 @@ export function operationKindLabel(kind: OperationOverlayKind): string {
     case 'revert': return 'Revert';
     case 'reset': return 'Reset';
     case 'branch-move': return 'Branch move';
+    case 'rebase': return 'Rebase';
   }
 }
 
@@ -61,11 +62,20 @@ function resetOperationName(relation: RefMovementRelation): string {
   return relation.resetMode ? `Reset --${relation.resetMode}` : 'Reset';
 }
 
+function rebaseAnnotationLabel(relation: RebaseRelation, transition: string): string {
+  const ref = operationRefName(relation);
+  const count = relation.oldOids.length;
+  const countLabel = count > 1 ? `${count} commits · ` : '';
+  const name = operationKindLabel(relation.kind);
+  return ref ? `${name} · ${ref}: ${countLabel}${transition}` : `${name} · ${countLabel}${transition}`;
+}
+
 function transitionLabel(relation: OverlayRelation): string {
   if (isRefMovementRelation(relation)) {
     if (relation.kind === 'reset') return `${resetRemovedRangeLabel(relation) ?? shortOid(relation.fromOid)} → ${shortOid(relation.toOid)}`;
     return `${shortOid(relation.fromOid)} → ${shortOid(relation.toOid)}`;
   }
+  if (isRebaseRelation(relation)) return `${shortOid(relation.oldTipOid)} → ${shortOid(relation.newTipOid)}`;
   return `${shortOid(relation.sourceOid)} → ${shortOid(relation.targetOid)}`;
 }
 
@@ -75,6 +85,9 @@ export function operationAnnotationLabel(relation: OverlayRelation): string {
     const ref = operationRefName(relation);
     const name = relation.kind === 'reset' ? resetOperationName(relation) : operationKindLabel(relation.kind);
     return ref ? `${name} · ${ref}: ${transition}` : `${name} · ${transition}`;
+  }
+  if (isRebaseRelation(relation)) {
+    return rebaseAnnotationLabel(relation, transition);
   }
   const name = operationKindLabel(relation.kind);
   if (relation.kind === 'amend') {
@@ -108,6 +121,12 @@ export function operationAnnotationParts(relation: OverlayRelation): OperationAn
 
 function endpointTooltipLines(relation: OverlayRelation): string[] {
   if (isRefMovementRelation(relation)) return [`From\n${relation.fromOid}`, `To\n${relation.toOid}`];
+  if (isRebaseRelation(relation)) {
+    const lines = [`Old tip\n${relation.oldTipOid}`, `New tip\n${relation.newTipOid}`];
+    if (relation.oldOids.length > 1) lines.push(`Commits\n${relation.oldOids.length}`);
+    if (relation.ontoOid) lines.push(`Onto\n${relation.ontoOid}`);
+    return lines;
+  }
   if (relation.kind === 'amend') return [`Old hash\n${relation.sourceOid}`, `New hash\n${relation.targetOid}`];
   if (relation.kind === 'cherry-pick') return [`Source\n${relation.sourceOid}`, `New hash\n${relation.targetOid}`];
   return [`Target\n${relation.sourceOid}`, `New hash\n${relation.targetOid}`];

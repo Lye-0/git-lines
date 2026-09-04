@@ -1,7 +1,8 @@
 import type { GraphFactModel, GraphLayout } from '../model/graphModel.js';
+import { allOverlayRelations } from '../model/graphModel.js';
 import { computeLaneLayout } from './laneLayout.js';
 import { computeRowLayout } from './rowLayout.js';
-import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeEdges, routeHistoryRelations, routeRefMovements } from './edgeRouter.js';
+import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements } from './edgeRouter.js';
 import { insertOperationAnnotationRows } from './operationRows.js';
 
 export interface GraphLayoutOptions {
@@ -27,13 +28,15 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   const laneWidth = options.laneWidth ?? 34;
   const historyRelations = facts.historyRelations ?? [];
   const refMovementRelations = facts.refMovementRelations ?? [];
-  const operationRows = insertOperationAnnotationRows(laidOutNodes, [...historyRelations, ...refMovementRelations]);
+  const rebaseRelations = facts.rebaseRelations ?? [];
+  const operationRows = insertOperationAnnotationRows(laidOutNodes, allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations }));
   const annotationRows = new Map(operationRows.rows.map((row) => [row.relationId, row.row]));
   const routedNodes = placeRebaseEventsOnParentCurves(
     placeBranchRenameEventsOnWorkingTreeCurves(operationRows.nodes, facts.edges, { rowHeight, laneWidth }),
     facts.edges,
     { rowHeight, laneWidth },
   );
+  const rebaseOverlay = routeRebaseRelations(routedNodes, rebaseRelations, { rowHeight, laneWidth, annotationRows });
   return {
     nodes: routedNodes,
     edges: facts.edges,
@@ -47,6 +50,9 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
     historyRelationPaths: routeHistoryRelations(routedNodes, historyRelations, { rowHeight, laneWidth, annotationRows }),
     refMovementRelations,
     refMovementPaths: routeRefMovements(routedNodes, refMovementRelations, { rowHeight, laneWidth, annotationRows }),
+    rebaseRelations,
+    rebaseRelationPaths: rebaseOverlay.paths,
+    rebaseGroupOutlines: rebaseOverlay.outlines,
     operationAnnotationRows: operationRows.rows,
   };
 }

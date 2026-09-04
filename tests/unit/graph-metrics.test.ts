@@ -38,4 +38,24 @@ describe('graph metrics', () => {
     expect(changesColumnStartForLayout(withOverlay)).toBeGreaterThanOrEqual(changesColumnStartForLayout(commitsOnly));
     expect(timelineContentWidthForLayout(withOverlay)).toBeGreaterThanOrEqual(timelineContentWidthForLayout(commitsOnly));
   });
+
+  it('includes completed rebase annotation width in the content contract', () => {
+    const commitsOnly = { nodes: [nodeWithBadges(['feature'])] };
+    const withRebase = {
+      nodes: [nodeWithBadges(['feature'])],
+      rebaseRelations: [{
+        id: 'history:rebase:1',
+        kind: 'rebase' as const,
+        refName: 'refs/heads/feature',
+        oldOids: ['o'.repeat(40), 'p'.repeat(40), 'q'.repeat(40)],
+        newOids: ['a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40)],
+        oldTipOid: 'q'.repeat(40),
+        newTipOid: 'c'.repeat(40),
+        timestamp: 1,
+        evidence: 'reflog' as const,
+      }],
+    };
+    expect(changesColumnStartForLayout(withRebase)).toBeGreaterThanOrEqual(changesColumnStartForLayout(commitsOnly));
+    expect(timelineContentWidthForLayout(withRebase)).toBeGreaterThan(timelineContentWidthForLayout(commitsOnly));
+  });
 });

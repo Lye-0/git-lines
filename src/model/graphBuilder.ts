@@ -1,6 +1,7 @@
 import type { GitCommit, HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
 import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind, HistoryRelation } from './graphModel.js';
 import { buildRefMovementRelations, ghostRefBadgesByOid, isCompleteRefMovement, isRefMovementEvent } from './refMovement.js';
+import { buildRebaseRelations, isCompleteRebaseOverlay } from './rebaseRelation.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
 export interface GraphBuilderOptions {
@@ -322,6 +323,9 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   // emit a relation only when both endpoint commits are on this graph page.
   const historyRelations = buildHistoryRelations(events, commitMap);
   const refMovementRelations = buildRefMovementRelations(events, commitMap);
+  const rebaseRelations = options.showReflog === false
+    ? []
+    : buildRebaseRelations(events, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations });
   const ghostsByOid = ghostRefBadgesByOid(refMovementRelations, snapshot.refs, currentBranch);
   const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
@@ -391,7 +395,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       }
     }
   }
-  for (const event of events.filter((candidate) => candidate.type !== 'amend' && !isVisibleExactOverlay(candidate, commitMap) && !isCompleteRefMovement(candidate, commitMap) && !(isRefMovementEvent(candidate) && candidate.fromOid === candidate.toOid))) {
+  for (const event of events.filter((candidate) => candidate.type !== 'amend' && !isVisibleExactOverlay(candidate, commitMap) && !isCompleteRebaseOverlay(candidate, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations }) && !isCompleteRefMovement(candidate, commitMap) && !(isRefMovementEvent(candidate) && candidate.fromOid === candidate.toOid))) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
     const eventStart = event.eventStartOid ? nodeByOid.get(event.eventStartOid) : undefined;
@@ -442,6 +446,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     events,
     historyRelations,
     refMovementRelations,
+    rebaseRelations,
     primaryBranch: primaryBranch(snapshot, options.primaryBranch),
     shallowBoundaryOids: snapshot.shallowBoundaryOids,
   };

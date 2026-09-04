@@ -1,4 +1,5 @@
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
+import { allOverlayRelations } from '../../../src/model/graphModel';
 import { estimatedRefBadgeWidth, estimatedRefMovementBadgeWidth, pointForNode, REF_MOVEMENT_MAX_BULGE, refMovementBadgeOffset } from '../../../src/layout/edgeRouter';
 import { operationAnnotationLabel, operationKindLabel } from './operationPresentation';
 import { layoutGraphSideRefEndpoints, messageSideGhostRefBadges, messageSideRefBadges, graphSideRefFullNamesForNode } from './refMovementPresentation';
@@ -50,7 +51,7 @@ function estimatedGraphSideBadgeWidth(badge: NonNullable<GraphLayout['nodes'][nu
  * this estimate only reserves scrollable space before the fixed changes
  * column, so flexbox never has to shrink a badge to fit the viewport.
  */
-export function changesColumnStartForLayout(layout: Pick<GraphLayout, 'nodes' | 'historyRelations' | 'refMovementRelations'>): number {
+export function changesColumnStartForLayout(layout: Pick<GraphLayout, 'nodes' | 'historyRelations' | 'refMovementRelations' | 'rebaseRelations'>): number {
   let required = COMMIT_CONTENT_MIN_WIDTH;
   const relations = layout.refMovementRelations ?? [];
   for (const node of layout.nodes) {
@@ -61,18 +62,18 @@ export function changesColumnStartForLayout(layout: Pick<GraphLayout, 'nodes' | 
     const titleWidth = Math.min(620, (node.subject ?? node.label ?? '').length * OPERATION_LABEL_CHARACTER_WIDTH);
     required = Math.max(required, Math.ceil(titleWidth + ROW_HEADING_GAP + badgeWidth + ROW_CONTENT_INSET));
   }
-  for (const relation of [...(layout.historyRelations ?? []), ...(layout.refMovementRelations ?? [])]) {
+  for (const relation of allOverlayRelations(layout)) {
     const operationWidth = Math.min(620, operationAnnotationLabel(relation).length * OPERATION_LABEL_CHARACTER_WIDTH);
     required = Math.max(required, Math.ceil(operationWidth + ROW_CONTENT_INSET));
   }
   return required;
 }
 
-export function timelineContentWidthForLayout(layout: Pick<GraphLayout, 'nodes' | 'historyRelations' | 'refMovementRelations'>): number {
+export function timelineContentWidthForLayout(layout: Pick<GraphLayout, 'nodes' | 'historyRelations' | 'refMovementRelations' | 'rebaseRelations'>): number {
   return Math.max(TIMELINE_MIN_CONTENT_WIDTH, changesColumnStartForLayout(layout) + CHANGES_COLUMN_WIDTH + 11);
 }
 
-export function graphWidthForLayout(layout: Pick<GraphLayout, 'nodes' | 'laneWidth'> & Partial<Pick<GraphLayout, 'rowHeight' | 'historyRelations' | 'refMovementRelations' | 'historyRelationPaths' | 'refMovementPaths'>>): number {
+export function graphWidthForLayout(layout: Pick<GraphLayout, 'nodes' | 'laneWidth'> & Partial<Pick<GraphLayout, 'rowHeight' | 'historyRelations' | 'refMovementRelations' | 'rebaseRelations' | 'historyRelationPaths' | 'refMovementPaths' | 'rebaseRelationPaths'>>): number {
   const maxLane = Math.max(0, ...layout.nodes.map((node) => node.lane ?? 0));
   const laneWidth = Math.max(136, (maxLane + 1) * layout.laneWidth + 48);
   let required = laneWidth;
@@ -99,9 +100,9 @@ export function graphWidthForLayout(layout: Pick<GraphLayout, 'nodes' | 'laneWid
   }
   required = Math.max(required, badgeExtent);
 
-  const relations = [...(layout.historyRelations ?? []), ...(layout.refMovementRelations ?? [])];
+  const relations = allOverlayRelations(layout);
   const relationById = new Map(relations.map((relation) => [relation.id, relation]));
-  const paths = [...(layout.historyRelationPaths ?? []), ...(layout.refMovementPaths ?? [])];
+  const paths = [...(layout.historyRelationPaths ?? []), ...(layout.refMovementPaths ?? []), ...(layout.rebaseRelationPaths ?? [])];
   for (const path of paths) {
     const relation = relationById.get(path.relationId);
     if (!relation) continue;

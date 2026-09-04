@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode, GraphTrack, HistoryRelation, RefMovementRelation } from '../model/graphModel.js';
+import type { GraphEdge, GraphNode, GraphTrack, HistoryRelation, RebaseRelation, RefMovementRelation } from '../model/graphModel.js';
 
 export interface GraphLayout {
   nodes: GraphNode[];
@@ -14,6 +14,9 @@ export interface GraphLayout {
   historyRelationPaths?: HistoryRelationPath[];
   refMovementRelations?: RefMovementRelation[];
   refMovementPaths?: RefMovementPath[];
+  rebaseRelations?: RebaseRelation[];
+  rebaseRelationPaths?: HistoryRelationPath[];
+  rebaseGroupOutlines?: RebaseGroupOutline[];
   /** Visual-only rows for operation annotations; never DAG nodes or lane claims. */
   operationAnnotationRows?: OperationAnnotationRow[];
 }
@@ -44,7 +47,7 @@ export interface EdgePath {
 export interface HistoryRelationPath {
   id: string;
   relationId: string;
-  kind: HistoryRelation['kind'];
+  kind: HistoryRelation['kind'] | RebaseRelation['kind'];
   sourceNodeId: string;
   targetNodeId: string;
   d: string;
@@ -54,6 +57,13 @@ export interface HistoryRelationPath {
   sourceMarkerD?: string;
   labelX: number;
   labelY: number;
+}
+
+export interface RebaseGroupOutline {
+  id: string;
+  relationId: string;
+  role: 'old' | 'new';
+  d: string;
 }
 
 export interface RefMovementPath {
