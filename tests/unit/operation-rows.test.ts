@@ -153,4 +153,39 @@ describe('operation annotation rows', () => {
     expect(amendRow.row).toBeLessThanOrEqual(Math.max(amendSourceRow, amendTargetRow));
     expect(amendRow.row).not.toBe(rebaseRow.row);
   });
+
+  it('places a multi cherry-pick annotation between the source and target groups', () => {
+    const nodes = [
+      commit('3', 0, 0),
+      commit('2', 1, 0),
+      commit('1', 2, 0),
+      commit('m', 3, 0),
+      commit('c', 4, 1),
+      commit('b', 5, 1),
+      commit('a', 6, 1),
+      commit('i', 7, 0),
+    ];
+    const group = {
+      id: 'cherry-group',
+      kind: 'cherry-pick-group' as const,
+      mappings: [
+        { sourceOid: oid('a'), targetOid: oid('1') },
+        { sourceOid: oid('b'), targetOid: oid('2') },
+        { sourceOid: oid('c'), targetOid: oid('3') },
+      ],
+      sourceOids: [oid('a'), oid('b'), oid('c')],
+      targetOids: [oid('1'), oid('2'), oid('3')],
+      sourceTipOid: oid('c'),
+      targetTipOid: oid('3'),
+      timestamp: 1,
+      evidence: 'commit-body' as const,
+    };
+    const result = insertOperationAnnotationRows(nodes, [group]);
+    const row = result.rows[0]!;
+    const targetRows = ['1', '2', '3'].map((id) => result.nodes.find((node) => node.oid === oid(id))!.row!);
+    const sourceRows = ['a', 'b', 'c'].map((id) => result.nodes.find((node) => node.oid === oid(id))!.row!);
+    expect(result.rows).toHaveLength(1);
+    expect(row.row).toBeGreaterThan(Math.max(...targetRows));
+    expect(row.row).toBeLessThan(Math.min(...sourceRows));
+  });
 });

@@ -197,7 +197,14 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .detail-parent-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .detail-parent-list code { color: var(--graph-muted); }
 .detail-section { border-top: 1px solid var(--graph-border); margin-top: 18px; padding-top: 15px; }
-.detail-source-section { flex: 0 0 auto; min-height: 0; }
+.detail-operation-commits { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.operation-commit-rows { display: grid; gap: 6px; list-style: none; margin: 10px 0 0; padding: 0; }
+.operation-commit-row { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); gap: 8px; align-items: baseline; min-width: 0; }
+.operation-commit-side { min-width: 0; display: grid; gap: 2px; }
+.operation-commit-label { color: var(--graph-muted); font-size: 10px; }
+.operation-commit-row code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.operation-commit-connector { color: var(--graph-muted); text-align: center; }
+.operation-commit-connector-gap { visibility: hidden; }
 .detail-source-commits { display: grid; gap: 3px; list-style: none; margin: 10px 0 0; padding: 0; max-height: 180px; overflow: auto; }
 .detail-source-commit { display: flex; min-width: 0; align-items: baseline; gap: 8px; padding: 4px 0; }
 .detail-source-commit code { flex: 0 0 auto; color: var(--graph-muted); }

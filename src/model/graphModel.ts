@@ -138,7 +138,29 @@ export interface RebaseRelation {
   evidence: 'reflog';
 }
 
-export type OverlayRelation = HistoryRelation | RefMovementRelation | RebaseRelation;
+/**
+ * A contiguous git cherry-pick -x session.  Each mapping is an Exact pair
+ * proven by a commit-body trailer.  Graph grouping is presentation only;
+ * mappings[i] remains the proven SOURCE → TARGET correspondence.
+ */
+export interface CherryPickGroupRelation {
+  id: string;
+  kind: 'cherry-pick-group';
+  mappings: Array<{ sourceOid: string; targetOid: string }>;
+  /** Oldest → newest SOURCE commits, aligned with mappings. */
+  sourceOids: string[];
+  /** Oldest → newest TARGET commits, aligned with mappings. */
+  targetOids: string[];
+  sourceTipOid: string;
+  targetTipOid: string;
+  targetRefName?: string;
+  refName?: string;
+  timestamp: number;
+  rawReflogMessage?: string;
+  evidence: 'commit-body';
+}
+
+export type OverlayRelation = HistoryRelation | RefMovementRelation | RebaseRelation | CherryPickGroupRelation;
 
 export function isRefMovementRelation(relation: OverlayRelation): relation is RefMovementRelation {
   return relation.kind === 'reset' || relation.kind === 'branch-move';
@@ -148,15 +170,21 @@ export function isRebaseRelation(relation: OverlayRelation): relation is RebaseR
   return relation.kind === 'rebase';
 }
 
+export function isCherryPickGroupRelation(relation: OverlayRelation): relation is CherryPickGroupRelation {
+  return relation.kind === 'cherry-pick-group';
+}
+
 export function allOverlayRelations(model: {
   historyRelations?: HistoryRelation[];
   refMovementRelations?: RefMovementRelation[];
   rebaseRelations?: RebaseRelation[];
+  cherryPickGroupRelations?: CherryPickGroupRelation[];
 }): OverlayRelation[] {
   return [
     ...(model.historyRelations ?? []),
     ...(model.refMovementRelations ?? []),
     ...(model.rebaseRelations ?? []),
+    ...(model.cherryPickGroupRelations ?? []),
   ];
 }
 
@@ -190,6 +218,8 @@ export interface GraphFactModel {
   refMovementRelations?: RefMovementRelation[];
   /** Grouped commit-rewrite overlays for completed linear rebases. */
   rebaseRelations?: RebaseRelation[];
+  /** Grouped exact cherry-pick overlays; individuals remain in historyRelations. */
+  cherryPickGroupRelations?: CherryPickGroupRelation[];
   primaryBranch?: string;
   shallowBoundaryOids: string[];
 }

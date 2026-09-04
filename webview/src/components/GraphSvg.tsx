@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
-import { pointForNode, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements } from '../../../src/layout/edgeRouter';
+import { pointForNode, routeCherryPickGroups, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
 import { branchColor } from '../../../src/utils/color';
 import { gradientForEdge } from './edgePresentation';
@@ -53,7 +53,13 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
     : routeRebaseRelations(layout.nodes, rebaseRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
   const rebaseRelationPaths = rebaseOverlay.paths;
   const rebaseGroupOutlines = rebaseOverlay.outlines;
-  const relationById = new Map(allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations }).map((relation) => [relation.id, relation]));
+  const cherryPickGroupRelations = layout.cherryPickGroupRelations ?? [];
+  const cherryPickOverlay = layout.cherryPickGroupPaths && layout.cherryPickGroupOutlines
+    ? { paths: layout.cherryPickGroupPaths, outlines: layout.cherryPickGroupOutlines }
+    : routeCherryPickGroups(layout.nodes, cherryPickGroupRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
+  const cherryPickGroupPaths = cherryPickOverlay.paths;
+  const cherryPickGroupOutlines = cherryPickOverlay.outlines;
+  const relationById = new Map(allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations, cherryPickGroupRelations }).map((relation) => [relation.id, relation]));
   const gradients = visiblePaths.flatMap((edge, index) => {
     const definition = edgeById.get(edge.edgeId ?? edge.id);
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
@@ -143,10 +149,10 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       </linearGradient>)}
     </defs>}
     <g className="graph-edges">{visiblePaths.map(renderEdge)}</g>
-    <g className="graph-rebase-group-outlines">{rebaseGroupOutlines.map((outline) => (
+    <g className="graph-rebase-group-outlines">{[...rebaseGroupOutlines, ...cherryPickGroupOutlines].map((outline) => (
       <path key={outline.id} className={`rebase-group-outline rebase-group-outline-${outline.role}`} d={outline.d} pointerEvents="none" />
     ))}</g>
-    <g className="graph-history-relation-lines">{relationPaths.map(renderHistoryRelationLines)}{refMovementPaths.map(renderHistoryRelationLines)}{rebaseRelationPaths.map(renderHistoryRelationLines)}</g>
+    <g className="graph-history-relation-lines">{relationPaths.map(renderHistoryRelationLines)}{refMovementPaths.map(renderHistoryRelationLines)}{rebaseRelationPaths.map(renderHistoryRelationLines)}{cherryPickGroupPaths.map(renderHistoryRelationLines)}</g>
     <g className="graph-node-masks" aria-hidden="true">
       {layout.nodes.filter((node) => isUnsyncedCommit(node)).map((node) => {
         const p = point(node.id);
@@ -157,6 +163,6 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       })}
     </g>
     <g className="graph-nodes">{layout.nodes.map(renderNode)}</g>
-    <g className="graph-history-relation-annotations">{relationPaths.map(renderHistoryRelationAnnotation)}{refMovementPaths.map(renderHistoryRelationAnnotation)}{rebaseRelationPaths.map(renderHistoryRelationAnnotation)}</g>
+    <g className="graph-history-relation-annotations">{relationPaths.map(renderHistoryRelationAnnotation)}{refMovementPaths.map(renderHistoryRelationAnnotation)}{rebaseRelationPaths.map(renderHistoryRelationAnnotation)}{cherryPickGroupPaths.map(renderHistoryRelationAnnotation)}</g>
   </svg>;
 }

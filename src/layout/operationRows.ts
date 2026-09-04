@@ -1,5 +1,5 @@
 import type { GraphNode, OverlayRelation } from '../model/graphModel.js';
-import { isRebaseRelation, isRefMovementRelation } from '../model/graphModel.js';
+import { isCherryPickGroupRelation, isRebaseRelation, isRefMovementRelation } from '../model/graphModel.js';
 import type { OperationAnnotationRow } from './layoutTypes.js';
 
 interface OperationRowCandidate {
@@ -14,6 +14,7 @@ function isCommitNode(node: GraphNode | undefined): boolean {
 export function overlayEndpoints(relation: OverlayRelation): { id: string; sourceOid: string; targetOid: string } {
   if (isRefMovementRelation(relation)) return { id: relation.id, sourceOid: relation.fromOid, targetOid: relation.toOid };
   if (isRebaseRelation(relation)) return { id: relation.id, sourceOid: relation.oldTipOid, targetOid: relation.newTipOid };
+  if (isCherryPickGroupRelation(relation)) return { id: relation.id, sourceOid: relation.sourceTipOid, targetOid: relation.targetTipOid };
   return { id: relation.id, sourceOid: relation.sourceOid, targetOid: relation.targetOid };
 }
 
@@ -23,24 +24,36 @@ function memberRows(oids: string[], byOid: Map<string, GraphNode>): number[] | u
   return rows as number[];
 }
 
+function groupedOverlaySpan(sourceOids: string[], targetOids: string[], byOid: Map<string, GraphNode>): { lowerRow: number; upperRow: number } | undefined {
+  const sourceRows = memberRows(sourceOids, byOid);
+  const targetRows = memberRows(targetOids, byOid);
+  if (!sourceRows || !targetRows) return undefined;
+  const sourceMin = Math.min(...sourceRows);
+  const sourceMax = Math.max(...sourceRows);
+  const targetMin = Math.min(...targetRows);
+  const targetMax = Math.max(...targetRows);
+  if (targetMax < sourceMin) return { lowerRow: targetMax, upperRow: sourceMin };
+  if (sourceMax < targetMin) return { lowerRow: sourceMax, upperRow: targetMin };
+  return undefined;
+}
+
 /**
  * Vertical span that the overlay occupies for annotation placement.  Single
- * relations use the two endpoint commits.  Grouped rebase uses the facing
- * edges of the old/new member ranges so the row sits between the groups,
+ * relations use the two endpoint commits.  Grouped rebase / cherry-pick uses
+ * the facing edges of the member ranges so the row sits between the groups,
  * not inside either chain.
  */
 function overlayRowSpan(relation: OverlayRelation, byOid: Map<string, GraphNode>): { lowerRow: number; upperRow: number } | undefined {
   if (isRebaseRelation(relation)) {
-    const oldRows = memberRows(relation.oldOids, byOid);
-    const newRows = memberRows(relation.newOids, byOid);
-    if (!oldRows || !newRows) return undefined;
-    const oldMin = Math.min(...oldRows);
-    const oldMax = Math.max(...oldRows);
-    const newMin = Math.min(...newRows);
-    const newMax = Math.max(...newRows);
-    if (newMax < oldMin) return { lowerRow: newMax, upperRow: oldMin };
-    if (oldMax < newMin) return { lowerRow: oldMax, upperRow: newMin };
+    return groupedOverlaySpan(relation.oldOids, relation.newOids, byOid);
   }
+  if (isCherryPickGroupRelation(relation)) {
+    return groupedOverlaySpan(relation.sourceOids, relation.targetOids, byOid);
+  }
+  return overlayEndpointsSpan(relation, byOid);
+}
+
+function overlayEndpointsSpan(relation: OverlayRelation, byOid: Map<string, GraphNode>): { lowerRow: number; upperRow: number } | undefined {
   const endpoints = overlayEndpoints(relation);
   const source = byOid.get(endpoints.sourceOid);
   const target = byOid.get(endpoints.targetOid);

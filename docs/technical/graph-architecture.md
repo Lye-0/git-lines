@@ -61,7 +61,7 @@ Linked worktreeは追加の`working-tree` nodeやtrackを作らない。`GitClie
 
 1. `Git Lines: Open`で最初のworkspace folderをrepository候補にする。
 2. `GitClient.readSnapshot`がroot、refs、`HEAD`を含む最新30 commit、各worktree status、operation、reflog、shallow boundaryを読み込む。`git log --numstat`の一括レスポンスから可視commitごとの変更パス数とtracked additions/deletionsを保持し、通常のcommit単位の追加Git呼び出しは行わない。完了Cherry-pick / Revertのsource / target evidenceに限り、対象to commit本文を一括で追加取得する。statusからWorking Treeの変更パス数を保持し、各worktreeにつき一度の`git diff --numstat HEAD`でtracked additions/deletionsを取得する（unborn HEADではcached diffへfallback）。
-3. `buildGraphFacts`がcommit dedup、ref association、Working Tree（必要ならoperation付き）/event nodeと、Amend / Exact Cherry-pick / Exact Revertの`HistoryRelation`、Exact Reset / Branch moveの`RefMovementRelation`、完了linear Rebaseの`RebaseRelation`を作る。
+3. `buildGraphFacts`がcommit dedup、ref association、Working Tree（必要ならoperation付き）/event nodeと、Amend / Exact Cherry-pick / Exact Revertの`HistoryRelation`、連続 `-x` Cherry-pickの`CherryPickGroupRelation`、Exact Reset / Branch moveの`RefMovementRelation`、完了linear Rebaseの`RebaseRelation`を作る。
 4. `createGraphLayout`がrow→branch segment lane→edge routingの順に計算し、WebviewへpostMessageする。グラフ幅は実際に表示されるnodeの最大laneだけから決まり、track数やevent文字列長で不要に拡大しない。
 5. Webviewはcommit選択時だけdetail/filesをon-demand取得し、グラフ専用のスクロール領域を持つ。通常時はWorking Tree rowと各commit rowへ、同じcontent構造と固定3列のchanges columnを使って一括取得済みのfiles/additions/deletionsを表示する。commit選択時はWorking Treeの変更量を隠してsubject・short hash・同一commitのref badge・変更量・author・parent・Git name-status一覧・追加本文を階層化した約400pxのCommit Detailへ切り替える。Changed Filesはdetail panelの残り高さを使い、行を上詰めにして必要時だけ内部スクロールする。下端手前で次ページを自動取得し、手動refresh・focus・Git metadata watchでも再読込する。
 
@@ -94,9 +94,28 @@ curveのendpointはcommit node中心ではなく、graph area内のref-position 
 - Commit Relation: Amend / Cherry-pick Exact / Revert Exact（1 commit → 1 commit）
 - Ref Movement: Reset / Branch move（`ref@OLD` → `ref@NEW`）
 - Ref Event: Branch rename（名前だけ。位置は動かない）
-- Group Commit Rewrite: Rebase（OLD GROUP → NEW GROUP）
+- Group Commit Rewrite: Rebase（OLD GROUP → NEW GROUP。memberはordered rangeであり、`oldOids[i] ↔ newOids[i]`のExact mappingではない）
+- Grouped Exact Cherry-pick: Cherry-pick group（SOURCE GROUP → TARGET GROUP。graphはgroup表示、内部`mappings`は `-x` 本文のExact pair）
 
 group membershipは`oldOids[i] ↔ newOids[i]`の個別対応を意味しない。配列順はoldest → newestで一意にし、tipは各groupのnewestである。onto / shared baseはgroupへ含めない。PREVIOUS判定はreachabilityのままであり、old group memberでも別のlive refから到達できればlive色を保つ。同じcommitがAmend endpointとRebase group memberを兼ねてよい。AmendのsourceをRebase old rangeへ吸収しない。
+
+### Grouped Exact Cherry-pick
+
+複数の連続したExact Cherry-pickは、graphを簡潔にするためRebase multiと同じ破線group outline / boundary connector / `◇ Cherry-pick` 1つ / Annotation Row 1行へまとめてよい。semantic modelはRebaseと混ぜない。
+
+- Cherry-pick: `CherryPickGroupRelation.mappings` はcommit bodyの`(cherry picked from commit <40-hex>)`で証明された SOURCE → TARGET のExact pair。Detail Panelの`Mappings`はこのpairをoldest → newestで1行ずつ出す。
+- Rebase: Detail Panelは`Commit order`として Old #n / New #n を並べる。矢印付きExact mappingとしては表現しない。
+
+group化してよいのは次がすべて揃ったときだけである。mapping 2件以上、各targetの `-x` trailer、source/targetがfull OIDでpage上に存在、targetがfirst-parent linear chain、sourceも同じoldest → newestのlinear chain、同一連続cherry-pick session（隣接するcherry-pick eventの区間に欠ける `-x` がなく、HEAD reflogがあれば連続したcherry-pick subject）、Reset / Amend / Rebase / Revertがmemberへ割り込まない。1件の117はsingle `HistoryRelation`のまま。121のように `-x` が無い場合、liveなsource/targetが見えていてもmappingを推測しない。一部だけevidenceがあるsessionはgroup化せず、あるExact pairだけindividual overlayへ戻す。時間的に離れたcherry-pickや、間に別commit / 別operationがあるものは1 groupにしない。groupとindividual 3本のcurveを同時描画しない。Reflog OFFではgroup outline、connector、diamond、Annotation Rowを消し、current DAGとbranchは残す。
+
+Geometry（member bounds、dashed outline、boundary connector、terminal tangent）はRebase multiと共有し、`RebaseRelation`へCherry-pickを流し込まない。
+
+Visual grammar:
+
+- Single Cherry-pick: SOURCE ──◇ Cherry-pick──▷ TARGET
+- Multiple Cherry-pick: [SOURCE GROUP] ──◇ Cherry-pick──▷ [TARGET GROUP]、Detail = exact mappings
+- Single Rebase: OLD ──◇ Rebase──▷ NEW
+- Multiple Rebase: [OLD GROUP] ──◇ Rebase──▷ [NEW GROUP]、Detail = ordered old/new ranges
 
 Exact overlayを作る条件はGit標準情報だけである。local branchの`rebase (finish)`、HEADの同じsession（`rebase (start)` から `rebase (finish): returning to` まで連続したrebase subject）、明示的なonto OID、実在するold/new tip、ontoから到達可能なshared baseまでの一意なfirst-parent linear range、old count = new count。message / patch-id / tree / timestamp / topology推測は使わない。in-progress rebase、interactive squash/fixup/drop/reword/edit、merge commitを含むrange、count不一致、session欠落、member未ロードはHistory Event fallbackへ戻す。Reflog OFFではrelation、group outline、connector、`◇ Rebase`、Annotation Row、reflog-only old commitsを出さない。
 
@@ -108,11 +127,11 @@ Operation Overlayのcurve、diamond、labelは`--operation-overlay-accent`を共
 
 Implemented:
 - Amend（OLD → NEW。reflogの明示的amend遷移）
-- Cherry-pick Exact Relation（SOURCE → NEW。`-x`本文のsource OIDがある場合のみ）
+- Cherry-pick Exact Relation（SOURCE → NEW。`-x`本文のsource OIDがある場合のみ。連続複数は`CherryPickGroupRelation`へgroup化してgraphを簡約し、Detailでexact mappingを展開）
 - Revert Exact Relation（TARGET → NEW。標準本文の`This reverts commit <OID>.`がある場合のみ）
 - Reset Ref Movement（ghost ref → current/historical ref。from/toがloadedな場合）
 - Branch move Ref Movement（Resetと同じgeometry）
-- Rebase Overlay（OLD GROUP → NEW GROUP。標準reflog sessionとlinear equal-count rangeが証明できる場合。singleはcommit rewrite curve、multipleはgroup outline）
+- Rebase Overlay（OLD GROUP → NEW GROUP。標準reflog sessionとlinear equal-count rangeが証明できる場合。singleはcommit rewrite curve、multipleはgroup outline。Detailのold/new行はordered rangeでありExact mappingではない）
 
 Not yet:
 - Partial Relation（操作は確実だがsource/targetが不明なときの◇のみ）
@@ -138,5 +157,7 @@ Gitは`spawn`へ引数配列を渡し、shell文字列連結を行わない。We
 - `tests/unit/ref-movement-routing.test.ts` — reciprocal pair separation、single cubic marker/tangent、bulge clamp、graph label width、DAG/HistoryRelation回帰
 - `tests/unit/rebase-relation.test.ts` — completed linear Rebaseのsession / range復元、equal count、fallback、in-progress除外、Amend共存、pagination、Reflog OFF
 - `tests/unit/rebase-overlay-geometry.test.ts` — single/multi render、group bounds、OLD → NEW tangent
+- `tests/unit/cherry-pick-group.test.ts` — 連続 `-x` 複数Cherry-pickのgroup化、mapping保持、single/no-source/partial/non-contiguous非group化、DAG不変、source live、Annotation 1行、Reflog OFF
+- `tests/unit/overlay-detail-presentation.test.ts` — Cherry-pick Exact Mappings、Rebase Commit order（矢印なし）
 - `tests/unit/graph-builder.test.ts` — ref dedup、tag、常時Working Tree、remote-ahead時の実HEAD接続、2/3-parent edge、destination/boundary/targetRef付きRef Event、Amend / Exact Cherry-pick / Exact Revert overlay、Reset / Branch moveのRef Movement、完了Rebase overlayとPREVIOUS
 - `tests/integration/git-client.test.ts` — 実Git CLIのin-progress operation、branch rename、完了Cherry-pick/RevertのExact Overlayとsource不明時の既存event、single/multi-commit Rebase overlay、実MergeでHistory Eventを作らないこと、long feature merge、未commitbranch、first commit、Reset / Branch move overlayと後続ResetでHistoricalへ移る旧tip

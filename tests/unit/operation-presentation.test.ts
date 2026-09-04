@@ -58,7 +58,22 @@ describe('operation overlay presentation', () => {
     expect(operationKindLabel('revert')).toBe('Revert');
     expect(operationKindLabel('reset')).toBe('Reset');
     expect(operationKindLabel('branch-move')).toBe('Branch move');
-    expect(operationKindLabel('rebase')).toBe('Rebase');
+    expect(operationKindLabel('cherry-pick-group')).toBe('Cherry-pick');
+    expect(operationAnnotationLabel({
+      id: 'cherry-group',
+      kind: 'cherry-pick-group',
+      mappings: [
+        { sourceOid: amend.sourceOid, targetOid: amend.targetOid },
+        { sourceOid: 'b'.repeat(40), targetOid: 'd'.repeat(40) },
+        { sourceOid: 'c'.repeat(40), targetOid: 'e'.repeat(40) },
+      ],
+      sourceOids: [amend.sourceOid, 'b'.repeat(40), 'c'.repeat(40)],
+      targetOids: [amend.targetOid, 'd'.repeat(40), 'e'.repeat(40)],
+      sourceTipOid: 'c'.repeat(40),
+      targetTipOid: 'e'.repeat(40),
+      timestamp: 1,
+      evidence: 'commit-body',
+    })).toBe('Cherry-pick · 3 commits · cccccccc → eeeeeeee');
     expect(operationAnnotationLabel({
       id: 'reset:one',
       kind: 'reset',

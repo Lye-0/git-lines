@@ -1,6 +1,7 @@
 import type { GitCommit, HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
 import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind, HistoryRelation } from './graphModel.js';
 import { buildRefMovementRelations, ghostRefBadgesByOid, isCompleteRefMovement, isRefMovementEvent } from './refMovement.js';
+import { buildCherryPickGroups } from './cherryPickGroupRelation.js';
 import { buildRebaseRelations, isCompleteRebaseOverlay } from './rebaseRelation.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
@@ -321,7 +322,16 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   // Exact overlays are proven source -> target transformations, not timeline
   // nodes.  Keep the reflog-derived event in `events` for the detail view and
   // emit a relation only when both endpoint commits are on this graph page.
-  const historyRelations = buildHistoryRelations(events, commitMap);
+  const exactHistoryRelations = buildHistoryRelations(events, commitMap);
+  const cherryPickGroups = options.showReflog === false
+    ? { groups: [] as const, remaining: exactHistoryRelations }
+    : buildCherryPickGroups(exactHistoryRelations, commitMap, {
+      events,
+      reflogs: snapshot.reflogs,
+      operations: snapshot.operations,
+    });
+  const historyRelations = cherryPickGroups.remaining;
+  const cherryPickGroupRelations = [...cherryPickGroups.groups];
   const refMovementRelations = buildRefMovementRelations(events, commitMap);
   const rebaseRelations = options.showReflog === false
     ? []
@@ -447,6 +457,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     historyRelations,
     refMovementRelations,
     rebaseRelations,
+    cherryPickGroupRelations,
     primaryBranch: primaryBranch(snapshot, options.primaryBranch),
     shallowBoundaryOids: snapshot.shallowBoundaryOids,
   };

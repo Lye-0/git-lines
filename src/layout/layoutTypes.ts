@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode, GraphTrack, HistoryRelation, RebaseRelation, RefMovementRelation } from '../model/graphModel.js';
+import type { CherryPickGroupRelation, GraphEdge, GraphNode, GraphTrack, HistoryRelation, RebaseRelation, RefMovementRelation } from '../model/graphModel.js';
 
 export interface GraphLayout {
   nodes: GraphNode[];
@@ -17,6 +17,9 @@ export interface GraphLayout {
   rebaseRelations?: RebaseRelation[];
   rebaseRelationPaths?: HistoryRelationPath[];
   rebaseGroupOutlines?: RebaseGroupOutline[];
+  cherryPickGroupRelations?: CherryPickGroupRelation[];
+  cherryPickGroupPaths?: HistoryRelationPath[];
+  cherryPickGroupOutlines?: RebaseGroupOutline[];
   /** Visual-only rows for operation annotations; never DAG nodes or lane claims. */
   operationAnnotationRows?: OperationAnnotationRow[];
 }
@@ -47,7 +50,7 @@ export interface EdgePath {
 export interface HistoryRelationPath {
   id: string;
   relationId: string;
-  kind: HistoryRelation['kind'] | RebaseRelation['kind'];
+  kind: HistoryRelation['kind'] | RebaseRelation['kind'] | CherryPickGroupRelation['kind'];
   sourceNodeId: string;
   targetNodeId: string;
   d: string;
@@ -62,7 +65,7 @@ export interface HistoryRelationPath {
 export interface RebaseGroupOutline {
   id: string;
   relationId: string;
-  role: 'old' | 'new';
+  role: 'old' | 'new' | 'source' | 'target';
   d: string;
 }
 

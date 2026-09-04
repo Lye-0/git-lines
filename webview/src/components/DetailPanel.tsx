@@ -7,13 +7,15 @@ import { commitDescription, detailFileChanges, detailHeadLabel, detailRouteLabel
 import type { DetailRefBadge } from './detailPresentation';
 import { linkedWorktreeBranchLabel, linkedWorktreeStatusLabel, operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import type { HistoryEvent } from '../../../src/git/gitTypes';
+import type { OverlayRelation } from '../../../src/model/graphModel';
 import { eventDetailFields, eventDetailTitle } from './eventDetailPresentation';
+import { overlayCommitList, overlayDetailFields, overlayDetailTitle } from './overlayDetailPresentation';
 
 function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'unknown';
 }
 
-export function DetailPanel({ detail, event, workingTree, operation, sourceCommits = [], linkedWorktrees = [], title, routeName, headState, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; workingTree?: WorkingTreeState; operation?: OperationState; sourceCommits?: GitCommit[]; linkedWorktrees?: WorkingTreeState[]; title?: string; routeName?: string; headState?: GraphHeadState; refBadges?: DetailRefBadge[]; onClose: () => void }) {
+export function DetailPanel({ detail, event, overlayRelation, workingTree, operation, sourceCommits = [], linkedWorktrees = [], title, routeName, headState, refBadges = [], onClose }: { detail?: Exclude<DetailMessage, null>; event?: HistoryEvent; overlayRelation?: OverlayRelation; workingTree?: WorkingTreeState; operation?: OperationState; sourceCommits?: GitCommit[]; linkedWorktrees?: WorkingTreeState[]; title?: string; routeName?: string; headState?: GraphHeadState; refBadges?: DetailRefBadge[]; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   if (workingTree) {
     const summary = summarizeWorkingTree(workingTree);
@@ -73,13 +75,15 @@ export function DetailPanel({ detail, event, workingTree, operation, sourceCommi
       </section>}
     </aside>;
   }
-  if (event) {
-    const fields = eventDetailFields(event);
+  if (event || overlayRelation) {
+    const fields = event ? eventDetailFields(event) : overlayRelation ? overlayDetailFields(overlayRelation) : [];
+    const heading = event ? eventDetailTitle(event) : overlayRelation ? overlayDetailTitle(overlayRelation) : 'Git operation';
+    const commitList = overlayRelation ? overlayCommitList(overlayRelation) : undefined;
     return <aside className="detail-panel" aria-label="Git operation details">
       <div className="detail-header">
         <div className="detail-heading">
           <span className="eyebrow">Git operation</span>
-          <h2 title={eventDetailTitle(event)}>{eventDetailTitle(event)}</h2>
+          <h2 title={heading}>{heading}</h2>
           {refBadges.length > 0 && <div className="detail-refs" aria-label="Event refs">
             {refBadges.map((badge) => <span className={`ref-badge ref-badge-${badge.kind}${badge.isDefault ? ' default' : ''}`} style={{ '--badge-color': badge.color } as CSSProperties} key={badge.fullName} title={badge.fullName}>{badge.name}{badge.isDefault ? ' · default' : ''}</span>)}
           </div>}
@@ -92,6 +96,22 @@ export function DetailPanel({ detail, event, workingTree, operation, sourceCommi
           <dd className={field.kind === 'raw' ? 'detail-raw-message' : undefined} title={field.title}>{field.kind === 'hash' ? <code>{field.value}</code> : field.value}</dd>
         </div>)}
       </dl>
+      {commitList && <section className="detail-section detail-operation-commits" aria-labelledby="operation-commit-list-heading">
+        <div className="detail-section-header"><h3 id="operation-commit-list-heading">{commitList.heading}</h3><span>{commitList.rows.length}</span></div>
+        <ul className="operation-commit-rows" aria-label={commitList.ariaLabel}>
+          {commitList.rows.map((row) => <li className={`operation-commit-row operation-commit-row-${row.kind}`} key={`${row.kind}:${row.index}`}>
+            <span className="operation-commit-side">
+              <span className="operation-commit-label">{row.leftLabel}</span>
+              <code title={row.leftOid}>{row.leftOid.slice(0, 8)}</code>
+            </span>
+            {row.connector === 'arrow' ? <span className="operation-commit-connector" aria-hidden="true">→</span> : <span className="operation-commit-connector operation-commit-connector-gap" aria-hidden="true" />}
+            <span className="operation-commit-side">
+              <span className="operation-commit-label">{row.rightLabel}</span>
+              <code title={row.rightOid}>{row.rightOid.slice(0, 8)}</code>
+            </span>
+          </li>)}
+        </ul>
+      </section>}
     </aside>;
   }
   if (!detail) return null;

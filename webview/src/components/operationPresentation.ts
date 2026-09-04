@@ -1,5 +1,5 @@
 import type { OverlayRelation, RebaseRelation, RefMovementRelation } from '../../../src/model/graphModel';
-import { isRebaseRelation, isRefMovementRelation } from '../../../src/model/graphModel';
+import { isCherryPickGroupRelation, isRebaseRelation, isRefMovementRelation } from '../../../src/model/graphModel';
 import { normalizeRefName } from '../../../src/model/refDisplay';
 
 export type OperationOverlayKind = OverlayRelation['kind'];
@@ -28,6 +28,7 @@ export function operationKindLabel(kind: OperationOverlayKind): string {
     case 'reset': return 'Reset';
     case 'branch-move': return 'Branch move';
     case 'rebase': return 'Rebase';
+    case 'cherry-pick-group': return 'Cherry-pick';
   }
 }
 
@@ -70,12 +71,18 @@ function rebaseAnnotationLabel(relation: RebaseRelation, transition: string): st
   return ref ? `${name} · ${ref}: ${countLabel}${transition}` : `${name} · ${countLabel}${transition}`;
 }
 
+function cherryPickGroupAnnotationLabel(relation: OverlayRelation & { kind: 'cherry-pick-group' }, transition: string): string {
+  const count = relation.mappings.length;
+  return `${operationKindLabel(relation.kind)} · ${count} commits · ${transition}`;
+}
+
 function transitionLabel(relation: OverlayRelation): string {
   if (isRefMovementRelation(relation)) {
     if (relation.kind === 'reset') return `${resetRemovedRangeLabel(relation) ?? shortOid(relation.fromOid)} → ${shortOid(relation.toOid)}`;
     return `${shortOid(relation.fromOid)} → ${shortOid(relation.toOid)}`;
   }
   if (isRebaseRelation(relation)) return `${shortOid(relation.oldTipOid)} → ${shortOid(relation.newTipOid)}`;
+  if (isCherryPickGroupRelation(relation)) return `${shortOid(relation.sourceTipOid)} → ${shortOid(relation.targetTipOid)}`;
   return `${shortOid(relation.sourceOid)} → ${shortOid(relation.targetOid)}`;
 }
 
@@ -88,6 +95,9 @@ export function operationAnnotationLabel(relation: OverlayRelation): string {
   }
   if (isRebaseRelation(relation)) {
     return rebaseAnnotationLabel(relation, transition);
+  }
+  if (isCherryPickGroupRelation(relation)) {
+    return cherryPickGroupAnnotationLabel(relation, transition);
   }
   const name = operationKindLabel(relation.kind);
   if (relation.kind === 'amend') {
@@ -126,6 +136,14 @@ function endpointTooltipLines(relation: OverlayRelation): string[] {
     if (relation.oldOids.length > 1) lines.push(`Commits\n${relation.oldOids.length}`);
     if (relation.ontoOid) lines.push(`Onto\n${relation.ontoOid}`);
     return lines;
+  }
+  if (isCherryPickGroupRelation(relation)) {
+    return [
+      `Source tip\n${relation.sourceTipOid}`,
+      `Target tip\n${relation.targetTipOid}`,
+      `Exact mappings\n${relation.mappings.length}`,
+      'Evidence\nCommit body -x',
+    ];
   }
   if (relation.kind === 'amend') return [`Old hash\n${relation.sourceOid}`, `New hash\n${relation.targetOid}`];
   if (relation.kind === 'cherry-pick') return [`Source\n${relation.sourceOid}`, `New hash\n${relation.targetOid}`];

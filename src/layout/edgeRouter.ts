@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode, HistoryRelation, RebaseRelation, RefMovementRelation } from '../model/graphModel.js';
+import type { CherryPickGroupRelation, GraphEdge, GraphNode, HistoryRelation, RebaseRelation, RefMovementRelation } from '../model/graphModel.js';
 import { normalizeRefName } from '../model/refDisplay.js';
 import type { EdgePath, HistoryRelationPath, RebaseGroupOutline, RefMovementPath } from './layoutTypes.js';
 
@@ -869,6 +869,61 @@ function rebaseGroupConnector(start: Point, rawEnd: Point, markerY: number | und
   };
 }
 
+function routeMemberGroupOverlay(
+  nodes: GraphNode[],
+  spec: {
+    id: string;
+    kind: HistoryRelationPath['kind'];
+    sourceOids: string[];
+    targetOids: string[];
+    sourceTipOid: string;
+    targetTipOid: string;
+    sourceRole: RebaseGroupOutline['role'];
+    targetRole: RebaseGroupOutline['role'];
+  },
+  options: EdgeRouterOptions,
+  byOid: Map<string, GraphNode>,
+): { path: HistoryRelationPath; outlines: RebaseGroupOutline[] } | undefined {
+  const source = byOid.get(spec.sourceTipOid);
+  const target = byOid.get(spec.targetTipOid);
+  if (!source || !target) return undefined;
+  if ([...spec.sourceOids, ...spec.targetOids].some((oid) => !byOid.has(oid))) return undefined;
+  const rowHeight = options.rowHeight ?? 38;
+  const laneWidth = options.laneWidth ?? 34;
+  const routedOptions = { rowHeight, laneWidth, leftPadding: options.leftPadding };
+  const sourceBounds = rebaseGroupBounds(nodes, spec.sourceOids, routedOptions);
+  const targetBounds = rebaseGroupBounds(nodes, spec.targetOids, routedOptions);
+  if (!sourceBounds || !targetBounds) return undefined;
+  const sourceCenter = { x: (sourceBounds.minX + sourceBounds.maxX) / 2, y: (sourceBounds.minY + sourceBounds.maxY) / 2 };
+  const targetCenter = { x: (targetBounds.minX + targetBounds.maxX) / 2, y: (targetBounds.minY + targetBounds.maxY) / 2 };
+  const start = rectBoundaryPoint(sourceBounds, sourceCenter, targetCenter);
+  const rawEnd = rectBoundaryPoint(targetBounds, targetCenter, sourceCenter);
+  const distance = Math.hypot(rawEnd.x - start.x, rawEnd.y - start.y);
+  if (distance < Number.EPSILON) return undefined;
+  const annotationRow = options.annotationRows?.get(spec.id);
+  const markerY = annotationRow === undefined ? undefined : 18 + annotationRow * rowHeight;
+  const curve = rebaseGroupConnector(start, rawEnd, markerY);
+  const tangent = cubicDerivative(curve, 1);
+  const labelPoint = rebaseLabelPoint(curve, annotationRow, rowHeight);
+  return {
+    outlines: [
+      { id: `${spec.id}:${spec.sourceRole}-group`, relationId: spec.id, role: spec.sourceRole, d: roundedRectPath(sourceBounds) },
+      { id: `${spec.id}:${spec.targetRole}-group`, relationId: spec.id, role: spec.targetRole, d: roundedRectPath(targetBounds) },
+    ],
+    path: {
+      id: `${spec.id}:overlay`,
+      relationId: spec.id,
+      kind: spec.kind,
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      d: curvePath(curve),
+      arrowD: arrowPath(curve.p3, tangent),
+      labelX: labelPoint.x,
+      labelY: labelPoint.y,
+    },
+  };
+}
+
 /**
  * Routes completed Rebase overlays.  A single-commit rewrite uses the commit
  * relation curve.  A multi-commit rewrite outlines each linear group and
@@ -882,9 +937,6 @@ export function routeRebaseRelations(
   const byOid = new Map(nodes
     .filter((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid)
     .map((node) => [node.oid as string, node]));
-  const rowHeight = options.rowHeight ?? 38;
-  const laneWidth = options.laneWidth ?? 34;
-  const routedOptions = { rowHeight, laneWidth, leftPadding: options.leftPadding };
   const paths: HistoryRelationPath[] = [];
   const outlines: RebaseGroupOutline[] = [];
 
@@ -894,7 +946,6 @@ export function routeRebaseRelations(
     if (!source || !target) continue;
     const missingMember = [...relation.oldOids, ...relation.newOids].some((oid) => !byOid.has(oid));
     if (missingMember) continue;
-    const annotationRow = options.annotationRows?.get(relation.id);
     const grouped = relation.oldOids.length > 1 || relation.newOids.length > 1;
 
     if (!grouped) {
@@ -911,36 +962,52 @@ export function routeRebaseRelations(
       continue;
     }
 
-    const oldBounds = rebaseGroupBounds(nodes, relation.oldOids, routedOptions);
-    const newBounds = rebaseGroupBounds(nodes, relation.newOids, routedOptions);
-    if (!oldBounds || !newBounds) continue;
-
-    const oldCenter = { x: (oldBounds.minX + oldBounds.maxX) / 2, y: (oldBounds.minY + oldBounds.maxY) / 2 };
-    const newCenter = { x: (newBounds.minX + newBounds.maxX) / 2, y: (newBounds.minY + newBounds.maxY) / 2 };
-    const start = rectBoundaryPoint(oldBounds, oldCenter, newCenter);
-    const rawEnd = rectBoundaryPoint(newBounds, newCenter, oldCenter);
-    const distance = Math.hypot(rawEnd.x - start.x, rawEnd.y - start.y);
-    if (distance < Number.EPSILON) continue;
-    const markerY = annotationRow === undefined ? undefined : 18 + annotationRow * rowHeight;
-    const curve = rebaseGroupConnector(start, rawEnd, markerY);
-    const tangent = cubicDerivative(curve, 1);
-    const labelPoint = rebaseLabelPoint(curve, annotationRow, rowHeight);
-    outlines.push(
-      { id: `${relation.id}:old-group`, relationId: relation.id, role: 'old', d: roundedRectPath(oldBounds) },
-      { id: `${relation.id}:new-group`, relationId: relation.id, role: 'new', d: roundedRectPath(newBounds) },
-    );
-    paths.push({
-      id: `${relation.id}:overlay`,
-      relationId: relation.id,
+    const overlay = routeMemberGroupOverlay(nodes, {
+      id: relation.id,
       kind: 'rebase',
-      sourceNodeId: source.id,
-      targetNodeId: target.id,
-      d: curvePath(curve),
-      arrowD: arrowPath(curve.p3, tangent),
-      labelX: labelPoint.x,
-      labelY: labelPoint.y,
-    });
+      sourceOids: relation.oldOids,
+      targetOids: relation.newOids,
+      sourceTipOid: relation.oldTipOid,
+      targetTipOid: relation.newTipOid,
+      sourceRole: 'old',
+      targetRole: 'new',
+    }, options, byOid);
+    if (!overlay) continue;
+    outlines.push(...overlay.outlines);
+    paths.push(overlay.path);
   }
 
+  return { paths, outlines };
+}
+
+/**
+ * Routes grouped exact Cherry-pick overlays.  Membership is always 2+
+ * mappings; singles stay on HistoryRelation curves.
+ */
+export function routeCherryPickGroups(
+  nodes: GraphNode[],
+  relations: CherryPickGroupRelation[],
+  options: EdgeRouterOptions = {},
+): { paths: HistoryRelationPath[]; outlines: RebaseGroupOutline[] } {
+  const byOid = new Map(nodes
+    .filter((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid)
+    .map((node) => [node.oid as string, node]));
+  const paths: HistoryRelationPath[] = [];
+  const outlines: RebaseGroupOutline[] = [];
+  for (const relation of relations) {
+    const overlay = routeMemberGroupOverlay(nodes, {
+      id: relation.id,
+      kind: 'cherry-pick-group',
+      sourceOids: relation.sourceOids,
+      targetOids: relation.targetOids,
+      sourceTipOid: relation.sourceTipOid,
+      targetTipOid: relation.targetTipOid,
+      sourceRole: 'source',
+      targetRole: 'target',
+    }, options, byOid);
+    if (!overlay) continue;
+    outlines.push(...overlay.outlines);
+    paths.push(overlay.path);
+  }
   return { paths, outlines };
 }
