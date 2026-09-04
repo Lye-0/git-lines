@@ -129,7 +129,6 @@ Git Lines は、commit の類似度や「こうなったはず」という推測
 | Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
 | ORIG_HEAD | ✅ | 通常の commit / special ref |
 | Reflog OFF | ✅ | Current DAG へ縮退 |
-| Squash Merge | — | 意図的に推測しない |
 
 ## Git Operations
 
@@ -142,7 +141,7 @@ source を Git 標準情報から確実に追跡できる場合だけ、source �
   <img src="docs/images/readme/details/cherry-pick.png" alt="完了Cherry-pickのSOURCEからTARGETへのrelation" width="640">
 </p>
 
-### In progress
+#### In progress
 
 進行中の Cherry-pick は Working Tree 行へ統合します。
 
@@ -157,13 +156,13 @@ source を Git 標準情報から確実に追跡できる場合だけ、source �
 
 完了 session と linear な old / new range を安全に復元できる場合、single または group rewrite として表示します。
 
-### Completed
+#### Completed
 
 <p align="center">
   <img src="docs/images/readme/details/rebase.png" alt="完了RebaseのOLDとNEWのgroup overlay" width="640">
 </p>
 
-### In progress
+#### In progress
 
 進行中の Rebase は Working Tree 行へ統合します。
 
@@ -222,7 +221,7 @@ tip の位置は動かず、ref 名だけが変わった event として表示�
 
 完了した Revert は、target の打ち消し関係として created revert commit を結ぶことがあります。target 側には専用 marker を付けます。完了専用のスクリーンショットは、現時点では README にありません。
 
-### In progress
+#### In progress
 
 進行中の Revert は Working Tree 行へ統合します。
 
