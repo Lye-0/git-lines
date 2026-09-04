@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
-import { pointForNode, routeCherryPickGroups, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements } from '../../../src/layout/edgeRouter';
+import { pointForNode, routeCherryPickGroups, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements, routeRewriteCollapseRelations } from '../../../src/layout/edgeRouter';
 import { filterRenderableEdgePaths } from '../../../src/layout/edgeVisibility';
 import { branchColor } from '../../../src/utils/color';
 import { gradientForEdge } from './edgePresentation';
@@ -59,7 +59,13 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
     : routeCherryPickGroups(layout.nodes, cherryPickGroupRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
   const cherryPickGroupPaths = cherryPickOverlay.paths;
   const cherryPickGroupOutlines = cherryPickOverlay.outlines;
-  const relationById = new Map(allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations, cherryPickGroupRelations }).map((relation) => [relation.id, relation]));
+  const rewriteCollapseRelations = layout.rewriteCollapseRelations ?? [];
+  const collapseOverlay = layout.rewriteCollapsePaths && layout.rewriteCollapseOutlines
+    ? { paths: layout.rewriteCollapsePaths, outlines: layout.rewriteCollapseOutlines }
+    : routeRewriteCollapseRelations(layout.nodes, rewriteCollapseRelations, { rowHeight: layout.rowHeight, laneWidth: layout.laneWidth, annotationRows });
+  const rewriteCollapsePaths = collapseOverlay.paths;
+  const rewriteCollapseOutlines = collapseOverlay.outlines;
+  const relationById = new Map(allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations, cherryPickGroupRelations, rewriteCollapseRelations }).map((relation) => [relation.id, relation]));
   const gradients = visiblePaths.flatMap((edge, index) => {
     const definition = edgeById.get(edge.edgeId ?? edge.id);
     const source = definition ? byId.get(definition.fromNodeId) : undefined;
@@ -149,10 +155,10 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       </linearGradient>)}
     </defs>}
     <g className="graph-edges">{visiblePaths.map(renderEdge)}</g>
-    <g className="graph-rebase-group-outlines">{[...rebaseGroupOutlines, ...cherryPickGroupOutlines].map((outline) => (
+    <g className="graph-rebase-group-outlines">{[...rebaseGroupOutlines, ...cherryPickGroupOutlines, ...rewriteCollapseOutlines].map((outline) => (
       <path key={outline.id} className={`rebase-group-outline rebase-group-outline-${outline.role}`} d={outline.d} pointerEvents="none" />
     ))}</g>
-    <g className="graph-history-relation-lines">{relationPaths.map(renderHistoryRelationLines)}{refMovementPaths.map(renderHistoryRelationLines)}{rebaseRelationPaths.map(renderHistoryRelationLines)}{cherryPickGroupPaths.map(renderHistoryRelationLines)}</g>
+    <g className="graph-history-relation-lines">{relationPaths.map(renderHistoryRelationLines)}{refMovementPaths.map(renderHistoryRelationLines)}{rebaseRelationPaths.map(renderHistoryRelationLines)}{cherryPickGroupPaths.map(renderHistoryRelationLines)}{rewriteCollapsePaths.map(renderHistoryRelationLines)}</g>
     <g className="graph-node-masks" aria-hidden="true">
       {layout.nodes.filter((node) => isUnsyncedCommit(node)).map((node) => {
         const p = point(node.id);
@@ -163,6 +169,6 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       })}
     </g>
     <g className="graph-nodes">{layout.nodes.map(renderNode)}</g>
-    <g className="graph-history-relation-annotations">{relationPaths.map(renderHistoryRelationAnnotation)}{refMovementPaths.map(renderHistoryRelationAnnotation)}{rebaseRelationPaths.map(renderHistoryRelationAnnotation)}{cherryPickGroupPaths.map(renderHistoryRelationAnnotation)}</g>
+    <g className="graph-history-relation-annotations">{relationPaths.map(renderHistoryRelationAnnotation)}{refMovementPaths.map(renderHistoryRelationAnnotation)}{rebaseRelationPaths.map(renderHistoryRelationAnnotation)}{cherryPickGroupPaths.map(renderHistoryRelationAnnotation)}{rewriteCollapsePaths.map(renderHistoryRelationAnnotation)}</g>
   </svg>;
 }

@@ -239,10 +239,12 @@ function sortExactChains(relations: HistoryRelation[], commits: Map<string, GitC
 }
 
 /**
- * Groups contiguous exact cherry-pick HistoryRelations that share one
- * `-x`-proven session.  Partial evidence, non-linear targets, unmatched
- * source order, or intervening rewrite operations leave the individuals
- * ungrouped.
+ * Groups contiguous exact cherry-pick HistoryRelations for visual grouping
+ * only.  Each mapping remains an Exact SOURCE → TARGET pair from `-x`.
+ * This is not proof of a single `git cherry-pick` command.  Partial
+ * evidence, non-linear or non-contiguous sources (skipped middle commits),
+ * unmatched source order, or intervening rewrite operations leave the
+ * individuals ungrouped.
  */
 export function buildCherryPickGroups(
   relations: HistoryRelation[],

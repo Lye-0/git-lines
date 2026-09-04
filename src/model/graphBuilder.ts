@@ -3,6 +3,7 @@ import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRo
 import { buildRefMovementRelations, ghostRefBadgesByOid, isCompleteRefMovement, isRefMovementEvent } from './refMovement.js';
 import { buildCherryPickGroups } from './cherryPickGroupRelation.js';
 import { buildRebaseRelations, isCompleteRebaseOverlay } from './rebaseRelation.js';
+import { buildRewriteCollapseRelations, isCompleteRewriteCollapseOverlay, transientOidsForRewriteCollapse } from './rewriteCollapseRelation.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
 export interface GraphBuilderOptions {
@@ -336,12 +337,21 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   const rebaseRelations = options.showReflog === false
     ? []
     : buildRebaseRelations(events, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations });
+  const rewriteCollapseRelations = options.showReflog === false
+    ? []
+    : buildRewriteCollapseRelations(events, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations });
+  const hiddenTransientOids = options.showReflog === false
+    ? new Set<string>()
+    : transientOidsForRewriteCollapse(rewriteCollapseRelations, events, snapshot.reflogs, commitMap, reachableOids);
+  const displayCommits = hiddenTransientOids.size === 0
+    ? commits
+    : commits.filter((commit) => !hiddenTransientOids.has(commit.oid));
   const ghostsByOid = ghostRefBadgesByOid(refMovementRelations, snapshot.refs, currentBranch);
   const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
     if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
   }
-  const nodes: GraphNode[] = commits.map((commit) => {
+  const nodes: GraphNode[] = displayCommits.map((commit) => {
     const refBadges = uniqueGraphRefBadges(refsByOid.get(commit.oid) ?? [], currentBranch);
     const historical = historicalRoutes.get(commit.oid);
     return {
@@ -367,7 +377,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   const nodeByOid = new Map(nodes.filter((node) => node.oid).map((node) => [node.oid as string, node]));
   const edges: GraphEdge[] = [];
   const addNode = (node: GraphNode) => { if (!nodes.some((existing) => existing.id === node.id)) nodes.push(node); };
-  for (const commit of commits) {
+  for (const commit of displayCommits) {
     for (const parentOid of commit.parentOids) {
       let parentNode = nodeByOid.get(parentOid);
       if (!parentNode && (snapshot.hasMore || snapshot.repository.shallow)) {
@@ -405,7 +415,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       }
     }
   }
-  for (const event of events.filter((candidate) => candidate.type !== 'amend' && !isVisibleExactOverlay(candidate, commitMap) && !isCompleteRebaseOverlay(candidate, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations }) && !isCompleteRefMovement(candidate, commitMap) && !(isRefMovementEvent(candidate) && candidate.fromOid === candidate.toOid))) {
+  for (const event of events.filter((candidate) => candidate.type !== 'amend' && !isVisibleExactOverlay(candidate, commitMap) && !isCompleteRebaseOverlay(candidate, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations }) && !isCompleteRewriteCollapseOverlay(candidate, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations }) && !isCompleteRefMovement(candidate, commitMap) && !(isRefMovementEvent(candidate) && candidate.fromOid === candidate.toOid))) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
     const eventStart = event.eventStartOid ? nodeByOid.get(event.eventStartOid) : undefined;
@@ -458,6 +468,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     refMovementRelations,
     rebaseRelations,
     cherryPickGroupRelations,
+    rewriteCollapseRelations,
     primaryBranch: primaryBranch(snapshot, options.primaryBranch),
     shallowBoundaryOids: snapshot.shallowBoundaryOids,
   };

@@ -2,7 +2,7 @@ import type { GraphFactModel, GraphLayout } from '../model/graphModel.js';
 import { allOverlayRelations } from '../model/graphModel.js';
 import { computeLaneLayout } from './laneLayout.js';
 import { computeRowLayout } from './rowLayout.js';
-import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeCherryPickGroups, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements } from './edgeRouter.js';
+import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeCherryPickGroups, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements, routeRewriteCollapseRelations } from './edgeRouter.js';
 import { insertOperationAnnotationRows } from './operationRows.js';
 
 export interface GraphLayoutOptions {
@@ -30,7 +30,8 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   const refMovementRelations = facts.refMovementRelations ?? [];
   const rebaseRelations = facts.rebaseRelations ?? [];
   const cherryPickGroupRelations = facts.cherryPickGroupRelations ?? [];
-  const operationRows = insertOperationAnnotationRows(laidOutNodes, allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations, cherryPickGroupRelations }));
+  const rewriteCollapseRelations = facts.rewriteCollapseRelations ?? [];
+  const operationRows = insertOperationAnnotationRows(laidOutNodes, allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations, cherryPickGroupRelations, rewriteCollapseRelations }));
   const annotationRows = new Map(operationRows.rows.map((row) => [row.relationId, row.row]));
   const routedNodes = placeRebaseEventsOnParentCurves(
     placeBranchRenameEventsOnWorkingTreeCurves(operationRows.nodes, facts.edges, { rowHeight, laneWidth }),
@@ -39,6 +40,7 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   );
   const rebaseOverlay = routeRebaseRelations(routedNodes, rebaseRelations, { rowHeight, laneWidth, annotationRows });
   const cherryPickOverlay = routeCherryPickGroups(routedNodes, cherryPickGroupRelations, { rowHeight, laneWidth, annotationRows });
+  const collapseOverlay = routeRewriteCollapseRelations(routedNodes, rewriteCollapseRelations, { rowHeight, laneWidth, annotationRows });
   return {
     nodes: routedNodes,
     edges: facts.edges,
@@ -58,6 +60,9 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
     cherryPickGroupRelations,
     cherryPickGroupPaths: cherryPickOverlay.paths,
     cherryPickGroupOutlines: cherryPickOverlay.outlines,
+    rewriteCollapseRelations,
+    rewriteCollapsePaths: collapseOverlay.paths,
+    rewriteCollapseOutlines: collapseOverlay.outlines,
     operationAnnotationRows: operationRows.rows,
   };
 }

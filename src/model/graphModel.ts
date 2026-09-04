@@ -139,9 +139,31 @@ export interface RebaseRelation {
 }
 
 /**
- * A contiguous git cherry-pick -x session.  Each mapping is an Exact pair
- * proven by a commit-body trailer.  Graph grouping is presentation only;
- * mappings[i] remains the proven SOURCE → TARGET correspondence.
+ * A proven contiguous interactive squash or fixup: the entire old linear
+ * range collapsed into one new commit.  There are no individual old→new
+ * mappings and no fixup-target arrows.  `id` is a rewrite-collapse: selection
+ * key and must not reuse the generic rebase History Event id.
+ */
+export interface RewriteCollapseRelation {
+  id: string;
+  kind: 'squash' | 'fixup';
+  refName: string;
+  /** Oldest → newest commits in the rewritten old range, excluding onto. */
+  oldOids: string[];
+  newOid: string;
+  oldTipOid: string;
+  newTipOid: string;
+  ontoOid?: string;
+  timestamp: number;
+  rawReflogMessage?: string;
+  evidence: 'reflog';
+}
+
+/**
+ * Graph grouping of contiguous Exact `-x` cherry-pick relations.  This is
+ * visual grouping of proven SOURCE → TARGET pairs, not a proof that Git ran
+ * one cherry-pick command.  Non-contiguous sources stay as individual Exact
+ * HistoryRelations.
  */
 export interface CherryPickGroupRelation {
   id: string;
@@ -160,7 +182,7 @@ export interface CherryPickGroupRelation {
   evidence: 'commit-body';
 }
 
-export type OverlayRelation = HistoryRelation | RefMovementRelation | RebaseRelation | CherryPickGroupRelation;
+export type OverlayRelation = HistoryRelation | RefMovementRelation | RebaseRelation | CherryPickGroupRelation | RewriteCollapseRelation;
 
 export function isRefMovementRelation(relation: OverlayRelation): relation is RefMovementRelation {
   return relation.kind === 'reset' || relation.kind === 'branch-move';
@@ -174,17 +196,23 @@ export function isCherryPickGroupRelation(relation: OverlayRelation): relation i
   return relation.kind === 'cherry-pick-group';
 }
 
+export function isRewriteCollapseRelation(relation: OverlayRelation): relation is RewriteCollapseRelation {
+  return relation.kind === 'squash' || relation.kind === 'fixup';
+}
+
 export function allOverlayRelations(model: {
   historyRelations?: HistoryRelation[];
   refMovementRelations?: RefMovementRelation[];
   rebaseRelations?: RebaseRelation[];
   cherryPickGroupRelations?: CherryPickGroupRelation[];
+  rewriteCollapseRelations?: RewriteCollapseRelation[];
 }): OverlayRelation[] {
   return [
     ...(model.historyRelations ?? []),
     ...(model.refMovementRelations ?? []),
     ...(model.rebaseRelations ?? []),
     ...(model.cherryPickGroupRelations ?? []),
+    ...(model.rewriteCollapseRelations ?? []),
   ];
 }
 
@@ -220,6 +248,8 @@ export interface GraphFactModel {
   rebaseRelations?: RebaseRelation[];
   /** Grouped exact cherry-pick overlays; individuals remain in historyRelations. */
   cherryPickGroupRelations?: CherryPickGroupRelation[];
+  /** Contiguous squash/fixup collapse; non-contiguous autosquash stays on History Event fallback. */
+  rewriteCollapseRelations?: RewriteCollapseRelation[];
   primaryBranch?: string;
   shallowBoundaryOids: string[];
 }

@@ -8,8 +8,7 @@ import type { DetailRefBadge } from './detailPresentation';
 import { linkedWorktreeBranchLabel, linkedWorktreeStatusLabel, operationInProgressLabel, summarizeWorkingTree, workingTreeStateLabel } from './workingTreePresentation';
 import type { HistoryEvent } from '../../../src/git/gitTypes';
 import type { OverlayRelation } from '../../../src/model/graphModel';
-import { eventDetailFields, eventDetailTitle } from './eventDetailPresentation';
-import { overlayCommitList, overlayDetailFields, overlayDetailTitle } from './overlayDetailPresentation';
+import { operationDetailContent } from './overlayDetailPresentation';
 
 function statusClass(status: string): string {
   return status.toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'unknown';
@@ -76,9 +75,10 @@ export function DetailPanel({ detail, event, overlayRelation, workingTree, opera
     </aside>;
   }
   if (event || overlayRelation) {
-    const fields = event ? eventDetailFields(event) : overlayRelation ? overlayDetailFields(overlayRelation) : [];
-    const heading = event ? eventDetailTitle(event) : overlayRelation ? overlayDetailTitle(overlayRelation) : 'Git operation';
-    const commitList = overlayRelation ? overlayCommitList(overlayRelation) : undefined;
+    const content = operationDetailContent(overlayRelation, event);
+    const fields = content?.fields ?? [];
+    const heading = content?.title ?? 'Git operation';
+    const commitList = content?.commitList;
     return <aside className="detail-panel" aria-label="Git operation details">
       <div className="detail-header">
         <div className="detail-heading">
@@ -104,11 +104,13 @@ export function DetailPanel({ detail, event, overlayRelation, workingTree, opera
               <span className="operation-commit-label">{row.leftLabel}</span>
               <code title={row.leftOid}>{row.leftOid.slice(0, 8)}</code>
             </span>
-            {row.connector === 'arrow' ? <span className="operation-commit-connector" aria-hidden="true">→</span> : <span className="operation-commit-connector operation-commit-connector-gap" aria-hidden="true" />}
-            <span className="operation-commit-side">
-              <span className="operation-commit-label">{row.rightLabel}</span>
-              <code title={row.rightOid}>{row.rightOid.slice(0, 8)}</code>
-            </span>
+            {row.kind === 'old-commit' ? null : <>
+              {row.connector === 'arrow' ? <span className="operation-commit-connector" aria-hidden="true">→</span> : <span className="operation-commit-connector operation-commit-connector-gap" aria-hidden="true" />}
+              <span className="operation-commit-side">
+                <span className="operation-commit-label">{row.rightLabel}</span>
+                <code title={row.rightOid}>{row.rightOid.slice(0, 8)}</code>
+              </span>
+            </>}
           </li>)}
         </ul>
       </section>}

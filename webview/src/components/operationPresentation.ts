@@ -1,5 +1,5 @@
-import type { OverlayRelation, RebaseRelation, RefMovementRelation } from '../../../src/model/graphModel';
-import { isCherryPickGroupRelation, isRebaseRelation, isRefMovementRelation } from '../../../src/model/graphModel';
+import type { OverlayRelation, RebaseRelation, RefMovementRelation, RewriteCollapseRelation } from '../../../src/model/graphModel';
+import { isCherryPickGroupRelation, isRebaseRelation, isRefMovementRelation, isRewriteCollapseRelation } from '../../../src/model/graphModel';
 import { normalizeRefName } from '../../../src/model/refDisplay';
 
 export type OperationOverlayKind = OverlayRelation['kind'];
@@ -29,6 +29,8 @@ export function operationKindLabel(kind: OperationOverlayKind): string {
     case 'branch-move': return 'Branch move';
     case 'rebase': return 'Rebase';
     case 'cherry-pick-group': return 'Cherry-pick';
+    case 'squash': return 'Squash';
+    case 'fixup': return 'Fixup';
   }
 }
 
@@ -71,6 +73,13 @@ function rebaseAnnotationLabel(relation: RebaseRelation, transition: string): st
   return ref ? `${name} · ${ref}: ${countLabel}${transition}` : `${name} · ${countLabel}${transition}`;
 }
 
+function collapseAnnotationLabel(relation: RewriteCollapseRelation): string {
+  const ref = operationRefName(relation);
+  const rewrite = `${relation.oldOids.length} commits → 1 commit`;
+  const name = operationKindLabel(relation.kind);
+  return ref ? `${name} · ${ref}: ${rewrite}` : `${name} · ${rewrite}`;
+}
+
 function cherryPickGroupAnnotationLabel(relation: OverlayRelation & { kind: 'cherry-pick-group' }, transition: string): string {
   const count = relation.mappings.length;
   return `${operationKindLabel(relation.kind)} · ${count} commits · ${transition}`;
@@ -82,6 +91,7 @@ function transitionLabel(relation: OverlayRelation): string {
     return `${shortOid(relation.fromOid)} → ${shortOid(relation.toOid)}`;
   }
   if (isRebaseRelation(relation)) return `${shortOid(relation.oldTipOid)} → ${shortOid(relation.newTipOid)}`;
+  if (isRewriteCollapseRelation(relation)) return `${relation.oldOids.length} commits → 1 commit`;
   if (isCherryPickGroupRelation(relation)) return `${shortOid(relation.sourceTipOid)} → ${shortOid(relation.targetTipOid)}`;
   return `${shortOid(relation.sourceOid)} → ${shortOid(relation.targetOid)}`;
 }
@@ -95,6 +105,9 @@ export function operationAnnotationLabel(relation: OverlayRelation): string {
   }
   if (isRebaseRelation(relation)) {
     return rebaseAnnotationLabel(relation, transition);
+  }
+  if (isRewriteCollapseRelation(relation)) {
+    return collapseAnnotationLabel(relation);
   }
   if (isCherryPickGroupRelation(relation)) {
     return cherryPickGroupAnnotationLabel(relation, transition);
@@ -134,6 +147,16 @@ function endpointTooltipLines(relation: OverlayRelation): string[] {
   if (isRebaseRelation(relation)) {
     const lines = [`Old tip\n${relation.oldTipOid}`, `New tip\n${relation.newTipOid}`];
     if (relation.oldOids.length > 1) lines.push(`Commits\n${relation.oldOids.length}`);
+    if (relation.ontoOid) lines.push(`Onto\n${relation.ontoOid}`);
+    return lines;
+  }
+  if (isRewriteCollapseRelation(relation)) {
+    const lines = [
+      `Old tip\n${relation.oldTipOid}`,
+      `New commit\n${relation.newOid}`,
+      `Rewrite\n${relation.oldOids.length} → 1`,
+      `Evidence\nReflog · rebase (${relation.kind})`,
+    ];
     if (relation.ontoOid) lines.push(`Onto\n${relation.ontoOid}`);
     return lines;
   }

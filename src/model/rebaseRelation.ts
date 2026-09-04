@@ -87,7 +87,12 @@ interface RebaseSession {
  * the branch `rebase (finish)` event.  A later unrelated operation is not
  * mixed in: walking stops at the first non-rebase HEAD subject.
  */
-export function rebaseSessionForEvent(event: HistoryEvent, reflogs: ReflogEntry[]): RebaseSession | undefined {
+/**
+ * HEAD rebase entries from `rebase (finish): returning to` through
+ * `rebase (start)`, newest first.  Undefined when the walk hits a
+ * non-rebase subject or lacks start/finish.
+ */
+export function collectRebaseSessionEntries(event: HistoryEvent, reflogs: ReflogEntry[]): ReflogEntry[] | undefined {
   const byIndex = new Map<number, ReflogEntry>();
   for (const entry of reflogs) {
     if (entry.refName !== 'HEAD') continue;
@@ -112,6 +117,12 @@ export function rebaseSessionForEvent(event: HistoryEvent, reflogs: ReflogEntry[
   const start = session.find((entry) => REBASE_START.test(entry.subject));
   if (!start) return undefined;
   if (event.boundaryOid && start.newOid !== event.boundaryOid) return undefined;
+  return session;
+}
+
+export function rebaseSessionForEvent(event: HistoryEvent, reflogs: ReflogEntry[]): RebaseSession | undefined {
+  const session = collectRebaseSessionEntries(event, reflogs);
+  if (!session) return undefined;
   return {
     hasStart: true,
     pickCount: session.filter((entry) => REBASE_PICK.test(entry.subject)).length,

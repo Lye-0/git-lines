@@ -30,7 +30,10 @@ describe('operation overlay presentation', () => {
     expect(operationRelationMarker('revert')).toBe('source-cross');
     expect(operationOverlayColor('reset')).toBe(OPERATION_OVERLAY_ACCENT);
     expect(operationOverlayColor('branch-move')).toBe(OPERATION_OVERLAY_ACCENT);
-    expect(operationOverlayColor('rebase')).toBe(OPERATION_OVERLAY_ACCENT);
+    expect(operationOverlayColor('squash')).toBe(OPERATION_OVERLAY_ACCENT);
+    expect(operationOverlayColor('fixup')).toBe(OPERATION_OVERLAY_ACCENT);
+    expect(operationKindLabel('squash')).toBe('Squash');
+    expect(operationKindLabel('fixup')).toBe('Fixup');
     expect(operationRelationMarker('reset')).toBe('arrow');
     expect(operationRelationMarker('branch-move')).toBe('arrow');
     expect(operationRelationMarker('rebase')).toBe('arrow');
@@ -121,6 +124,17 @@ describe('operation overlay presentation', () => {
       timestamp: 1,
       evidence: 'reflog',
     })).toBe('Rebase · feature: 3 commits · cccccccc → ffffffff');
+    expect(operationAnnotationLabel({
+      id: 'squash:one',
+      kind: 'squash',
+      refName: 'refs/heads/feature',
+      oldOids: [amend.sourceOid, amend.targetOid],
+      newOid: 's'.repeat(40),
+      oldTipOid: amend.targetOid,
+      newTipOid: 's'.repeat(40),
+      timestamp: 1,
+      evidence: 'reflog',
+    })).toBe('Squash · feature: 2 commits → 1 commit');
     expect(styles).toContain('.rebase-group-outline {');
     expect(styles).toContain('stroke: var(--operation-overlay-accent);');
     expect(operationAnnotationParts({ ...amend, kind: 'revert' })).toEqual([

@@ -1,5 +1,5 @@
 import type { GraphNode, OverlayRelation } from '../model/graphModel.js';
-import { isCherryPickGroupRelation, isRebaseRelation, isRefMovementRelation } from '../model/graphModel.js';
+import { isCherryPickGroupRelation, isRebaseRelation, isRefMovementRelation, isRewriteCollapseRelation } from '../model/graphModel.js';
 import type { OperationAnnotationRow } from './layoutTypes.js';
 
 interface OperationRowCandidate {
@@ -14,6 +14,7 @@ function isCommitNode(node: GraphNode | undefined): boolean {
 export function overlayEndpoints(relation: OverlayRelation): { id: string; sourceOid: string; targetOid: string } {
   if (isRefMovementRelation(relation)) return { id: relation.id, sourceOid: relation.fromOid, targetOid: relation.toOid };
   if (isRebaseRelation(relation)) return { id: relation.id, sourceOid: relation.oldTipOid, targetOid: relation.newTipOid };
+  if (isRewriteCollapseRelation(relation)) return { id: relation.id, sourceOid: relation.oldTipOid, targetOid: relation.newTipOid };
   if (isCherryPickGroupRelation(relation)) return { id: relation.id, sourceOid: relation.sourceTipOid, targetOid: relation.targetTipOid };
   return { id: relation.id, sourceOid: relation.sourceOid, targetOid: relation.targetOid };
 }
@@ -46,6 +47,9 @@ function groupedOverlaySpan(sourceOids: string[], targetOids: string[], byOid: M
 function overlayRowSpan(relation: OverlayRelation, byOid: Map<string, GraphNode>): { lowerRow: number; upperRow: number } | undefined {
   if (isRebaseRelation(relation)) {
     return groupedOverlaySpan(relation.oldOids, relation.newOids, byOid);
+  }
+  if (isRewriteCollapseRelation(relation)) {
+    return groupedOverlaySpan(relation.oldOids, [relation.newOid], byOid);
   }
   if (isCherryPickGroupRelation(relation)) {
     return groupedOverlaySpan(relation.sourceOids, relation.targetOids, byOid);

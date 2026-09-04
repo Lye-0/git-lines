@@ -1,4 +1,4 @@
-import type { CherryPickGroupRelation, GraphEdge, GraphNode, HistoryRelation, RebaseRelation, RefMovementRelation } from '../model/graphModel.js';
+import type { CherryPickGroupRelation, GraphEdge, GraphNode, HistoryRelation, RebaseRelation, RefMovementRelation, RewriteCollapseRelation } from '../model/graphModel.js';
 import { normalizeRefName } from '../model/refDisplay.js';
 import type { EdgePath, HistoryRelationPath, RebaseGroupOutline, RefMovementPath } from './layoutTypes.js';
 
@@ -1008,6 +1008,59 @@ export function routeCherryPickGroups(
     if (!overlay) continue;
     outlines.push(...overlay.outlines);
     paths.push(overlay.path);
+  }
+  return { paths, outlines };
+}
+
+/**
+ * Routes contiguous squash/fixup overlays: OLD GROUP outline only, then a
+ * boundary connector to the single NEW commit disk.  The new commit is not
+ * wrapped in a one-commit group box.
+ */
+export function routeRewriteCollapseRelations(
+  nodes: GraphNode[],
+  relations: RewriteCollapseRelation[],
+  options: EdgeRouterOptions = {},
+): { paths: HistoryRelationPath[]; outlines: RebaseGroupOutline[] } {
+  const byOid = new Map(nodes
+    .filter((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid)
+    .map((node) => [node.oid as string, node]));
+  const paths: HistoryRelationPath[] = [];
+  const outlines: RebaseGroupOutline[] = [];
+  const rowHeight = options.rowHeight ?? 38;
+  const laneWidth = options.laneWidth ?? 34;
+  const routedOptions = { rowHeight, laneWidth, leftPadding: options.leftPadding };
+
+  for (const relation of relations) {
+    const source = byOid.get(relation.oldTipOid);
+    const target = byOid.get(relation.newOid);
+    if (!source || !target) continue;
+    if ([...relation.oldOids, relation.newOid].some((oid) => !byOid.has(oid))) continue;
+    const sourceBounds = rebaseGroupBounds(nodes, relation.oldOids, routedOptions);
+    if (!sourceBounds) continue;
+    const sourceCenter = { x: (sourceBounds.minX + sourceBounds.maxX) / 2, y: (sourceBounds.minY + sourceBounds.maxY) / 2 };
+    const targetPoint = pointForNode(target, routedOptions);
+    const start = rectBoundaryPoint(sourceBounds, sourceCenter, targetPoint);
+    const facing = insetAlong(targetPoint, { x: start.x - targetPoint.x, y: start.y - targetPoint.y }, overlayEndpointRadius(target));
+    const distance = Math.hypot(facing.x - start.x, facing.y - start.y);
+    if (distance < Number.EPSILON) continue;
+    const annotationRow = options.annotationRows?.get(relation.id);
+    const markerY = annotationRow === undefined ? undefined : 18 + annotationRow * rowHeight;
+    const curve = rebaseGroupConnector(start, facing, markerY);
+    const tangent = cubicDerivative(curve, 1);
+    const labelPoint = rebaseLabelPoint(curve, annotationRow, rowHeight);
+    outlines.push({ id: `${relation.id}:old-group`, relationId: relation.id, role: 'old', d: roundedRectPath(sourceBounds) });
+    paths.push({
+      id: `${relation.id}:overlay`,
+      relationId: relation.id,
+      kind: relation.kind,
+      sourceNodeId: source.id,
+      targetNodeId: target.id,
+      d: curvePath(curve),
+      arrowD: arrowPath(curve.p3, tangent),
+      labelX: labelPoint.x,
+      labelY: labelPoint.y,
+    });
   }
   return { paths, outlines };
 }

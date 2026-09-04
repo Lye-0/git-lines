@@ -166,6 +166,23 @@ describe('exact cherry-pick grouping', () => {
     expect(groups).toEqual([]);
   });
 
+  it('does not group non-contiguous exact sources A and C when B remains on the source chain', () => {
+    const commits = [
+      commit('2', ['1'], 8),
+      commit('1', ['m'], 7),
+      commit('c', ['b'], 5),
+      commit('b', ['a'], 4),
+      commit('a', ['i'], 3),
+      commit('m', ['i'], 2),
+      commit('i', [], 1),
+    ];
+    const relations = [exactRelation('a', '1', 7), exactRelation('c', '2', 8)];
+    const events = [cherryEvent('1', 'a', 'm', 7), cherryEvent('2', 'c', '1', 8)];
+    const { groups, remaining } = buildCherryPickGroups(relations, new Map(commits.map((item) => [item.oid, item])), { events });
+    expect(groups).toEqual([]);
+    expect(remaining).toEqual(relations);
+  });
+
   it('does not group when HEAD reflog inserts a non-cherry-pick between picks', () => {
     const reflogs = [
       { refName: 'HEAD', selector: 'HEAD@{0}', newOid: oid('3'), previousOid: oid('1'), timestamp: 8, subject: 'cherry-pick: three' },
