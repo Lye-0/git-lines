@@ -1,6 +1,6 @@
 # Git Lines
 
-VS Code向けの読み取り専用Gitグラフです。ブランチの流れが追いやすいレーンで現在のDAGを示し、Git標準情報から確実に復元できる操作だけを Operation Overlay として重ねます。
+VS Code向けの読み取り専用Gitグラフです。現在のDAGを安定したレーンで示し、Git標準情報から確実に復元できる操作だけを Operation Overlay として重ねます。
 
 <p align="center">
   <img src="docs/images/readme/main/hero.png" alt="Git Linesのメイングラフ。安定したレーン上のブランチ履歴とWorking Tree" width="860">
@@ -26,173 +26,57 @@ Amend・Cherry-pick・Rebase などの操作は、reflog や commit 本文など
 
 ## Visual Overview
 
-### 現在のDAG
+Git Lines全体の見え方です。個別のGit操作の意味は、後ろの各 accordion で説明します。
 
-現在の refs から到達できる履歴を、安定したレーンで表示します。
+### Current DAG
+
+現在の refs から到達できるDAGと Working Tree を表示します。
 
 <p align="center">
-  <img src="docs/images/readme/main/original.png" alt="通常のブランチDAGとWorking Tree行" width="720">
+  <img src="docs/images/readme/main/original.png" alt="現在のrefsから到達できるDAGとWorking Tree" width="720">
 </p>
 
-### Group rewrite
+### Historical context
 
-完了した linear Rebase など、old range 全体と new range 全体の関係が証明できるときは group overlay になります。個別 commit の A→A′ 対応ではありません。
+Reflog が有効なら、PREVIOUS、historical route、reflog-only の履歴を補助表示できます。
 
 <p align="center">
-  <img src="docs/images/readme/main/group.png" alt="RebaseのOLD GROUPからNEW GROUPへのOperation Overlay" width="720">
+  <img src="docs/images/readme/main/previous.png" alt="PREVIOUSとhistorical routeの補助表示" width="720">
 </p>
 
-### Ref movement
+### Grouped visualization
 
-Reset / Branch move は commit の書き換えではなく、ref の位置が動いたことを表します。
+複数の関連 commit が安全に特定できる場合、視認性のために group としてまとめることがあります。個別の semantic は各操作の accordion を見てください。
 
 <p align="center">
-  <img src="docs/images/readme/details/reset.png" alt="Resetによるref移動のOperation Overlay" width="720">
+  <img src="docs/images/readme/main/group.png" alt="関連commitをまとめたgroup可視化の例" width="720">
 </p>
 
 ### N → 1 rewrite
 
-連続した Interactive Squash / Fixup だけ、old range が1 commit へ collapse した overlay を出します。
+複数 commit が 1 commit へ collapse したことが安全に証明できるとき、専用 overlay で示します。Interactive Squash / Fixup が代表例です。
 
 <p align="center">
-  <img src="docs/images/readme/main/n-to-1-rewrite.png" alt="連続SquashまたはFixupのOLD GROUPから1つのNEW commitへのoverlay" width="720">
+  <img src="docs/images/readme/main/n-to-1-rewrite.png" alt="複数commitが1commitへcollapseしたrewrite overlay" width="720">
 </p>
 
-## Supported Operations
+### In-progress integration
 
-現在、実装と確認が済んでいるものだけです。
-
-| Operation / State | Support | Visualization |
-| --- | --- | --- |
-| Amend | ✅ | Commit rewrite |
-| Cherry-pick | ✅ | Exact relation / 連続時は visual group |
-| Revert | ✅ | Cancellation relation |
-| Reset | ✅ | Ref movement |
-| Branch move | ✅ | Ref movement |
-| Branch rename | ✅ | Rename event（位置は動かない） |
-| Rebase | ✅ | Single / group rewrite |
-| Interactive Squash / Fixup | ✅ | 安全な連続 N → 1 のみ |
-| Detached HEAD | ✅ | 専用の HEAD 状態 |
-| Multiple worktrees | ✅ | Commit 上の worktree 注釈 |
-| In-progress operations | ✅ | Working Tree 行へ統合 |
-| Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
-| ORIG_HEAD | ✅ | 通常の commit / special ref |
-| Reflog OFF | ✅ | Current DAG へ縮退 |
-| Squash Merge | — | 意図的に推測しない |
-
-## Examples
-
-<details>
-<summary><strong>Commit history operations</strong></summary>
-
-Cherry-pick は、commit 本文の `-x` など確実な source があるときだけ relation を描きます。source が連続している複数件は、視認性のための visual group にまとめることがあります。
+進行中の Git 操作は、独立した偽の commit ではなく Working Tree 行へ統合します。
 
 <p align="center">
-  <img src="docs/images/readme/details/cherry-pick.png" alt="Exact Cherry-pickのSOURCEからTARGETへのrelation" width="640">
+  <img src="docs/images/readme/main/in-progress.png" alt="進行中操作をWorking Tree行へ統合した表示" width="720">
 </p>
 
-Rebase は、完了 session と linear range が復元できるとき single または group rewrite になります。
+### Reflog OFF
+
+Reflog をオフにすると overlay、PREVIOUS、reflog 依存の分類を外し、Current DAG だけへ戻します。commit message から操作を復元しません。
 
 <p align="center">
-  <img src="docs/images/readme/details/rebase.png" alt="完了RebaseのOLDとNEWのgroup overlay" width="640">
+  <img src="docs/images/readme/main/reflog-off.png" alt="Reflogオフ時のCurrent DAG表示" width="720">
 </p>
 
-Interactive Squash / Fixup は、同一 rebase session で連続 range が 1 commit へ collapse したことと、`rebase (squash)` / `rebase (fixup)` が証明できる場合だけです。
-
-<p align="center">
-  <img src="docs/images/readme/main/n-to-1-rewrite.png" alt="連続SquashのNから1へのrewrite overlay" width="640">
-</p>
-
-<p align="center">
-  <img src="docs/images/readme/details/fixup.png" alt="連続FixupのOLD GROUPから1つのNEW commit" width="640">
-</p>
-
-</details>
-
-<details>
-<summary><strong>Ref operations</strong></summary>
-
-Reset と Branch move は commit rewrite ではなく ref の移動です。現在の ref と、必要なら historical な ghost ref を使います。
-
-<p align="center">
-  <img src="docs/images/readme/details/reset.png" alt="Resetのref移動overlay" width="640">
-</p>
-
-<p align="center">
-  <img src="docs/images/readme/details/branch-move-reset.png" alt="Branch moveとResetのref操作" width="640">
-</p>
-
-Branch rename は tip の移動ではなく、同じ位置での名前変更です。
-
-<p align="center">
-  <img src="docs/images/readme/details/branch-rename.png" alt="Branch renameイベント" width="640">
-</p>
-
-</details>
-
-<details>
-<summary><strong>In-progress operations</strong></summary>
-
-進行中の merge / cherry-pick / rebase / revert は、独立したグラフノードではなく Working Tree 行に統合します。
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/readme/details/merge-in-progress.png" alt="Merge途中のWorking Tree表示" width="400"><br>
-      Merge
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/readme/details/cherry-pick-in-progress.png" alt="Cherry-pick途中のWorking Tree表示" width="400"><br>
-      Cherry-pick
-    </td>
-  </tr>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/images/readme/details/rebase-in-progress.png" alt="Rebase途中のWorking Tree表示" width="400"><br>
-      Rebase
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/images/readme/details/revert-in-progress.png" alt="Revert途中のWorking Tree表示" width="400"><br>
-      Revert
-    </td>
-  </tr>
-</table>
-
-</details>
-
-<details>
-<summary><strong>History &amp; Reflog</strong></summary>
-
-Reset / Amend / Rebase などで残った旧経路は PREVIOUS や historical route として示します。到達できないが object が残っている経路は UNREFERENCED になることがあります。
-
-<p align="center">
-  <img src="docs/images/readme/main/previous.png" alt="PREVIOUSとhistorical routeの表示" width="640">
-</p>
-
-Reflog をオフにすると、overlay・PREVIOUS・reflog 依存の分類を外し、現在の DAG だけへ戻します。commit message から操作を復元しません。
-
-<p align="center">
-  <img src="docs/images/readme/main/reflog-off.png" alt="Reflogオフ時のCurrent DAG表示" width="640">
-</p>
-
-</details>
-
-<details>
-<summary><strong>Special states</strong></summary>
-
-Detached HEAD は branch ref がなくても、いま指している commit を live な現在状態として扱います。
-
-<p align="center">
-  <img src="docs/images/readme/details/detached-head.png" alt="Detached HEADのグラフ表示" width="640">
-</p>
-
-追加の linked worktree はレーンを増やさず、対象 commit の注釈として示します。
-
-<p align="center">
-  <img src="docs/images/readme/details/multiple-worktree.png" alt="複数worktreeのcommit注釈" width="640">
-</p>
-
-</details>
+Reset / Branch move など ref の移動は、下の各操作 accordion で具体例を見られます。
 
 ## Detail Panel
 
@@ -224,6 +108,164 @@ No reliable evidence  → Current DAG only
 ```
 
 Git Lines は、commit の類似度や「こうなったはず」という推測だけでは歴史操作を描きません。証明できる範囲だけを overlay にし、それ以外はいまの DAG を優先します。
+
+## Supported Operations
+
+現在、実装と確認が済んでいるものだけです。
+
+| Operation / State | Support | Visualization |
+| --- | --- | --- |
+| Amend | ✅ | Commit rewrite |
+| Cherry-pick | ✅ | Exact relation / 連続時は visual group |
+| Revert | ✅ | Cancellation relation |
+| Reset | ✅ | Ref movement |
+| Branch move | ✅ | Ref movement |
+| Branch rename | ✅ | Rename event（位置は動かない） |
+| Rebase | ✅ | Single / group rewrite |
+| Interactive Squash / Fixup | ✅ | 安全な連続 N → 1 のみ |
+| Detached HEAD | ✅ | 専用の HEAD 状態 |
+| Multiple worktrees | ✅ | Commit 上の worktree 注釈 |
+| In-progress operations | ✅ | Working Tree 行へ統合 |
+| Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
+| ORIG_HEAD | ✅ | 通常の commit / special ref |
+| Reflog OFF | ✅ | Current DAG へ縮退 |
+| Squash Merge | — | 意図的に推測しない |
+
+## Git Operations
+
+<details>
+<summary><strong>Cherry-pick</strong></summary>
+
+source を Git 標準情報から確実に追跡できる場合だけ、source → created commit の relation を表示します。連続した Exact relation は、視認性のため visual group にまとめることがあります。
+
+<p align="center">
+  <img src="docs/images/readme/details/cherry-pick.png" alt="完了Cherry-pickのSOURCEからTARGETへのrelation" width="640">
+</p>
+
+### In progress
+
+進行中の Cherry-pick は Working Tree 行へ統合します。
+
+<p align="center">
+  <img src="docs/images/readme/details/cherry-pick-in-progress.png" alt="進行中Cherry-pickのWorking Tree表示" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Rebase</strong></summary>
+
+完了 session と linear な old / new range を安全に復元できる場合、single または group rewrite として表示します。
+
+### Completed
+
+<p align="center">
+  <img src="docs/images/readme/details/rebase.png" alt="完了RebaseのOLDとNEWのgroup overlay" width="640">
+</p>
+
+### In progress
+
+進行中の Rebase は Working Tree 行へ統合します。
+
+<p align="center">
+  <img src="docs/images/readme/details/rebase-in-progress.png" alt="進行中RebaseのWorking Tree表示" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Squash / Fixup</strong></summary>
+
+Interactive Rebase で、連続した old range が 1 commit へ collapse したことと、`rebase (squash)` / `rebase (fixup)` を安全に証明できる場合だけ専用表示します。Squash の見た目は上の N → 1 rewrite と同じです。
+
+<p align="center">
+  <img src="docs/images/readme/details/fixup.png" alt="連続FixupのOLD GROUPから1つのNEW commit" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Reset</strong></summary>
+
+Reset は commit rewrite ではなく、ref の位置が動いたこととして表示します。現在の ref と、必要なら historical な ghost ref を使います。
+
+<p align="center">
+  <img src="docs/images/readme/details/reset.png" alt="Resetのref移動overlay" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Branch move</strong></summary>
+
+branch ref の tip 移動は、Reset と同じ Ref Movement の見た目を使います。次の画像は Reset と Branch move が連続した例です。
+
+<p align="center">
+  <img src="docs/images/readme/details/branch-move-reset.png" alt="ResetとBranch moveが連続したref操作の例" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Branch rename</strong></summary>
+
+tip の位置は動かず、ref 名だけが変わった event として表示します。
+
+<p align="center">
+  <img src="docs/images/readme/details/branch-rename.png" alt="Branch renameイベント" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Revert</strong></summary>
+
+完了した Revert は、target の打ち消し関係として created revert commit を結ぶことがあります。target 側には専用 marker を付けます。完了専用のスクリーンショットは、現時点では README にありません。
+
+### In progress
+
+進行中の Revert は Working Tree 行へ統合します。
+
+<p align="center">
+  <img src="docs/images/readme/details/revert-in-progress.png" alt="進行中RevertのWorking Tree表示" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Merge in progress</strong></summary>
+
+完了した通常 Merge は Current DAG そのものなので、専用の operation overlay は出しません。進行中の Merge は Working Tree 行へ統合します。
+
+<p align="center">
+  <img src="docs/images/readme/details/merge-in-progress.png" alt="進行中MergeのWorking Tree表示" width="640">
+</p>
+
+</details>
+
+## Special Git States
+
+<details>
+<summary><strong>Detached HEAD</strong></summary>
+
+branch ref がなくても、HEAD がいま指している commit は live な現在状態として扱います。
+
+<p align="center">
+  <img src="docs/images/readme/details/detached-head.png" alt="Detached HEADのグラフ表示" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Multiple Worktrees</strong></summary>
+
+linked worktree のために新しい graph lane は作りません。対象 commit 上の注釈として表示します。
+
+<p align="center">
+  <img src="docs/images/readme/details/multiple-worktree.png" alt="複数worktreeのcommit注釈" width="640">
+</p>
+
+</details>
 
 <details>
 <summary><strong>Intentionally not inferred</strong></summary>
@@ -286,4 +328,3 @@ pnpm build
 ## Technical Documentation
 
 - [グラフアーキテクチャと不変条件](docs/technical/graph-architecture.md)
-)
