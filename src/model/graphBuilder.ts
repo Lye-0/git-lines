@@ -3,6 +3,7 @@ import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRo
 import { buildRefMovementRelations, ghostRefBadgesByOid, isCompleteRefMovement, isRefMovementEvent } from './refMovement.js';
 import { buildCherryPickGroups } from './cherryPickGroupRelation.js';
 import { buildRebaseRelations, isCompleteRebaseOverlay } from './rebaseRelation.js';
+import { buildRewordRelations } from './rewordRelation.js';
 import { buildRewriteCollapseRelations, isCompleteRewriteCollapseOverlay, transientOidsForRewriteCollapse } from './rewriteCollapseRelation.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
@@ -323,7 +324,10 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   // Exact overlays are proven source -> target transformations, not timeline
   // nodes.  Keep the reflog-derived event in `events` for the detail view and
   // emit a relation only when both endpoint commits are on this graph page.
-  const exactHistoryRelations = buildHistoryRelations(events, commitMap);
+  const exactHistoryRelations = [
+    ...buildHistoryRelations(events, commitMap),
+    ...(options.showReflog === false ? [] : buildRewordRelations(events, commitMap, snapshot.reflogs, snapshot.operations)),
+  ];
   const cherryPickGroups = options.showReflog === false
     ? { groups: [] as const, remaining: exactHistoryRelations }
     : buildCherryPickGroups(exactHistoryRelations, commitMap, {

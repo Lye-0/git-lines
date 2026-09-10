@@ -23,6 +23,7 @@ export function operationOverlayColor(_kind: OperationOverlayKind): string {
 export function operationKindLabel(kind: OperationOverlayKind): string {
   switch (kind) {
     case 'amend': return 'Amend';
+    case 'reword': return 'Reword';
     case 'cherry-pick': return 'Cherry-pick';
     case 'revert': return 'Revert';
     case 'reset': return 'Reset';
@@ -113,7 +114,7 @@ export function operationAnnotationLabel(relation: OverlayRelation): string {
     return cherryPickGroupAnnotationLabel(relation, transition);
   }
   const name = operationKindLabel(relation.kind);
-  if (relation.kind === 'amend') {
+  if (relation.kind === 'amend' || relation.kind === 'reword') {
     const ref = operationRefName(relation);
     return ref ? `${name} · ${ref}: ${transition}` : `${name} · ${transition}`;
   }
@@ -168,6 +169,7 @@ function endpointTooltipLines(relation: OverlayRelation): string[] {
       'Evidence\nCommit body -x',
     ];
   }
+  if (relation.kind === 'reword') return [`Old commit\n${relation.sourceOid}`, `New commit\n${relation.targetOid}`, 'Evidence\nReflog · rebase (reword)'];
   if (relation.kind === 'amend') return [`Old hash\n${relation.sourceOid}`, `New hash\n${relation.targetOid}`];
   if (relation.kind === 'cherry-pick') return [`Source\n${relation.sourceOid}`, `New hash\n${relation.targetOid}`];
   return [`Target\n${relation.sourceOid}`, `New hash\n${relation.targetOid}`];

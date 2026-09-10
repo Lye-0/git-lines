@@ -5,7 +5,7 @@ import { normalizeRefName } from '../../../src/model/refDisplay';
 import { eventDetailFields, eventDetailTitle, type EventDetailField } from './eventDetailPresentation';
 import { operationKindLabel } from './operationPresentation';
 
-export type OperationCommitRowKind = 'exact-mapping' | 'ordered-range' | 'old-commit';
+export type OperationCommitRowKind = 'exact-mapping' | 'old-commit';
 
 export interface OperationCommitRow {
   kind: OperationCommitRowKind;
@@ -14,7 +14,7 @@ export interface OperationCommitRow {
   leftOid: string;
   rightLabel: string;
   rightOid: string;
-  /** Exact cherry-pick pairs use an arrow. Rebase ordered ranges and squash/fixup old lists do not. */
+  /** Exact cherry-pick pairs use an arrow; squash/fixup old lists do not. */
   connector: 'arrow' | 'none';
 }
 
@@ -22,6 +22,21 @@ export interface OverlayCommitList {
   heading: string;
   ariaLabel: string;
   rows: OperationCommitRow[];
+}
+
+export interface OverlayOrderedList {
+  role: 'old' | 'new';
+  heading: string;
+  oids: string[];
+}
+
+/** Each range has its own order. No row or index associates the two ranges. */
+export function overlayOrderedLists(relation: OverlayRelation): OverlayOrderedList[] {
+  if (!isRebaseRelation(relation) || relation.oldOids.length <= 1) return [];
+  return [
+    { role: 'old', heading: 'Old order', oids: relation.oldOids },
+    { role: 'new', heading: 'New order', oids: relation.newOids },
+  ];
 }
 
 function compactHash(oid: string): string {
@@ -44,21 +59,6 @@ export function overlayCommitList(relation: OverlayRelation): OverlayCommitList 
       })),
     };
   }
-  if (isRebaseRelation(relation) && relation.oldOids.length > 1 && relation.oldOids.length === relation.newOids.length) {
-    return {
-      heading: 'Commit order',
-      ariaLabel: 'Rebase old and new commit order',
-      rows: relation.oldOids.map((oldOid, index) => ({
-        kind: 'ordered-range' as const,
-        index,
-        leftLabel: `Old #${index + 1}`,
-        leftOid: oldOid,
-        rightLabel: `New #${index + 1}`,
-        rightOid: relation.newOids[index]!,
-        connector: 'none',
-      })),
-    };
-  }
   if (isRewriteCollapseRelation(relation)) {
     return {
       heading: 'Old commits',
@@ -78,6 +78,16 @@ export function overlayCommitList(relation: OverlayRelation): OverlayCommitList 
 }
 
 export function overlayDetailFields(relation: OverlayRelation): EventDetailField[] {
+  if (relation.kind === 'reword') {
+    return [
+      { label: 'Operation', value: 'Reword' },
+      { label: 'Old commit', value: compactHash(relation.sourceOid), title: relation.sourceOid, kind: 'hash' },
+      { label: 'New commit', value: compactHash(relation.targetOid), title: relation.targetOid, kind: 'hash' },
+      { label: 'Evidence', value: 'Reflog · rebase (reword)' },
+      { label: 'Timestamp', value: Number.isFinite(relation.timestamp) ? new Date(relation.timestamp).toLocaleString() : 'Unknown' },
+      { label: 'Raw reflog message', value: relation.rawReflogMessage || 'Unavailable', kind: 'raw' },
+    ];
+  }
   if (isCherryPickGroupRelation(relation)) {
     return [
       { label: 'Operation', value: operationKindLabel(relation.kind) },
@@ -105,6 +115,10 @@ export function overlayDetailFields(relation: OverlayRelation): EventDetailField
 }
 
 export function overlayDetailTitle(relation: OverlayRelation): string {
+  if (relation.kind === 'reword') {
+    const ref = normalizeRefName(relation.refName ?? '');
+    return ref ? `Reword · ${ref}` : 'Reword';
+  }
   if (isCherryPickGroupRelation(relation)) {
     const ref = normalizeRefName(relation.refName ?? relation.targetRefName ?? '');
     return ref ? `Cherry-pick · ${ref}` : 'Cherry-pick';
@@ -124,21 +138,22 @@ export function overlayDetailTitle(relation: OverlayRelation): string {
 /**
  * Cherry-pick groups and squash/fixup collapse own their Detail Panel.
  * Generic rebase History Events still supply Rebase fields; the overlay only
- * adds Commit order.  Shared history-event ids must not steal collapse Detail.
+ * adds independent old/new ordered lists. Shared history-event ids must not steal collapse Detail.
  */
 export function overlayOwnsOperationDetail(relation: OverlayRelation | undefined): boolean {
-  return Boolean(relation && (isRewriteCollapseRelation(relation) || isCherryPickGroupRelation(relation)));
+  return Boolean(relation && (relation.kind === 'reword' || isRewriteCollapseRelation(relation) || isCherryPickGroupRelation(relation)));
 }
 
-export function operationDetailContent(overlay?: OverlayRelation, event?: HistoryEvent): { title: string; fields: EventDetailField[]; commitList: OverlayCommitList | undefined } | undefined {
+export function operationDetailContent(overlay?: OverlayRelation, event?: HistoryEvent): { title: string; fields: EventDetailField[]; commitList: OverlayCommitList | undefined; orderedLists: OverlayOrderedList[] } | undefined {
+  const orderedLists = overlay ? overlayOrderedLists(overlay) : [];
   if (overlay && overlayOwnsOperationDetail(overlay)) {
-    return { title: overlayDetailTitle(overlay), fields: overlayDetailFields(overlay), commitList: overlayCommitList(overlay) };
+    return { title: overlayDetailTitle(overlay), fields: overlayDetailFields(overlay), commitList: overlayCommitList(overlay), orderedLists };
   }
   if (event) {
-    return { title: eventDetailTitle(event), fields: eventDetailFields(event), commitList: overlay ? overlayCommitList(overlay) : undefined };
+    return { title: eventDetailTitle(event), fields: eventDetailFields(event), commitList: overlay ? overlayCommitList(overlay) : undefined, orderedLists };
   }
   if (overlay) {
-    return { title: overlayDetailTitle(overlay), fields: overlayDetailFields(overlay), commitList: overlayCommitList(overlay) };
+    return { title: overlayDetailTitle(overlay), fields: overlayDetailFields(overlay), commitList: overlayCommitList(overlay), orderedLists };
   }
   return undefined;
 }

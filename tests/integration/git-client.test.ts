@@ -11,6 +11,8 @@ import { HISTORICAL_ROUTE_COLOR } from '../../src/utils/color.js';
 import { createGraphColorResolver } from '../../webview/src/components/graphColor';
 import { commitRowPresentation } from '../../webview/src/components/commitRowPresentation';
 import { commitFixture, createGitFixture } from '../fixtures/gitFixture.js';
+import { allOverlayRelations } from '../../src/model/graphModel.js';
+import { resolveSelectedOperationDetail } from '../../webview/src/components/overlayDetailPresentation';
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -93,6 +95,49 @@ function assertExactOverlay(
 describe('GitClient integration fixture', () => {
   let fixture: ReturnType<typeof createGitFixture> | undefined;
   afterEach(() => fixture?.dispose());
+
+  it.each(['reword', 'edit'] as const)('134/135 actual interactive %s retains generic Rebase plus the exact local operation', async (action) => {
+    fixture = createGitFixture();
+    commitText(fixture, 'base.txt', 'base\n', 'I', '2026-08-27T09:00:00+09:00');
+    fixture.run(['switch', '-c', 'feature']);
+    for (const [index, name] of ['A', 'B', 'C'].entries()) {
+      commitText(fixture, `${name}.txt`, `${name}\n`, name, `2026-08-27T${10 + index}:00:00+09:00`);
+    }
+    const originalB = fixture.run(['rev-parse', 'HEAD^']).trim();
+    fixture.run(['switch', 'main']);
+    commitText(fixture, 'main.txt', 'main\n', 'M', '2026-08-27T13:00:00+09:00');
+    fixture.run(['switch', 'feature']);
+    const editor = path.join(fixture.root, '.git', 'todo.sh');
+    fs.writeFileSync(editor, `#!/bin/sh\nsed -i '2s/^pick /${action} /' "$1"\n`);
+    const messageEditor = path.join(fixture.root, '.git', 'message.sh');
+    fs.writeFileSync(messageEditor, '#!/bin/sh\nprintf "B reworded\\n" > "$1"\n');
+    const env = { GIT_SEQUENCE_EDITOR: `sh "${editor.replaceAll('\\', '/')}"`, GIT_EDITOR: `sh "${messageEditor.replaceAll('\\', '/')}"`, GIT_COMMITTER_DATE: '2026-08-27T14:00:00+09:00' };
+    fixture.run(['-c', 'rebase.abbreviateCommands=false', 'rebase', '-i', 'main'], env);
+    if (action === 'edit') {
+      fs.appendFileSync(path.join(fixture.root, 'B.txt'), 'edited\n');
+      fixture.run(['add', 'B.txt']);
+      fixture.run(['commit', '--amend', '-m', 'B edited'], env);
+      fixture.run(['rebase', '--continue'], env);
+    }
+    const finalB = fixture.run(['rev-parse', 'HEAD^']).trim();
+    const snapshot = await new GitClient().readSnapshot(fixture.root, 100, true);
+    const localEntry = snapshot.reflogs.find((e) => e.refName === 'HEAD' && e.newOid === finalB && e.subject.startsWith(action === 'edit' ? 'commit (amend):' : 'rebase (reword):'))!;
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    expect(facts.rebaseRelations).toEqual([]);
+    expect(facts.nodes.filter((n) => n.event).map((n) => n.event?.type)).toEqual(['rebase']);
+    const relations = allOverlayRelations(facts);
+    expect(relations).toHaveLength(1);
+    const relation = facts.historyRelations![0]!;
+    expect(relation).toMatchObject({ kind: action === 'edit' ? 'amend' : 'reword', sourceOid: localEntry.previousOid, targetOid: finalB });
+    expect(relation.sourceOid).not.toBe(originalB);
+    const detail = resolveSelectedOperationDetail(relation.id, relations, facts.events)!;
+    expect(detail.title).toBe(action === 'edit' ? 'Amend · HEAD' : 'Reword · feature');
+    expect(detail.fields).toContainEqual(expect.objectContaining({ label: action === 'edit' ? 'Old hash' : 'Old commit', title: relation.sourceOid }));
+    expect(detail.fields).toContainEqual(expect.objectContaining({ label: action === 'edit' ? 'New hash' : 'New commit', title: finalB }));
+    const hidden = buildGraphFacts(snapshot, { showReflog: false });
+    expect(allOverlayRelations(hidden)).toEqual([]);
+    expect(hidden.nodes.some((n) => n.event || n.kind === 'reflog-commit')).toBe(false);
+  });
 
   it('reads an actual branching repository with a clean working tree', async () => {
     fixture = createGitFixture();

@@ -4,6 +4,8 @@ import { buildGraphFacts } from '../../src/model/graphBuilder.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { buildRebaseRelations, exclusiveLinearRange, rebaseSessionForEvent } from '../../src/model/rebaseRelation.js';
 import { operationAnnotationLabel } from '../../webview/src/components/operationPresentation';
+import { allOverlayRelations } from '../../src/model/graphModel.js';
+import { resolveSelectedOperationDetail } from '../../webview/src/components/overlayDetailPresentation';
 
 const oid = (letter: string) => letter.repeat(40);
 
@@ -108,6 +110,80 @@ const baseSnapshot: RepositorySnapshot = {
 };
 
 describe('completed rebase relations', () => {
+  it('RSM3 / RSM4 / RSM5 133 represents reordered picks as a session-level group with independent Detail lists', () => {
+    // The fixture creator knows C, A, B were replayed; completed evidence only
+    // establishes each range and the session, not any old/new correspondence.
+    const commits = [
+      { ...commit('3', ['2'], 9), subject: 'B' },
+      { ...commit('2', ['1'], 8), subject: 'A' },
+      { ...commit('1', ['9'], 7), subject: 'C' },
+      { ...commit('e', ['d'], 6), subject: 'C' },
+      { ...commit('d', ['c'], 5), subject: 'B' },
+      { ...commit('c', ['0'], 4), subject: 'A' },
+      commit('9', ['0'], 2), commit('0', [], 1),
+    ];
+    const event = rebaseEvent('e', '3', '9');
+    const reflogs = sessionReflogs('e', '3', '9', 3);
+    for (const [index, letter] of ['3', '2', '1'].entries()) {
+      reflogs[index + 1] = {
+        ...reflogs[index + 1], newOid: oid(letter),
+        previousOid: oid(['2', '1', '9'][index]!),
+        subject: `rebase (pick): ${['B', 'A', 'C'][index]}`,
+      };
+    }
+    const snapshot = { ...baseSnapshot, commits, historyEvents: [event], reflogs };
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    expect(facts.rebaseRelations).toHaveLength(1);
+    const relation = facts.rebaseRelations![0]!;
+    expect(relation.kind).toBe('rebase');
+    expect(relation.oldOids).toEqual([oid('c'), oid('d'), oid('e')]);
+    expect(relation.newOids).toEqual([oid('1'), oid('2'), oid('3')]);
+    expect(relation).not.toHaveProperty('mappings');
+    const selected = resolveSelectedOperationDetail(event.id, allOverlayRelations(facts), facts.events)!;
+    expect(selected.title).toBe('Rebase · feature');
+    expect(selected.fields.find((field) => field.label === 'Operation')?.value).toBe('Rebase');
+    expect(selected.commitList).toBeUndefined();
+    expect(selected.orderedLists).toEqual([
+      { role: 'old', heading: 'Old order', oids: [oid('c'), oid('d'), oid('e')] },
+      { role: 'new', heading: 'New order', oids: [oid('1'), oid('2'), oid('3')] },
+    ]);
+    expect(selected.orderedLists.map((list) => list.oids.map((id) => commits.find((c) => c.oid === id)?.subject)))
+      .toEqual([['A', 'B', 'C'], ['C', 'A', 'B']]);
+    const layout = createGraphLayout(facts, { visibleCommitCount: commits.length, hasMore: false });
+    expect(layout.rebaseGroupOutlines).toHaveLength(2);
+    expect(layout.rebaseRelationPaths).toHaveLength(1);
+    expect(layout.operationAnnotationRows).toHaveLength(1);
+    expect(facts.nodes.some((node) => node.kind === 'history-event')).toBe(false);
+    const hidden = buildGraphFacts(snapshot, { showReflog: false });
+    const hiddenLayout = createGraphLayout(hidden, { visibleCommitCount: commits.length, hasMore: false });
+    expect(allOverlayRelations(hidden)).toEqual([]);
+    expect(hiddenLayout.operationAnnotationRows).toEqual([]);
+    expect(hidden.nodes.filter((node) => node.kind === 'reflog-commit' || node.kind === 'history-event')).toEqual([]);
+    expect(hidden.nodes.find((node) => node.oid === oid('3'))?.kind).toBe('commit');
+  });
+
+  it('RSM6 / RSM7 132 keeps a 3-to-2 completed session as generic Rebase fallback', () => {
+    const commits = linearCommits.filter((c) => c.oid !== oid('3') && c.oid !== oid('f'));
+    const event = rebaseEvent('e', '2', '9');
+    const snapshot: RepositorySnapshot = {
+      ...baseSnapshot, commits,
+      refs: baseSnapshot.refs.map((ref) => ref.shortName === 'feature' ? { ...ref, oid: oid('2') } : ref),
+      workingTrees: baseSnapshot.workingTrees.map((tree) => ({ ...tree, headOid: oid('2') })),
+      historyEvents: [event], reflogs: sessionReflogs('e', '2', '9', 2),
+    };
+    const facts = buildGraphFacts(snapshot, { showReflog: true });
+    expect(allOverlayRelations(facts)).toEqual([]);
+    expect(facts.nodes.filter((node) => node.kind === 'history-event').map((node) => node.event?.type)).toEqual(['rebase']);
+    const selected = resolveSelectedOperationDetail(event.id, allOverlayRelations(facts), facts.events)!;
+    expect(selected.title).toBe('Rebase · feature');
+    expect(selected.commitList).toBeUndefined();
+    expect(selected.orderedLists).toEqual([]);
+    const hidden = buildGraphFacts(snapshot, { showReflog: false });
+    expect(hidden.nodes.filter((node) => node.kind === 'history-event' || node.kind === 'reflog-commit')).toEqual([]);
+    expect(allOverlayRelations(hidden)).toEqual([]);
+    expect(hidden.nodes.find((node) => node.oid === oid('2'))?.kind).toBe('commit');
+  });
+
   it('RB1 detects a single-commit completed rebase as old=[F] new=[F\']', () => {
     const commits = [
       commit('4', ['9'], 4),

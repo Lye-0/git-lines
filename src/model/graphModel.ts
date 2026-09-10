@@ -89,7 +89,7 @@ export interface GraphEdge {
  */
 export interface HistoryRelation {
   id: string;
-  kind: 'amend' | 'cherry-pick' | 'revert';
+  kind: 'amend' | 'reword' | 'cherry-pick' | 'revert';
   sourceOid: string;
   targetOid: string;
   refName?: string;
@@ -118,9 +118,10 @@ export interface RefMovementRelation {
 }
 
 /**
- * A proven completed rebase that rewrote a linear commit range onto a new
- * base.  Membership is group-to-group; oldOids[i] is not a mapped partner of
- * newOids[i].
+ * An old ordered range became a new ordered range through one completed
+ * rebase session. Multi-commit membership is group-to-group: it does not
+ * establish individual correspondence, preserved order, or member identity.
+ * Completed evidence cannot distinguish ordinary replay from reordered picks.
  */
 export interface RebaseRelation {
   id: string;

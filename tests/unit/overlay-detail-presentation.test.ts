@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { overlayCommitList, overlayDetailFields, operationDetailContent, resolveSelectedOperationDetail } from '../../webview/src/components/overlayDetailPresentation';
+import { overlayCommitList, overlayOrderedLists, overlayDetailFields, operationDetailContent, resolveSelectedOperationDetail } from '../../webview/src/components/overlayDetailPresentation';
 import type { CherryPickGroupRelation, HistoryRelation, RebaseRelation } from '../../src/model/graphModel.js';
 import type { HistoryEvent } from '../../src/git/gitTypes.js';
 
@@ -44,7 +44,7 @@ describe('overlay operation detail lists', () => {
     })).toBeUndefined();
   });
 
-  it('RB-D1 / RB-D2 / RB-D3 lists rebase old/new order without exact mapping arrows', () => {
+  it('RSM1 / RSM2 keeps multi Rebase order in independent lists without paired rows', () => {
     const relation: RebaseRelation = {
       id: 'history:rebase:1',
       kind: 'rebase',
@@ -56,13 +56,10 @@ describe('overlay operation detail lists', () => {
       timestamp: 1,
       evidence: 'reflog',
     };
-    const list = overlayCommitList(relation)!;
-    expect(list.heading).toBe('Commit order');
-    expect(list.heading).not.toBe('Mappings');
-    expect(list.rows.map((row) => [row.leftLabel, row.leftOid, row.connector, row.rightLabel, row.rightOid])).toEqual([
-      ['Old #1', oid('c'), 'none', 'New #1', oid('1')],
-      ['Old #2', oid('d'), 'none', 'New #2', oid('2')],
-      ['Old #3', oid('e'), 'none', 'New #3', oid('3')],
+    expect(overlayCommitList(relation)).toBeUndefined();
+    expect(overlayOrderedLists(relation)).toEqual([
+      { role: 'old', heading: 'Old order', oids: [oid('c'), oid('d'), oid('e')] },
+      { role: 'new', heading: 'New order', oids: [oid('1'), oid('2'), oid('3')] },
     ]);
   });
 
@@ -80,7 +77,26 @@ describe('overlay operation detail lists', () => {
     })).toBeUndefined();
   });
 
-  it('119 rebase overlay click keeps Rebase title, Operation Rebase, and Commit order', () => {
+  it('RSM8 118 keeps single Rebase event fields without multi lists', () => {
+    const event: HistoryEvent = {
+      id: 'single-rebase', type: 'rebase', refName: 'refs/heads/feature',
+      fromOid: oid('a'), toOid: oid('1'), boundaryOid: oid('9'),
+      timestamp: 20, subject: 'rebase (finish)',
+    };
+    const relation: RebaseRelation = {
+      id: event.id, kind: 'rebase', refName: event.refName,
+      oldOids: [oid('a')], newOids: [oid('1')],
+      oldTipOid: oid('a'), newTipOid: oid('1'), timestamp: 20, evidence: 'reflog',
+    };
+    const detail = operationDetailContent(relation, event)!;
+    expect(detail).toEqual(operationDetailContent(undefined, event));
+    expect(detail.title).toBe('Rebase · feature');
+    expect(detail.fields).toContainEqual(expect.objectContaining({ label: 'Old tip', title: oid('a') }));
+    expect(detail.fields).toContainEqual(expect.objectContaining({ label: 'New tip', title: oid('1') }));
+    expect(detail.orderedLists).toEqual([]);
+  });
+
+  it('RSM1 119 rebase overlay click keeps Rebase title and independent order lists', () => {
     const event: HistoryEvent = {
       id: 'history:rebase:20:new',
       type: 'rebase',
@@ -104,8 +120,11 @@ describe('overlay operation detail lists', () => {
     const selected = resolveSelectedOperationDetail(event.id, [relation], [event])!;
     expect(selected.title).toBe('Rebase · feature');
     expect(selected.fields.find((field) => field.label === 'Operation')?.value).toBe('Rebase');
-    expect(selected.commitList?.heading).toBe('Commit order');
-    expect(selected.commitList?.rows).toHaveLength(3);
+    expect(selected.commitList).toBeUndefined();
+    expect(selected.orderedLists).toEqual([
+      { role: 'old', heading: 'Old order', oids: relation.oldOids },
+      { role: 'new', heading: 'New order', oids: relation.newOids },
+    ]);
   });
 
   it('120 cherry-pick group click keeps Mappings and does not use a Rebase event', () => {
@@ -137,6 +156,7 @@ describe('overlay operation detail lists', () => {
     expect(selected.title).toBe('Cherry-pick');
     expect(selected.commitList?.heading).toBe('Mappings');
     expect(selected.commitList?.rows).toHaveLength(3);
+    expect(selected.orderedLists).toEqual([]);
     expect(selected.fields.find((field) => field.label === 'Operation')?.value).toBe('Cherry-pick');
   });
 

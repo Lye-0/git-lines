@@ -89,7 +89,7 @@ curveのendpointはcommit node中心ではなく、graph area内のref-position 
 
 ### Group Commit Rewrite (Completed Rebase)
 
-`RebaseRelation`はref移動ではなく、証明済みのlinear commit range rewriteである。
+`RebaseRelation`は、old ordered rangeが1つのcompleted Rebase sessionを経てnew ordered rangeになったことを表す。multiでは個別commitの対応、順序の保存、member identityの一致、Reorderがなかったことを保証しない。
 
 - Commit Relation: Amend / Cherry-pick Exact / Revert Exact（1 commit → 1 commit）
 - Ref Movement: Reset / Branch move（`ref@OLD` → `ref@NEW`）
@@ -100,12 +100,22 @@ curveのendpointはcommit node中心ではなく、graph area内のref-position 
 
 group membershipは`oldOids[i] ↔ newOids[i]`の個別対応を意味しない。配列順はoldest → newestで一意にし、tipは各groupのnewestである。onto / shared baseはgroupへ含めない。PREVIOUS判定はreachabilityのままであり、old group memberでも別のlive refから到達できればlive色を保つ。同じcommitがAmend endpointとRebase group memberを兼ねてよい。AmendのsourceをRebase old rangeへ吸収しない。
 
+119の通常Rebaseと133の並べ替えを含むRebaseは、completed HEAD reflog上ではいずれもstart / pick / finishとなる。pick entryにold individual OIDとの対応や専用reorder evidenceは残らないため、両方を同じsession-level Rebase groupとして扱い、Dedicated Reorder表示や個別mappingを推測しない。132のDropはold count = 3 / new count = 2でequal-count条件を満たさず、generic Rebase History Eventへfallbackする。Dedicated Drop relationやsurviving commit mappingも推測しない。
+
+### Local Reword / Edit (Phase 7B)
+
+134のRewordはcompleted session内の局所rewrite `T → B′`を`HistoryRelation.kind = "reword"`で表す。Tは新しいbase上へreplayされた一時commitで、元のpre-rebase Bとのmappingは保持しない。branch finishとHEAD finishが一意に一致し、startのold/onto OID、sessionの連続selectorとold/new OID、必要なobjectが揃う場合だけ対象にする。v1は独立した連続2件の`rebase (reword)`だけを認識し、2件目のold=1件目のnew、old≠new、およびT/B′が1件目のoldを同じ唯一のparentに持つことを確認する。最初の`A′ → T`はchildを追加するreplayなのでrelationにしない。parent条件はrecordの整合検査であり、message/tree/patch類似からidentityを推測するものではない。欠落・重複・競合finish・3件以上の連続reword・未完了sessionでは生成しない。
+
+Rewordは既存のOperation Overlay layer、紫accent、破線cubic curve、NEW側triangle、diamond、Annotation Rowを共有する。DetailはOld commit=T、New commit=B′、Evidence=`Reflog · rebase (reword)`。選択IDはgeneric Rebase eventと独立し、generic fallbackを残したまま共存する。TのUNREFERENCED/PREVIOUS分類やtransient非表示規則は変更しない。
+
+135のeditはtodoの停止指示であり、専用commit relationや`◇ Edit`へ変換しない。既存のHEAD `commit (amend)`が直接示すT→B′だけをAmendとして保持する。Generic Rebaseはsession全体、Amendは局所変更なので併記可能。AmendモデルにEdit由来という所属semanticを追加しない。134/135ともReflog OFFではgeneric event、局所relation、reflog-only contextが消えCurrent DAGのみとなる。
+
 ### Grouped Exact Cherry-pick
 
 複数の連続したExact Cherry-pickは、graphを簡潔にするためRebase multiと同じ破線group outline / boundary connector / `◇ Cherry-pick` 1つ / Annotation Row 1行へまとめてよい。semantic modelはRebaseと混ぜない。
 
 - Cherry-pick: `CherryPickGroupRelation.mappings` はcommit bodyの`(cherry picked from commit <40-hex>)`で証明された SOURCE → TARGET のExact pair。Detail Panelの`Mappings`はこのpairをoldest → newestで1行ずつ出す。
-- Rebase: Detail Panelは`Commit order`として Old #n / New #n を並べる。矢印付きExact mappingとしては表現しない。
+- Rebase: Detail Panelは`Old order`と`New order`を上下に分け、それぞれ独立したordered listとして表示する。各listはoldest → newestのOIDを持ち、同じ添字のold/newを組にしたrow、左右ペアtable、mapping矢印を作らない。
 
 group化してよいのは次がすべて揃ったときだけである。mapping 2件以上、各targetの `-x` trailer、source/targetがfull OIDでpage上に存在、targetがfirst-parent linear chain、sourceも同じoldest → newestのlinear chain（間のsource commitをskipした離散sourceはgroup化しない）、同一連続cherry-pick session（隣接するcherry-pick eventの区間に欠ける `-x` がなく、HEAD reflogがあれば連続したcherry-pick subject）、Reset / Amend / Rebase / Revertがmemberへ割り込まない。1件の117はsingle `HistoryRelation`のまま。121 / 127のように `-x` が無い場合、liveなsource/targetが見えていてもmappingを推測しない。126のようにAとCだけ `-x` でBをskipした場合はindividual Exact arrowsのままにし、sparse source groupは作らない。一部だけevidenceがあるsessionはgroup化せず、あるExact pairだけindividual overlayへ戻す。時間的に離れたcherry-pickや、間に別commit / 別operationがあるものは1 groupにしない。groupとindividual 3本のcurveを同時描画しない。Reflog OFFではgroup outline、connector、diamond、Annotation Rowを消し、current DAGとbranchは残す。
 
@@ -164,6 +174,6 @@ Gitは`spawn`へ引数配列を渡し、shell文字列連結を行わない。We
 - `tests/unit/rebase-overlay-geometry.test.ts` — single/multi render、group bounds、OLD → NEW tangent
 - `tests/unit/cherry-pick-group.test.ts` — 連続 `-x` 複数Cherry-pickのgroup化、mapping保持、single/no-source/partial/non-contiguous非group化、DAG不変、source live、Annotation 1行、Reflog OFF
 - `tests/unit/rewrite-collapse-relation.test.ts` — contiguous Squash/Fixup、124/125 non-contiguous fallback、transient pick hide、Reflog OFF、Detail Old commits
-- `tests/unit/overlay-detail-presentation.test.ts` — Cherry-pick Exact Mappings、Rebase Commit order（矢印なし）
+- `tests/unit/overlay-detail-presentation.test.ts` — Cherry-pick Exact Mappings、Rebaseの独立したOld order / New order
 - `tests/unit/graph-builder.test.ts` — ref dedup、tag、常時Working Tree、remote-ahead時の実HEAD接続、2/3-parent edge、destination/boundary/targetRef付きRef Event、Amend / Exact Cherry-pick / Exact Revert overlay、Reset / Branch moveのRef Movement、完了Rebase overlayとPREVIOUS
 - `tests/integration/git-client.test.ts` — 実Git CLIのin-progress operation、branch rename、完了Cherry-pick/RevertのExact Overlayとsource不明時の既存event、single/multi-commit Rebase overlay、実MergeでHistory Eventを作らないこと、long feature merge、未commitbranch、first commit、Reset / Branch move overlayと後続ResetでHistoricalへ移る旧tip

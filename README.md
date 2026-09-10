@@ -97,7 +97,7 @@ Reset / Branch move など ref の移動は、下の各操作 accordion で具�
 
 Commit Detail では additions / deletions、changed files、author、parent、branch / route を見られます。
 
-Operation Detail では操作種別と Evidence に加え、Cherry-pick なら Mappings、Rebase なら Commit order、Squash / Fixup なら Old commits / New commit / Rewrite など、その relation が実際に持っている情報だけを出します。
+Operation Detail では操作種別と Evidence に加え、Cherry-pick なら Mappings、Rebase なら独立した Old order / New order、Squash / Fixup なら Old commits / New commit / Rewrite など、その relation が実際に持っている情報だけを出します。
 
 ## Evidence-first Design
 
@@ -155,6 +155,8 @@ source を Git 標準情報から確実に追跡できる場合だけ、source �
 <summary><strong>Rebase</strong></summary>
 
 完了 session と linear な old / new range を安全に復元できる場合、single または group rewrite として表示します。
+
+完了session内の局所的なreword遷移がreflogで直接確認できる場合は、Reword relationを表示します。Editでは実際に観測されたAmend等を表示し、generic Rebaseと併記します。
 
 #### Completed
 

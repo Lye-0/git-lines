@@ -198,6 +198,11 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .detail-parent-list code { color: var(--graph-muted); }
 .detail-section { border-top: 1px solid var(--graph-border); margin-top: 18px; padding-top: 15px; }
 .detail-operation-commits { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.detail-operation-orders { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 18px; }
+.detail-operation-orders > .detail-section { flex: 0 0 auto; }
+.operation-ordered-commits { display: grid; gap: 6px; list-style: none; margin: 10px 0 0; padding: 0; }
+.operation-ordered-commits li { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.operation-ordered-commits code { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .operation-commit-rows { display: grid; gap: 6px; list-style: none; margin: 10px 0 0; padding: 0; }
 .operation-commit-row { display: grid; grid-template-columns: minmax(0, 1fr) 16px minmax(0, 1fr); gap: 8px; align-items: baseline; min-width: 0; }
 .operation-commit-side { min-width: 0; display: grid; gap: 2px; }

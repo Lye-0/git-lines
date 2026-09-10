@@ -309,6 +309,7 @@ describe('squash/fixup detail selection wiring', () => {
     expect(selected.fields.find((field) => field.label === 'Rewrite')?.value).toBe('2 → 1');
     expect(selected.commitList?.heading).toBe('Old commits');
     expect(selected.commitList?.rows).toHaveLength(2);
+    expect(selected.orderedLists).toEqual([]);
     expect(selected.fields.some((field) => field.label === 'Old tip')).toBe(false);
     expect(resolveSelectedOperationDetail(event.id, overlays, facts.events)?.title).not.toBe('Squash · feature');
   });
@@ -320,6 +321,7 @@ describe('squash/fixup detail selection wiring', () => {
     const mixed = operationDetailContent(relation, event)!;
     expect(overlayDetailTitle(relation)).toBe('Fixup · feature');
     expect(mixed.title).toBe('Fixup · feature');
+    expect(mixed.orderedLists).toEqual([]);
     expect(mixed.fields.find((field) => field.label === 'Operation')?.value).toBe('Fixup');
     expect(mixed.fields.find((field) => field.label === 'Evidence')?.value).toBe('Reflog · rebase (fixup)');
     expect(mixed.fields.find((field) => field.label === 'New commit')?.value).toBe(oid('s').slice(0, 8));

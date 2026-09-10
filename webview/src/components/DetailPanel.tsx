@@ -96,6 +96,17 @@ export function DetailPanel({ detail, event, overlayRelation, workingTree, opera
           <dd className={field.kind === 'raw' ? 'detail-raw-message' : undefined} title={field.title}>{field.kind === 'hash' ? <code>{field.value}</code> : field.value}</dd>
         </div>)}
       </dl>
+      {Boolean(content?.orderedLists.length) && <div className="detail-operation-orders">
+        {content?.orderedLists.map((list) => <section className="detail-section" key={list.role} aria-labelledby={`operation-${list.role}-order-heading`}>
+          <div className="detail-section-header"><h3 id={`operation-${list.role}-order-heading`}>{list.heading}</h3><span>{list.oids.length}</span></div>
+          <ol className="operation-ordered-commits" aria-labelledby={`operation-${list.role}-order-heading`}>
+            {list.oids.map((oid, index) => <li key={oid}>
+              <span className="operation-commit-label" aria-hidden="true">#{index + 1}</span>
+              <code title={oid}>{oid.slice(0, 8)}</code>
+            </li>)}
+          </ol>
+        </section>)}
+      </div>}
       {commitList && <section className="detail-section detail-operation-commits" aria-labelledby="operation-commit-list-heading">
         <div className="detail-section-header"><h3 id="operation-commit-list-heading">{commitList.heading}</h3><span>{commitList.rows.length}</span></div>
         <ul className="operation-commit-rows" aria-label={commitList.ariaLabel}>
