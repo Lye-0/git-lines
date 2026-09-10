@@ -34,6 +34,8 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 ## Rowとlaneの不変条件
 
+DAG parent edgeはAnnotation Row挿入後の最終node座標で回避判定する。`src/layout/nodeGeometry.ts`の共通mark / selection ring外形に余白を加え、端点以外のcurrent / historical commitと干渉するBezierだけを横方向へ調整する。曲線の再帰分割による包絡判定を使い、端点、Y方向の制御点、lane、parent順序、色、Operation Overlayは維持する。選択前からring分を確保するため、選択操作で経路は変化しない。
+
 1. rowは全可視nodeで一意である。
 2. parent nodeはchildより下に置く。timestamp逆転があってもDAG制約を優先する。
 3. ready queueのcommitter date、kind、stable idを用いて同じ入力から同じ順序を得る。

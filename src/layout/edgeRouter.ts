@@ -1,6 +1,8 @@
 import type { CherryPickGroupRelation, GraphEdge, GraphNode, HistoryRelation, RebaseRelation, RefMovementRelation, RewriteCollapseRelation } from '../model/graphModel.js';
 import { normalizeRefName } from '../model/refDisplay.js';
 import type { EdgePath, HistoryRelationPath, RebaseGroupOutline, RefMovementPath } from './layoutTypes.js';
+import { COMMIT_NODE_RADIUS, nodeMarkGeometry, nodeRingGeometry } from './nodeGeometry.js';
+export { COMMIT_NODE_RADIUS } from './nodeGeometry.js';
 
 export interface EdgeRouterOptions {
   rowHeight?: number;
@@ -60,6 +62,56 @@ function parentCurve(a: Point, b: Point): CubicCurve {
     p2: { x: b.x, y: b.y - delta },
     p3: b,
   };
+}
+
+/** Includes stroke clearance; reserve the selection ring even when unselected. */
+export const DAG_NODE_CLEARANCE = 3;
+
+function intersectsDisk(curve: CubicCurve, center: Point, radius: number, depth = 0): boolean {
+  const points = [curve.p0, curve.p1, curve.p2, curve.p3];
+  const minX = Math.min(...points.map((p) => p.x));
+  const maxX = Math.max(...points.map((p) => p.x));
+  const minY = Math.min(...points.map((p) => p.y));
+  const maxY = Math.max(...points.map((p) => p.y));
+  const dx = Math.max(minX - center.x, 0, center.x - maxX);
+  const dy = Math.max(minY - center.y, 0, center.y - maxY);
+  if (Math.hypot(dx, dy) > radius) return false;
+  // De Casteljau hulls enclose the actual curve, not just sampled controls.
+  // Unresolved contact at the tolerance is conservatively treated as a hit.
+  if (depth === 14 || points.every((p) => Math.hypot(p.x - center.x, p.y - center.y) <= radius)) return true;
+  const [left, right] = splitCubic(curve, 0.5);
+  return intersectsDisk(left, center, radius, depth + 1) || intersectsDisk(right, center, radius, depth + 1);
+}
+
+function routedParentCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, options: EdgeRouterOptions,
+  original = parentCurve(pointForNode(from, options), pointForNode(to, options))): CubicCurve {
+  const minY = Math.min(original.p0.y, original.p3.y);
+  const maxY = Math.max(original.p0.y, original.p3.y);
+  const obstacles = nodes.filter((node) => node.id !== from.id && node.id !== to.id
+    && (node.kind === 'commit' || node.kind === 'reflog-commit')).map((node) => {
+    const point = pointForNode(node, options);
+    const mark = nodeMarkGeometry(node);
+    const ring = nodeRingGeometry(node);
+    return { center: { x: point.x + mark.center.x, y: point.y + mark.center.y },
+      radius: Math.max(mark.radius * (mark.shape === 'square' ? Math.SQRT2 : 1), ring.r) + DAG_NODE_CLEARANCE };
+  }).filter(({ center, radius }) => center.y > minY && center.y < maxY
+    && Math.hypot(center.x - original.p0.x, center.y - original.p0.y) > radius
+    && Math.hypot(center.x - original.p3.x, center.y - original.p3.y) > radius);
+  const clear = (curve: CubicCurve) => obstacles.every(({ center, radius }) => !intersectsDisk(curve, center, radius));
+  if (clear(original)) return original;
+  // Keep endpoints and every Y control unchanged: a smooth, monotone bow,
+  // with no loops or lane changes. Prefer the smallest safe lateral change.
+  // Intermediate rows are strictly inside the Y span, so increasing the
+  // rightward bow eventually clears every finite obstacle in that span.
+  for (let offset = 1; ; offset += 1) {
+    for (const direction of [1, -1]) {
+      const p1 = { ...original.p1, x: original.p1.x + offset * direction };
+      const p2 = { ...original.p2, x: original.p2.x + offset * direction };
+      if (Math.min(p1.x, p2.x) < 0) continue;
+      const candidate = { ...original, p1, p2 };
+      if (clear(candidate)) return candidate;
+    }
+  }
 }
 
 function operationCurve(a: Point, b: Point): CubicCurve {
@@ -157,8 +209,6 @@ function curvePath(curve: CubicCurve): string {
   return `M ${curve.p0.x} ${curve.p0.y} C ${curve.p1.x} ${curve.p1.y}, ${curve.p2.x} ${curve.p2.y}, ${curve.p3.x} ${curve.p3.y}`;
 }
 
-/** Matches the commit node circle radius rendered by GraphSvg. */
-export const COMMIT_NODE_RADIUS = 6.5;
 /** Keep the overlay arrow small; placement, not size, is what makes it readable. */
 export const HISTORY_RELATION_ARROW_SIZE = 4;
 /** Visible gap between the arrow tip and the target node disk. */
@@ -254,7 +304,7 @@ function arrowPath(tip: Point, tangent: Point, size = HISTORY_RELATION_ARROW_SIZ
   return `M ${tip.x} ${tip.y} L ${left.x} ${left.y} L ${right.x} ${right.y} Z`;
 }
 
-function splitCubic(curve: CubicCurve, t: number, boundary: Point): [CubicCurve, CubicCurve] {
+function splitCubic(curve: CubicCurve, t: number, boundary: Point = cubicPoint(curve, t)): [CubicCurve, CubicCurve] {
   const ab = lerp(curve.p0, curve.p1, t);
   const bc = lerp(curve.p1, curve.p2, t);
   const cd = lerp(curve.p2, curve.p3, t);
@@ -467,7 +517,7 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
         {
           id: `${annotationSplit.event.id}:rebase:before`,
           type: 'parent',
-          d: curvePath(before),
+          d: curvePath(routedParentCurve(nodes, child, annotationSplit.event, options, before)),
           edgeId: annotationSplit.parentEdge.id,
           fromNodeId: annotationSplit.parentEdge.fromNodeId,
           toNodeId: annotationSplit.event.id,
@@ -475,7 +525,7 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
         {
           id: `${annotationSplit.event.id}:rebase:after`,
           type: 'parent',
-          d: curvePath(after),
+          d: curvePath(routedParentCurve(nodes, annotationSplit.event, boundary, options, after)),
           edgeId: annotationSplit.parentEdge.id,
           fromNodeId: annotationSplit.event.id,
           toNodeId: annotationSplit.parentEdge.toNodeId,
@@ -546,7 +596,8 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
     // Keep long branch transitions close to the source/target rows. A
     // distance-proportional control point creates a wide braid when a branch
     // joins an older commit many rows below it.
-    const curve = edge.type === 'operation' ? operationCurve(a, b) : parentCurve(a, b);
+    const curve = edge.type === 'parent' ? routedParentCurve(nodes, from, to, options)
+      : edge.type === 'operation' ? operationCurve(a, b) : parentCurve(a, b);
     const d = curvePath(curve);
     return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
   });
