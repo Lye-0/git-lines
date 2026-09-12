@@ -71,6 +71,7 @@ vi.mock('../../src/repository/repositoryWatcher.js', () => ({ RepositoryWatcher:
   constructor(_dir: string, options: { onChange: (reason: string) => void }) { this.onChange = options.onChange; mock.watchers.push(this); }
 } }));
 vi.mock('../../src/webview/webviewHtml.js', () => ({ getWebviewHtml: () => '<html>graph</html>' }));
+vi.mock('../../src/repository/gitStateWatcher.js', () => ({ GitStateWatcher: class { dispose = vi.fn(); } }));
 
 import { openGraph } from '../../src/commands/openGraph.js';
 import { GraphPanel } from '../../src/webview/graphPanel.js';

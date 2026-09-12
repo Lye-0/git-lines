@@ -6,6 +6,7 @@ import { createGraphLayout } from '../layout/graphLayout.js';
 import { LayoutState } from '../layout/layoutState.js';
 import { getWebviewHtml } from './webviewHtml.js';
 import { RepositoryWatcher } from '../repository/repositoryWatcher.js';
+import { GitStateWatcher } from '../repository/gitStateWatcher.js';
 import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from './messageProtocol.js';
 
 export class GraphViewSession implements vscode.Disposable {
@@ -18,6 +19,7 @@ export class GraphViewSession implements vscode.Disposable {
   private showReflog: boolean;
   private density: 'comfortable' | 'compact';
   private watcher?: RepositoryWatcher;
+  private gitStateWatcher?: GitStateWatcher;
   private disposed = false;
   private loading = false;
   private pendingReload = false;
@@ -63,6 +65,7 @@ export class GraphViewSession implements vscode.Disposable {
     this.disposed = true;
     this.messageListener.dispose();
     this.watcher?.dispose();
+    this.gitStateWatcher?.dispose();
     this.output.dispose();
   }
 
@@ -127,11 +130,14 @@ export class GraphViewSession implements vscode.Disposable {
       this.snapshot = next;
       if (!this.watcher) {
         this.watcher = new RepositoryWatcher(next.repository.gitDir, {
+          commonGitDir: next.repository.commonGitDir,
           onChange: (reason) => {
             this.output.appendLine(`watch ${reason}`);
             void this.load(false);
           },
         });
+        this.gitStateWatcher = new GitStateWatcher([next.repository.root, ...next.workingTrees.map((tree) => tree.path)],
+          () => this.watcher?.notifyChange('git-state'));
       }
       const primaryBranch = vscode.workspace.getConfiguration('branchGraph').get<string | null>('primaryBranch', null);
       const factsStart = performance.now();

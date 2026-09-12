@@ -53,6 +53,7 @@ export class GitRunner {
         cwd: options.cwd,
         shell: false,
         windowsHide: true,
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
       });
       let stdout = '';
       let stderr = '';
