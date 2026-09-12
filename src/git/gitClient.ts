@@ -378,30 +378,41 @@ export class GitClient {
       ...refs.filter((ref) => ref.type === 'local' || ref.type === 'remote').map((ref) => ref.fullName),
       ...refs.filter((ref) => ref.fullName === 'ORIG_HEAD' || ref.fullName === 'AUTO_MERGE').map((ref) => ref.fullName),
     ];
-    const all: ReflogEntry[] = [];
-    for (const refName of [...new Set(names)]) {
+    const readRef = async (refName: string): Promise<ReflogEntry[]> => {
       try {
         const logPath = path.join(refName === 'HEAD' ? repository.gitDir : repository.commonGitDir, 'logs', refName);
         const stamp = await fs.stat(logPath).then((stat) => `${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`, () => undefined);
         const cached = this.reflogCache.get(logPath);
         if (stamp !== undefined && cached?.stamp === stamp) {
-          all.push(...structuredClone(cached.entries));
-          continue;
+          return structuredClone(cached.entries);
         }
         const output = await this.runner.runChecked(['reflog', 'show', '--format=' + reflogFormat, refName], {
           cwd: root,
           timeoutMs: this.timeoutMs,
         });
         const entries = parseReflogRecords(output, refName);
-        all.push(...entries);
         if (stamp !== undefined && entries.length <= 20000) this.reflogCache.set(logPath, { stamp, entries: structuredClone(entries) });
         while (this.reflogCache.size > 256 || [...this.reflogCache.values()].reduce((sum, value) => sum + value.entries.length, 0) > 20000) {
           this.reflogCache.delete(this.reflogCache.keys().next().value!);
         }
+        return entries;
       } catch {
         // Reflogs are optional and commonly absent for remote refs.
+        return [];
       }
-    }
+    };
+    const uniqueNames = [...new Set(names)];
+    const results: ReflogEntry[][] = new Array(uniqueNames.length);
+    let nextIndex = 0;
+    // Bound Git processes on Windows. Preserve ref order independently of
+    // completion order, since history classification uses deterministic input.
+    await Promise.all(Array.from({ length: Math.min(4, uniqueNames.length) }, async () => {
+      while (nextIndex < uniqueNames.length) {
+        const index = nextIndex++;
+        results[index] = await readRef(uniqueNames[index]);
+      }
+    }));
+    const all = results.flat();
     const seen = new Set<string>();
     return all.filter((entry) => {
       const key = `${entry.refName}\0${entry.selector}\0${entry.newOid}`;

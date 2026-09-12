@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GitClient } from '../../src/git/gitClient.js';
 import { GitRunner, type GitRunOptions } from '../../src/git/gitRunner.js';
 import { buildGraphFacts } from '../../src/model/graphBuilder.js';
+import { parseReflogRecords, reflogFormat } from '../../src/git/parsers/reflogParser.js';
 import { createGitFixture, commitFixture } from '../fixtures/gitFixture.js';
 
 class CountingRunner extends GitRunner {
@@ -22,6 +23,42 @@ class CountingRunner extends GitRunner {
 }
 
 describe('reflog pagination and batched object reads', () => {
+  it('bounds Reflog concurrency and preserves sequential results despite reordered completion and a missing log', async () => {
+    const repo = createGitFixture();
+    try {
+      commitFixture(repo, 'Base', '2025-01-01T00:00:00Z');
+      for (let i = 0; i < 9; i++) repo.run(['branch', `branch${i}`]);
+      class ParallelRunner extends GitRunner {
+        active = 0;
+        maximum = 0;
+        completed: string[] = [];
+        override async run(args: string[], options: GitRunOptions) {
+          if (args[0] !== 'reflog') return super.run(args, options);
+          this.active++;
+          this.maximum = Math.max(this.maximum, this.active);
+          const ref = args.at(-1)!;
+          try {
+            if (ref === 'HEAD') await new Promise((resolve) => setTimeout(resolve, 150));
+            if (ref === 'refs/heads/branch3') return { stdout: '', stderr: 'missing reflog', exitCode: 128 };
+            return await super.run(args, options);
+          } finally { this.completed.push(ref); this.active--; }
+        }
+      }
+      const runner = new ParallelRunner();
+      const snapshot = await new GitClient({ runner }).readSnapshot(repo.root, 30, true);
+      const names = ['HEAD', ...snapshot.refs.filter((ref) => ref.type === 'local').map((ref) => ref.fullName)];
+      const expected = [];
+      for (const ref of names.filter((ref) => ref !== 'refs/heads/branch3')) {
+        expected.push(...parseReflogRecords(repo.run(['reflog', 'show', `--format=${reflogFormat}`, ref]), ref));
+      }
+      expect(snapshot.reflogs).toEqual(expected);
+      expect(runner.maximum).toBeGreaterThan(1);
+      expect(runner.maximum).toBeLessThanOrEqual(4);
+      expect(runner.completed[0]).not.toBe('HEAD');
+      expect(runner.completed).toHaveLength(names.length);
+      expect(runner.active).toBe(0);
+    } finally { repo.dispose(); }
+  }, 20000);
   it('measures successful and failed Git commands without logging arguments', async () => {
     const measurements: Array<{ command: string; ms: number; bytes: number; ok: boolean }> = [];
     const runner = new GitRunner('git', (command, ms, bytes, ok) => measurements.push({ command, ms, bytes, ok }));
