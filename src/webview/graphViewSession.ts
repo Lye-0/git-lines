@@ -147,6 +147,7 @@ export class GraphViewSession implements vscode.Disposable {
         previousLanes: isAppend || reuseSnapshot ? this.layoutState.lanes : undefined,
         previousNodeLanes: isAppend || reuseSnapshot ? this.layoutState.nodeLanes : undefined,
         rowHeight: this.presentation === 'sidebar' ? 28 : this.density === 'compact' ? 30 : 38,
+        laneWidth: this.presentation === 'sidebar' ? 22 : undefined,
       });
       this.layoutState.set(layout);
       this.output.appendLine(`perf request=${requestId} layoutMs=${(performance.now() - layoutStart).toFixed(1)} gitCommands=${this.commandCount - commandsBefore} reuseSnapshot=${reuseSnapshot}`);

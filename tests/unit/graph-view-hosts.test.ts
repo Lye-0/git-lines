@@ -232,12 +232,12 @@ describe('shared editor/panel graph session', () => {
     await sidebar.open('C:/a');
     expect(mock.execute).toHaveBeenCalledWith('branchGraph.sidebarView.focus');
     await view.webview.incoming.fire({ type: 'ready' });
-    expect(view.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'sidebar', layout: { rowHeight: 28 } });
+    expect(view.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'sidebar', layout: { rowHeight: 28, laneWidth: 22 } });
     const panel = new GraphViewProvider(context());
     const bottom = host();
     panel.resolveWebviewView(viewOf(bottom));
     await bottom.webview.incoming.fire({ type: 'ready' });
-    expect(bottom.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'standard', density: 'compact', layout: { rowHeight: 30 } });
+    expect(bottom.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'standard', density: 'compact', layout: { rowHeight: 30, laneWidth: 34 } });
     sidebar.dispose();
     panel.dispose();
   });

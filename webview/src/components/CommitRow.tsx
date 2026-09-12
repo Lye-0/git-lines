@@ -46,7 +46,7 @@ function operationSummary(node: GraphNode): string | undefined {
   return node.operation.detail || (node.operation.sourceOids.length ? `${node.operation.sourceOids.length} source commit${node.operation.sourceOids.length === 1 ? '' : 's'}` : 'Waiting for Git to finish');
 }
 
-export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, onSelectWorkingTree, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true, graphSideRefFullNames }: { node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; onSelectWorkingTree?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean; graphSideRefFullNames?: Set<string> }) {
+export function CommitRow({ contentInset, node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, onSelectWorkingTree, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true, graphSideRefFullNames }: { contentInset?: number; node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; onSelectWorkingTree?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean; graphSideRefFullNames?: Set<string> }) {
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const isSelectableWorkingTree = node.kind === 'working-tree' && Boolean(onSelectWorkingTree);
   const working = workingSummary(node);
@@ -82,7 +82,7 @@ export function CommitRow({ node, rowHeight, selected, selectedEvent = false, hi
       ? { files: workingStats.files, additions: workingStats.additions, deletions: workingStats.deletions }
       : undefined;
   const primaryTrack = node.trackId ? tracks.find((track) => track.id === node.trackId) : undefined;
-  const rowStyle = { top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px`, '--row-track-color': primaryTrack?.color } as CSSProperties;
+  const rowStyle = { ...(contentInset === undefined ? {} : { left: contentInset, width: `calc(100% - ${contentInset}px)` }), top: (node.row ?? 0) * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px`, '--row-track-color': primaryTrack?.color } as CSSProperties;
   if (refEvent) {
     const fullEventLabel = eventMainLabel(node);
     const eventLabel = eventLabelForWidth(node, eventLabelWidth ?? Number.POSITIVE_INFINITY, eventLabelX);

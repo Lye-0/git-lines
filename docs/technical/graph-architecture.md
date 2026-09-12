@@ -77,6 +77,8 @@ Sidebarは`git-lines-sidebar` Activity Bar container内の`branchGraph.sidebarVi
 
 読み込みの工程計測、ページ・OID・Reflogキャッシュの有効条件、更新通知の集約は[history-performance.md](history-performance.md)を参照する。Density変更は保存済みsnapshotで再描画し、手動更新はキャッシュを破棄する。読み込み中のwatch通知は捨てず、完了後に再確認する。
 
+Sidebarだけlane間隔を22px（通常表示は34px）にする。本文の開始位置は各nodeのXとselection ring余白に合わせ、同じ行を通るDAG pathのcontrol hullより右を確保する。Operation Overlayの範囲・group表示とannotation行は従来のgraph幅を確保して重なりを避ける。本文の最低幅もcanvas幅に反映する。通常のeditor/panelでは行ごとのinsetを使わず、従来の列揃えを維持する。
+
 1. ステータスバーまたは`Git Lines: Open`のQuick Pickでeditor / bottom panelを選び、複数workspace folderがあればrepositoryを選ぶ。`Open in Editor` / `Open in Panel`コマンドは表示先選択を省略する。Panel tabを直接開いた場合はactive fileのworkspace、次に最初のfolderを候補とし、folderがなければ案内を表示する。
 2. `GitClient.readSnapshot`がroot、refs、`HEAD`を含む最新30 commit、各worktree status、operation、reflog、shallow boundaryを読み込む。`git log --numstat`の一括レスポンスから可視commitごとの変更パス数とtracked additions/deletionsを保持し、通常のcommit単位の追加Git呼び出しは行わない。完了Cherry-pick / Revertのsource / target evidenceに限り、対象to commit本文を一括で追加取得する。statusからWorking Treeの変更パス数を保持し、各worktreeにつき一度の`git diff --numstat HEAD`でtracked additions/deletionsを取得する（unborn HEADではcached diffへfallback）。
 3. `buildGraphFacts`がcommit dedup、ref association、Working Tree（必要ならoperation付き）/event nodeと、Amend / Exact Cherry-pick / Exact Revertの`HistoryRelation`、連続 `-x` Cherry-pickの`CherryPickGroupRelation`、Exact Reset / Branch moveの`RefMovementRelation`、完了linear Rebaseの`RebaseRelation`、contiguous Squash/Fixupの`RewriteCollapseRelation`を作る。

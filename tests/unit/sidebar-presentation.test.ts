@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { sidebarPopoverPosition } from '../../webview/src/components/sidebarPresentation';
+import { sidebarPopoverPosition, sidebarRowOffsets } from '../../webview/src/components/sidebarPresentation';
+import type { GraphLayout } from '../../src/layout/layoutTypes';
 import { graphWidthForLayout } from '../../webview/src/components/graphMetrics';
 
 describe('sidebar presentation', () => {
+  it('starts next to each row node while reserving space for a continuing side route', () => {
+    const layout: GraphLayout = { nodes: [
+      { id: 'a', kind: 'commit', row: 0, lane: 0, refIds: [] },
+      { id: 'b', kind: 'commit', row: 1, lane: 1, refIds: [] },
+      { id: 'c', kind: 'commit', row: 2, lane: 0, refIds: [] },
+      { id: 'd', kind: 'commit', row: 3, lane: 1, refIds: [] },
+    ], edges: [{ id: 'bd', type: 'parent', fromNodeId: 'b', toNodeId: 'd' }],
+    edgePaths: [{ id: 'bd', type: 'parent', d: 'M 46 46 C 46 60, 46 88, 46 102' }],
+    tracks: [], laneWidth: 22, rowHeight: 28, hasMore: false, visibleCommitCount: 4 };
+    const before = JSON.stringify(layout);
+    const offsets = sidebarRowOffsets(layout, 90);
+    expect(offsets.get('a')).toBe(38);
+    expect(offsets.get('b')).toBe(60);
+    expect(offsets.get('c')).toBe(60);
+    expect(JSON.stringify(layout)).toBe(before);
+  });
   it('opens below near the top and above near the bottom within the viewport', () => {
     expect(sidebarPopoverPosition(60, 88, 650).upwards).toBe(false);
     expect(sidebarPopoverPosition(550, 578, 650).upwards).toBe(true);

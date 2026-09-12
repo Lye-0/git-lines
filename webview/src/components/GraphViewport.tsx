@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { GraphSvg } from './GraphSvg';
+import { sidebarRowOffsets } from './sidebarPresentation';
 import { CommitRow } from './CommitRow';
 import { commitRowsForDisplay } from './commitRowPresentation';
 import { changesColumnStartForLayout, graphWidthForLayout, timelineContentWidthForLayout, TIMELINE_MIN_WIDTH } from './graphMetrics';
@@ -38,6 +39,7 @@ export function GraphViewport({ compactSidebar = false, header, layout, filter, 
   // using only a track's representative lane could either clip a later
   // segment or reserve width for a track with no visible segment.
   const graphWidth = graphWidthForLayout(layout, compactSidebar);
+  const rowOffsets = compactSidebar ? sidebarRowOffsets(layout, graphWidth) : undefined;
   const requiredChangesColumnStart = changesColumnStartForLayout(layout);
   // The graph/content boundary includes graph-side endpoint badges and the
   // operation labels rendered inside the SVG. This keeps those labels clear
@@ -45,7 +47,7 @@ export function GraphViewport({ compactSidebar = false, header, layout, filter, 
   // Keep the content and fixed changes columns usable at any viewport size;
   // the graph-scroll container provides horizontal scrolling below this
   // minimum instead of collapsing rows or hiding stats.
-  const canvasMinWidth = compactSidebar ? graphWidth + 120 : Math.max(TIMELINE_MIN_WIDTH, graphWidth + timelineContentWidthForLayout(layout));
+  const canvasMinWidth = compactSidebar ? Math.max(graphWidth, ...(rowOffsets?.values() ?? [])) + 120 : Math.max(TIMELINE_MIN_WIDTH, graphWidth + timelineContentWidthForLayout(layout));
   // Use the scrollable canvas width for event labels as well. A narrow
   // viewport must not make an otherwise readable event label compact before
   // the user has a chance to scroll horizontally.
@@ -103,9 +105,9 @@ export function GraphViewport({ compactSidebar = false, header, layout, filter, 
       <div className="graph-canvas" style={{ minWidth: canvasMinWidth, minHeight: canvasHeight }}>
         <GraphSvg layout={layout} width={graphWidth} height={canvasHeight} selected={selected} selectedWorkingTree={selectedWorkingTree} selectedEvent={selectedEvent} onSelectEvent={onSelectEvent} />
         <RefMovementEndpointBadges layout={layout} tracks={layout.tracks} />
-        <div className="rows" style={{ marginLeft: graphWidth, width: `calc(100% - ${graphWidth}px)`, minHeight: canvasHeight, '--required-changes-column-start': `${requiredChangesColumnStart}px` } as CSSProperties}>
-          {commitRowsForDisplay(layout.nodes).map((node) => { const tree = node.workingTree; const routeName = routeNameForNode(node, layout.tracks); const operationLabel = node.operation ? operationInProgressLabel(node.operation) : undefined; const linkedWorktreeTerms = (node.linkedWorktrees ?? []).flatMap((linked) => ['linked worktree', linked.branch, linked.path, linkedWorktreeStatusLabel(linked)]); const haystack = [node.subject, node.label, node.oid, routeName, tree?.branch, tree?.path, tree?.detached ? 'detached' : '', tree?.clean ? 'clean' : '', operationLabel, ...linkedWorktreeTerms, ...(node.operation?.sourceOids ?? []), ...node.refIds, ...(node.refBadges?.map((badge) => badge.fullName) ?? []), ...(node.ghostRefBadges?.map((badge) => badge.fullName) ?? [])].filter(Boolean).join(' ').toLocaleLowerCase(); const selectable = node.kind === 'commit' || node.kind === 'reflog-commit'; const selectableWorkingTree = node.kind === 'working-tree'; const selectableEvent = Boolean(node.event && (node.kind === 'fast-forward-event' || node.kind === 'history-event')); const graphSideRefFullNames = new Set(layoutGraphSideRefEndpoints({ nodes: [node], refMovementRelations: layout.refMovementRelations }).map((endpoint) => endpoint.badge.fullName)); return <CommitRow key={node.id} node={node} rowHeight={layout.rowHeight} tracks={layout.tracks} eventLabelWidth={eventLabelWidth} eventLabelX={graphWidth} selected={(selectable && node.oid === selected) || (selectableWorkingTree && node.id === selectedWorkingTree)} selectedEvent={selectableEvent && node.id === selectedEvent} hidden={Boolean(needle) && !haystack.includes(needle)} showWorkingTreeStats={showWorkingTreeStats} graphSideRefFullNames={graphSideRefFullNames} onSelect={onSelect} onSelectWorkingTree={onSelectWorkingTree} onSelectEvent={onSelectEvent} />; })}
-          {operationRows.map(({ relation, ...row }) => { const haystack = operationAnnotationLabel(relation).toLocaleLowerCase(); return <OperationAnnotationRow key={row.id} relation={relation} row={row.row} rowHeight={layout.rowHeight} selected={relation.id === selectedEvent} hidden={Boolean(needle) && !haystack.includes(needle)} onSelectEvent={onSelectEvent} />; })}
+        <div className="rows" style={{ marginLeft: compactSidebar ? 0 : graphWidth, width: compactSidebar ? '100%' : `calc(100% - ${graphWidth}px)`, minHeight: canvasHeight, '--required-changes-column-start': `${requiredChangesColumnStart}px` } as CSSProperties}>
+          {commitRowsForDisplay(layout.nodes).map((node) => { const tree = node.workingTree; const routeName = routeNameForNode(node, layout.tracks); const operationLabel = node.operation ? operationInProgressLabel(node.operation) : undefined; const linkedWorktreeTerms = (node.linkedWorktrees ?? []).flatMap((linked) => ['linked worktree', linked.branch, linked.path, linkedWorktreeStatusLabel(linked)]); const haystack = [node.subject, node.label, node.oid, routeName, tree?.branch, tree?.path, tree?.detached ? 'detached' : '', tree?.clean ? 'clean' : '', operationLabel, ...linkedWorktreeTerms, ...(node.operation?.sourceOids ?? []), ...node.refIds, ...(node.refBadges?.map((badge) => badge.fullName) ?? []), ...(node.ghostRefBadges?.map((badge) => badge.fullName) ?? [])].filter(Boolean).join(' ').toLocaleLowerCase(); const selectable = node.kind === 'commit' || node.kind === 'reflog-commit'; const selectableWorkingTree = node.kind === 'working-tree'; const selectableEvent = Boolean(node.event && (node.kind === 'fast-forward-event' || node.kind === 'history-event')); const graphSideRefFullNames = new Set(layoutGraphSideRefEndpoints({ nodes: [node], refMovementRelations: layout.refMovementRelations }).map((endpoint) => endpoint.badge.fullName)); return <CommitRow contentInset={rowOffsets?.get(node.id)} key={node.id} node={node} rowHeight={layout.rowHeight} tracks={layout.tracks} eventLabelWidth={eventLabelWidth} eventLabelX={graphWidth} selected={(selectable && node.oid === selected) || (selectableWorkingTree && node.id === selectedWorkingTree)} selectedEvent={selectableEvent && node.id === selectedEvent} hidden={Boolean(needle) && !haystack.includes(needle)} showWorkingTreeStats={showWorkingTreeStats} graphSideRefFullNames={graphSideRefFullNames} onSelect={onSelect} onSelectWorkingTree={onSelectWorkingTree} onSelectEvent={onSelectEvent} />; })}
+          {operationRows.map(({ relation, ...row }) => { const haystack = operationAnnotationLabel(relation).toLocaleLowerCase(); return <OperationAnnotationRow contentInset={compactSidebar ? graphWidth : undefined} key={row.id} relation={relation} row={row.row} rowHeight={layout.rowHeight} selected={relation.id === selectedEvent} hidden={Boolean(needle) && !haystack.includes(needle)} onSelectEvent={onSelectEvent} />; })}
         </div>
       </div>
     </div>
