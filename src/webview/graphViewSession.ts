@@ -32,6 +32,7 @@ export class GraphViewSession implements vscode.Disposable {
     context: vscode.ExtensionContext,
     private readonly webview: vscode.Webview,
     public readonly repositoryRoot: string | undefined,
+    private readonly presentation: 'standard' | 'sidebar' = 'standard',
   ) {
     this.output = vscode.window.createOutputChannel('Git Lines');
     this.client = new GitClient({
@@ -145,7 +146,7 @@ export class GraphViewSession implements vscode.Disposable {
         previousRows: isAppend ? this.layoutState.rows : undefined,
         previousLanes: isAppend || reuseSnapshot ? this.layoutState.lanes : undefined,
         previousNodeLanes: isAppend || reuseSnapshot ? this.layoutState.nodeLanes : undefined,
-        rowHeight: this.density === 'compact' ? 30 : 38,
+        rowHeight: this.presentation === 'sidebar' ? 28 : this.density === 'compact' ? 30 : 38,
       });
       this.layoutState.set(layout);
       this.output.appendLine(`perf request=${requestId} layoutMs=${(performance.now() - layoutStart).toFixed(1)} gitCommands=${this.commandCount - commandsBefore} reuseSnapshot=${reuseSnapshot}`);
@@ -155,6 +156,7 @@ export class GraphViewSession implements vscode.Disposable {
       const sendStart = performance.now();
       await this.send({
         type: 'graph',
+        presentation: this.presentation,
         requestId,
         layout,
         repository: next.repository,

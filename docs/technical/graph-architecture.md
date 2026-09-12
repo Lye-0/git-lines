@@ -71,6 +71,8 @@ Linked worktreeは追加の`working-tree` nodeやtrackを作らない。`GitClie
 
 ToolbarはGraphViewportのスクロール領域内でcanvasより前に配置し、縦スクロールでグラフとともに画面外へ移動する。Detailはその領域の外に置く。操作欄は1行を維持し、実際のグラフ領域の幅が1100px以下ならブランド（アイコン・名称・repository path）を隠す。600px未満では操作欄にも横スクロールでアクセスできる。EditorのタブとToolbarには同じ`resources/icon-v1.png`を使用し、Toolbar用URLはWebview HTMLのmeta経由で渡す。
 
+Sidebarは`git-lines-sidebar` Activity Bar container内の`branchGraph.sidebarView`として独立したprovider/sessionを持つ。起動メニューと`Git Lines: Open in Sidebar`から開ける。graph messageの`presentation: sidebar`で一覧を28pxの1行表示にし、変更統計・補足metadataは一覧から隠す。通常表示のminimum widthは適用せず、実際のlane・operationの必要幅を残して件名を省略する。Detailは既存内容をWebview内の非modal popoverへ載せ、クリック行の上下の空きに応じて配置し、内部をスクロール可能にする。外側クリック、Esc、viewのフォーカス喪失、graphスクロール・更新で閉じる。閉じた後や選択変更後の古いDetail応答は破棄する。Editor / bottom panelの通常Detail配置は維持する。
+
 読み込みの工程計測、ページ・OID・Reflogキャッシュの有効条件、更新通知の集約は[history-performance.md](history-performance.md)を参照する。Density変更は保存済みsnapshotで再描画し、手動更新はキャッシュを破棄する。読み込み中のwatch通知は捨てず、完了後に再確認する。
 
 1. ステータスバーまたは`Git Lines: Open`のQuick Pickでeditor / bottom panelを選び、複数workspace folderがあればrepositoryを選ぶ。`Open in Editor` / `Open in Panel`コマンドは表示先選択を省略する。Panel tabを直接開いた場合はactive fileのworkspace、次に最初のfolderを候補とし、folderがなければ案内を表示する。

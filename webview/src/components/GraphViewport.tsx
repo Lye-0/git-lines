@@ -14,6 +14,7 @@ import { operationAnnotationLabel } from './operationPresentation';
 
 interface Props {
   header?: ReactNode;
+  compactSidebar?: boolean;
   layout: GraphLayout;
   filter: string;
   selected?: string;
@@ -27,7 +28,7 @@ interface Props {
   onLoadMore: () => void;
 }
 
-export function GraphViewport({ header, layout, filter, selected, selectedWorkingTree, selectedEvent, showWorkingTreeStats = true, onSelect, onSelectWorkingTree, onSelectEvent, loading, onLoadMore }: Props) {
+export function GraphViewport({ compactSidebar = false, header, layout, filter, selected, selectedWorkingTree, selectedEvent, showWorkingTreeStats = true, onSelect, onSelectWorkingTree, onSelectEvent, loading, onLoadMore }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const loadGate = useRef(true);
@@ -36,7 +37,7 @@ export function GraphViewport({ header, layout, filter, selected, selectedWorkin
   // rendered nodes are the source of truth for the width that the SVG needs;
   // using only a track's representative lane could either clip a later
   // segment or reserve width for a track with no visible segment.
-  const graphWidth = graphWidthForLayout(layout);
+  const graphWidth = graphWidthForLayout(layout, compactSidebar);
   const requiredChangesColumnStart = changesColumnStartForLayout(layout);
   // The graph/content boundary includes graph-side endpoint badges and the
   // operation labels rendered inside the SVG. This keeps those labels clear
@@ -44,7 +45,7 @@ export function GraphViewport({ header, layout, filter, selected, selectedWorkin
   // Keep the content and fixed changes columns usable at any viewport size;
   // the graph-scroll container provides horizontal scrolling below this
   // minimum instead of collapsing rows or hiding stats.
-  const canvasMinWidth = Math.max(TIMELINE_MIN_WIDTH, graphWidth + timelineContentWidthForLayout(layout));
+  const canvasMinWidth = compactSidebar ? graphWidth + 120 : Math.max(TIMELINE_MIN_WIDTH, graphWidth + timelineContentWidthForLayout(layout));
   // Use the scrollable canvas width for event labels as well. A narrow
   // viewport must not make an otherwise readable event label compact before
   // the user has a chance to scroll horizontally.

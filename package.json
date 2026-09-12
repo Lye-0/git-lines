@@ -39,6 +39,7 @@
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
+      { "command": "branchGraph.openSidebar", "title": "Git Lines: Open in Sidebar" },
       {
         "command": "branchGraph.open",
         "title": "Git Lines: Open"
@@ -90,6 +91,7 @@
       }
     },
     "viewsContainers": {
+      "activitybar": [{ "id": "git-lines-sidebar", "title": "Git Lines", "icon": "resources/git-lines.svg" }],
       "panel": [
         {
           "id": "git-lines",
@@ -99,6 +101,7 @@
       ]
     },
     "views": {
+      "git-lines-sidebar": [{ "type": "webview", "id": "branchGraph.sidebarView", "name": "Git Lines" }],
       "git-lines": [
         {
           "type": "webview",

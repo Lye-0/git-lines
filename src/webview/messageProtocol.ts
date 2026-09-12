@@ -15,6 +15,7 @@ export type ExtensionToWebviewMessage =
   | {
       type: 'graph';
       requestId?: number;
+      presentation?: 'standard' | 'sidebar';
       layout: GraphLayout;
       repository: RepositoryInfo;
       currentBranch?: string;

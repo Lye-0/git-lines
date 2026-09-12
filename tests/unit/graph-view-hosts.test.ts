@@ -215,6 +215,31 @@ describe('graph launch locations', () => {
 });
 
 describe('shared editor/panel graph session', () => {
+  it('opens an independent sidebar view with compact presentation', async () => {
+    const sidebar = new GraphViewProvider(context(), 'sidebar');
+    const view = host();
+    sidebar.resolveWebviewView(viewOf(view));
+    await sidebar.open('C:/a');
+    expect(mock.execute).toHaveBeenCalledWith('branchGraph.sidebarView.focus');
+    await view.webview.incoming.fire({ type: 'ready' });
+    expect(view.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'sidebar', layout: { rowHeight: 28 } });
+    const panel = new GraphViewProvider(context());
+    const bottom = host();
+    panel.resolveWebviewView(viewOf(bottom));
+    await bottom.webview.incoming.fire({ type: 'ready' });
+    expect(bottom.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'standard', layout: { rowHeight: 38 } });
+    sidebar.dispose();
+    panel.dispose();
+  });
+
+  it('routes the sidebar command to its provider', async () => {
+    const panel = new GraphViewProvider(context());
+    const sidebar = new GraphViewProvider(context(), 'sidebar');
+    await openGraph(context(), panel, 'sidebar', sidebar);
+    expect(mock.execute).toHaveBeenCalledWith('branchGraph.sidebarView.focus');
+    expect(panels).toHaveLength(0);
+    panel.dispose(); sidebar.dispose();
+  });
   it('changes density without Git reads or clearing Detail', async () => {
     const surface = webview();
     const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
