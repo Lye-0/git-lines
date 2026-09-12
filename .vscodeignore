@@ -2,6 +2,7 @@
 .git/
 .github/
 agent-knowledge/
+docs/design/
 .gitignore
 mise.toml
 pnpm-workspace.yaml

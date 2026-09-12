@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "git-lines",
   "license": "MIT",
+  "icon": "resources/icon-v1.png",
   "engines": {
     "vscode": "^1.90.0"
   },
