@@ -26,6 +26,12 @@ Amend・Cherry-pick・Rebase などの操作は、reflog や commit 本文など
 - Detached HEAD と複数 worktree の付随表示
 - 読み取り専用（checkout / merge / rebase などは実行しない）
 
+### Display options
+
+ステータスバーの **Git Lines** から、メイン画面・下部パネル・左サイドバーを選べます。左サイドバーはレーン間隔を狭め、コミットの点に沿った1行表示にしています。変更量などの詳細はクリックで開く吹き出しに表示し、外側クリックまたはEscで閉じられます。
+
+メイン画面・下部パネルの初期Densityは **Compact** です。履歴の読み込み・追加取得を高速化し、長距離の接続線や列位置も見やすく調整しました。
+
 ## Visual Overview
 
 Git Lines全体の見え方です。個別のGit操作の意味は、後ろの各 accordion で説明します。
@@ -375,14 +381,14 @@ orphan branch は、既存履歴とは独立した root を持つ通常 branch �
 
 VS Code 1.90以降と、PATHから実行できるGitが必要です。Git repositoryのfolderを開き、Workspace Trustを有効にして利用します。Remote Workspaceでは、その接続先にGitが必要です。仮想workspace（Git CLIで読めるファイルがない環境）は対象外です。
 
-1. ステータスバーの `Git Lines`、または Command Palette の `Git Lines: Open` から、`Open in Editor`（メイン画面）／`Open in Panel`（下部パネル）を選びます。複数folderを開いている場合は続けてrepositoryを選びます。
-2. ヘッダーで Reflog の表示、`Comfortable / Compact` 密度、Refresh を切り替えます。
-3. commit または operation を選ぶと Detail Panel が開きます。
+1. ステータスバーの `Git Lines`、または Command Palette の `Git Lines: Open` から、`Open in Editor`（メイン画面）／`Open in Panel`（下部パネル）／`Open in Sidebar`（左サイドバー）を選びます。複数folderを開いている場合は続けてrepositoryを選びます。
+2. ヘッダーで Reflog の表示やRefreshを操作します。メイン画面・下部パネルでは `Compact / Comfortable` 密度も選べます。
+3. commit または operation を選ぶと詳細が開きます（左サイドバーでは吹き出し表示）。
 4. 初期表示は 30 commit です。下へスクロールすると残りが少なくなった時点で追加されます（`Load more` も利用できます）。
 
-VSIXからインストールする場合は、Command Paletteの `Extensions: Install from VSIX...` で `git-lines-0.1.0.vsix` を選びます。
+VSIXからインストールする場合は、Command Paletteの `Extensions: Install from VSIX...` で `git-lines-1.0.0.vsix` を選びます。
 
-下部パネルでは「ターミナル」「出力」などと並ぶ `Git Lines` タブに表示します。どちらの表示先でも同じグラフ・Reflog・Detailを利用できます。Command Paletteの `Git Lines: Open in Editor` / `Git Lines: Open in Panel` から表示先を直接指定することもできます。
+下部パネルでは「ターミナル」「出力」などと並ぶ `Git Lines` タブ、左サイドバーではアクティビティバーの専用アイコンから表示します。どの表示先でも同じグラフ・Reflog・詳細情報を利用できます。Command Paletteの `Git Lines: Open in Editor` / `Git Lines: Open in Panel` / `Git Lines: Open in Sidebar` から表示先を直接指定することもできます。
 
 グラフは読み取り専用です。checkout、branch 作成、merge、rebase、push など Git を変更する操作は提供しません。
 
@@ -410,7 +416,7 @@ code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 | Setting | Default | 内容 |
 | --- | --- | --- |
 | `branchGraph.showReflog` | `true` | PREVIOUS / overlay など reflog 依存の表示 |
-| `branchGraph.density` | `comfortable` | 行密度（`comfortable` / `compact`） |
+| `branchGraph.density` | `compact` | 行密度（`comfortable` / `compact`） |
 | `branchGraph.initialCommitCount` | `30` | 最初に読み込む commit 数 |
 | `branchGraph.loadMoreCount` | `10` | 追加読み込み件数 |
 | `branchGraph.primaryBranch` | `null` | 主レーンにする branch（未指定時は自動） |
