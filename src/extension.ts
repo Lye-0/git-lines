@@ -7,7 +7,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const panel = new GraphViewProvider(context);
   const launcher = vscode.window.createStatusBarItem('gitLines.open', vscode.StatusBarAlignment.Left, 40);
   launcher.name = 'Git Lines';
-  launcher.text = 'Git Lines $(chevron-down)';
+  launcher.text = 'Git Lines';
   launcher.tooltip = 'Open Git Lines in the editor or bottom panel';
   launcher.accessibilityInformation = { label: 'Git Lines: choose editor or panel' };
   launcher.command = 'branchGraph.open';
