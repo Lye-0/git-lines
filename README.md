@@ -371,18 +371,16 @@ orphan branch は、既存履歴とは独立した root を持つ通常 branch �
 
 ## 使い方
 
-1. ステータスバーの `Git Lines ⌄`、または Command Palette の `Git Lines: Open` から、`Open in Editor`（メイン画面）／`Open in Panel`（下部パネル）を選びます。複数folderを開いている場合は続けてrepositoryを選びます。
+VS Code 1.90以降と、PATHから実行できるGitが必要です。Git repositoryのfolderを開き、Workspace Trustを有効にして利用します。Remote Workspaceでは、その接続先にGitが必要です。仮想workspace（Git CLIで読めるファイルがない環境）は対象外です。
+
+1. ステータスバーの `Git Lines`、または Command Palette の `Git Lines: Open` から、`Open in Editor`（メイン画面）／`Open in Panel`（下部パネル）を選びます。複数folderを開いている場合は続けてrepositoryを選びます。
 2. ヘッダーで Reflog の表示、`Comfortable / Compact` 密度、Refresh を切り替えます。
 3. commit または operation を選ぶと Detail Panel が開きます。
 4. 初期表示は 30 commit です。下へスクロールすると残りが少なくなった時点で追加されます（`Load more` も利用できます）。
 
-Marketplace 未公開です。手元では Extension Development Host で開けます。
+VSIXからインストールする場合は、Command Paletteの `Extensions: Install from VSIX...` で `git-lines-0.1.0.vsix` を選びます。
 
 下部パネルでは「ターミナル」「出力」などと並ぶ `Git Lines` タブに表示します。どちらの表示先でも同じグラフ・Reflog・Detailを利用できます。Command Paletteの `Git Lines: Open in Editor` / `Git Lines: Open in Panel` から表示先を直接指定することもできます。
-
-```powershell
-code --extensionDevelopmentPath="<path-to-git-lines>"
-```
 
 グラフは読み取り専用です。checkout、branch 作成、merge、rebase、push など Git を変更する操作は提供しません。
 
@@ -396,6 +394,14 @@ pnpm build
 ```
 
 一括確認は `pnpm check`（lint + test + build）です。Extension Host の bundle は `dist/extension.js`、Webview は `dist/webview` です。watch 用の `pnpm test:watch` と Webview 開発用の `pnpm dev:webview` もあります。
+
+ビルド後、開発用のVS Codeウィンドウを起動できます。
+
+```powershell
+code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
+```
+
+`pnpm package` はビルドを実行してVSIXを生成します。公開処理は行いません。
 
 ## Settings
 

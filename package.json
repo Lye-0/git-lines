@@ -1,15 +1,36 @@
 {
   "name": "git-lines",
   "displayName": "Git Lines",
-  "description": "Read-only Git branch graph with stable visual lanes.",
+  "description": "Read-only Git graph with stable lanes, reflog history, and evidence-based operation overlays.",
   "version": "0.1.0",
   "publisher": "git-lines",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Lye-0/git-lines.git"
+  },
+  "homepage": "https://github.com/Lye-0/git-lines#readme",
+  "bugs": {
+    "url": "https://github.com/Lye-0/git-lines/issues"
+  },
   "icon": "resources/icon-v1.png",
+  "pricing": "Free",
   "engines": {
     "vscode": "^1.90.0"
   },
-  "categories": ["Other"],
+  "categories": ["SCM Providers", "Visualization"],
+  "keywords": ["git", "graph", "history", "reflog", "rebase", "visualization"],
+  "extensionKind": ["workspace"],
+  "capabilities": {
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "Git Lines reads repository files using the Git CLI in a local or remote workspace."
+    },
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Trust the workspace to let Git Lines read the repository using Git."
+    }
+  },
   "activationEvents": [
     "onCommand:branchGraph.open",
     "onCommand:branchGraph.refresh",
@@ -95,7 +116,8 @@
     "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.webview.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "package": "pnpm build && vsce package --no-dependencies --no-rewrite-relative-links --allow-missing-repository",
+    "vscode:prepublish": "pnpm build",
+    "package": "vsce package --no-dependencies --githubBranch main",
     "check": "pnpm lint && pnpm test && pnpm build"
   },
   "devDependencies": {

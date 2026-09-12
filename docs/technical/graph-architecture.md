@@ -4,6 +4,8 @@
 
 Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モデルと表示用のレイアウトモデルを分離してWebviewへ渡す。初回版はDesktop / Remote Workspace向けの読み取り専用拡張であり、Gitの状態を変更するコマンドは実行しない。
 
+拡張の実行先はmanifestの`extensionKind: ["workspace"]`で指定する。Git CLIとrepository filesystemへアクセスするため、virtual workspaceとuntrusted workspaceは非対応と明示している。配布時は`vscode:prepublish`でbundleを生成し、`.vscodeignore`の許可リストでruntime assets・公開用資料・ライセンスだけをVSIXに含める。
+
 ## 現在の構成
 
 - `src/git/` — 引数配列でGit CLIを実行し、log・refs・status・reflog・worktree・pseudo refsを機械可読形式からパースする。
