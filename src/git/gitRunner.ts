@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { BatchObjectReader, type ObjectReader } from './objectReader.js';
 
 export interface GitRunOptions {
   cwd: string;
@@ -28,9 +29,25 @@ export class GitCommandError extends Error {
 
 /** Runs Git without invoking a shell. This keeps repository paths and ref names opaque arguments. */
 export class GitRunner {
-  public constructor(private readonly gitExecutable = 'git') {}
+  public constructor(private readonly gitExecutable = 'git', private readonly onTiming?: (command: string, ms: number, bytes: number, ok: boolean) => void) {}
 
-  public run(args: string[], options: GitRunOptions): Promise<GitRunResult> {
+  public openObjectReader(options: GitRunOptions): ObjectReader {
+    return new BatchObjectReader(this.gitExecutable, options.cwd, options.timeoutMs ?? 12000,
+      (ms, bytes, ok) => this.onTiming?.('cat-file', ms, bytes, ok));
+  }
+
+  public async run(args: string[], options: GitRunOptions): Promise<GitRunResult> {
+    const started = performance.now();
+    let result: GitRunResult | undefined;
+    try {
+      result = await this.execute(args, options);
+      return result;
+    } finally {
+      this.onTiming?.(args[0] ?? 'git', performance.now() - started, Buffer.byteLength(result?.stdout ?? ''), result?.exitCode === 0);
+    }
+  }
+
+  private execute(args: string[], options: GitRunOptions): Promise<GitRunResult> {
     return new Promise((resolve, reject) => {
       const child = spawn(this.gitExecutable, args, {
         cwd: options.cwd,

@@ -6,9 +6,10 @@ import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../..
 const mock = vi.hoisted(() => ({
   folders: [{ name: 'a', uri: { fsPath: 'C:/a' } }],
   choices: [] as Array<number | undefined>,
-  readSnapshot: vi.fn(), readCommitDetail: vi.fn(),
+  density: undefined as 'comfortable' | 'compact' | undefined,
+  readSnapshot: vi.fn(), readCommitDetail: vi.fn(), clearCache: vi.fn(),
   pick: vi.fn(), info: vi.fn(), execute: vi.fn(),
-  watchers: [] as Array<{ dispose: ReturnType<typeof vi.fn> }>,
+  watchers: [] as Array<{ dispose: ReturnType<typeof vi.fn>; onChange: (reason: string) => void }>,
 }));
 
 function event<T>() {
@@ -55,17 +56,19 @@ vi.mock('vscode', () => ({
   },
   workspace: {
     get workspaceFolders() { return mock.folders; },
-    getConfiguration: () => ({ get: (_key: string, fallback: unknown) => fallback }),
+    getConfiguration: () => ({ get: (key: string, fallback: unknown) => key === 'density' ? mock.density ?? fallback : fallback }),
   },
   commands: { executeCommand: mock.execute },
 }));
 vi.mock('../../src/git/gitClient.js', () => ({ GitClient: class {
   readSnapshot = mock.readSnapshot;
   readCommitDetail = mock.readCommitDetail;
+  clearCache = mock.clearCache;
 } }));
 vi.mock('../../src/repository/repositoryWatcher.js', () => ({ RepositoryWatcher: class {
   dispose = vi.fn();
-  constructor() { mock.watchers.push(this); }
+  onChange: (reason: string) => void;
+  constructor(_dir: string, options: { onChange: (reason: string) => void }) { this.onChange = options.onChange; mock.watchers.push(this); }
 } }));
 vi.mock('../../src/webview/webviewHtml.js', () => ({ getWebviewHtml: () => '<html>graph</html>' }));
 
@@ -98,6 +101,7 @@ beforeEach(() => {
   mock.watchers.length = 0;
   mock.folders = [{ name: 'a', uri: { fsPath: 'C:/a' } }];
   mock.choices = [];
+  mock.density = undefined;
   mock.pick.mockImplementation(async (items: unknown[]) => {
     const choice = mock.choices.shift();
     return choice === undefined ? undefined : items[choice];
@@ -213,6 +217,85 @@ describe('graph launch locations', () => {
 });
 
 describe('shared editor/panel graph session', () => {
+  it('respects an explicitly configured Comfortable density', async () => {
+    mock.density = 'comfortable';
+    const surface = webview();
+    const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    await surface.incoming.fire({ type: 'ready' });
+    expect(surface.messages.find((message) => message.type === 'graph')).toMatchObject({ density: 'comfortable', layout: { rowHeight: 38 } });
+    session.dispose();
+  });
+  it('opens an independent sidebar view with compact presentation', async () => {
+    const sidebar = new GraphViewProvider(context(), 'sidebar');
+    const view = host();
+    sidebar.resolveWebviewView(viewOf(view));
+    await sidebar.open('C:/a');
+    expect(mock.execute).toHaveBeenCalledWith('branchGraph.sidebarView.focus');
+    await view.webview.incoming.fire({ type: 'ready' });
+    expect(view.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'sidebar', layout: { rowHeight: 28, laneWidth: 22 } });
+    const panel = new GraphViewProvider(context());
+    const bottom = host();
+    panel.resolveWebviewView(viewOf(bottom));
+    await bottom.webview.incoming.fire({ type: 'ready' });
+    expect(bottom.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'standard', density: 'compact', layout: { rowHeight: 30, laneWidth: 34 } });
+    sidebar.dispose();
+    panel.dispose();
+  });
+
+  it('routes the sidebar command to its provider', async () => {
+    const panel = new GraphViewProvider(context());
+    const sidebar = new GraphViewProvider(context(), 'sidebar');
+    await openGraph(context(), panel, 'sidebar', sidebar);
+    expect(mock.execute).toHaveBeenCalledWith('branchGraph.sidebarView.focus');
+    expect(panels).toHaveLength(0);
+    panel.dispose(); sidebar.dispose();
+  });
+  it('changes density without Git reads or clearing Detail', async () => {
+    const surface = webview();
+    const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    await surface.incoming.fire({ type: 'ready' });
+    mock.readSnapshot.mockClear();
+    surface.messages.length = 0;
+    await surface.incoming.fire({ type: 'setDensity', density: 'compact' });
+    expect(mock.readSnapshot).not.toHaveBeenCalled();
+    expect(surface.messages.find((message) => message.type === 'graph')).toMatchObject({ density: 'compact', layout: { rowHeight: 30 } });
+    expect(surface.messages.some((message) => message.type === 'detail')).toBe(false);
+    session.dispose();
+  });
+
+  it('coalesces watcher changes during a read and retains the final update', async () => {
+    const surface = webview();
+    const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    await surface.incoming.fire({ type: 'ready' });
+    let complete!: (snapshot: RepositorySnapshot) => void;
+    mock.readSnapshot.mockImplementationOnce(() => new Promise<RepositorySnapshot>((resolve) => { complete = resolve; }));
+    const refresh = session.refresh();
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    mock.watchers[0].onChange('refs/heads/main');
+    mock.watchers[0].onChange('logs/HEAD');
+    await surface.incoming.fire({ type: 'setDensity', density: 'compact' });
+    complete(snapshot());
+    await refresh;
+    expect(mock.readSnapshot).toHaveBeenCalledTimes(3);
+    expect(surface.messages.filter((message) => message.type === 'graph').at(-1)).toMatchObject({ density: 'compact' });
+    session.dispose();
+  });
+
+  it('defers forced cache invalidation until a pending read finishes', async () => {
+    const surface = webview();
+    const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    let complete!: (snapshot: RepositorySnapshot) => void;
+    mock.readSnapshot.mockImplementationOnce(() => new Promise<RepositorySnapshot>((resolve) => { complete = resolve; }));
+    const ready = surface.incoming.fire({ type: 'ready' });
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    await session.refresh();
+    expect(mock.clearCache).not.toHaveBeenCalled();
+    complete(snapshot());
+    await ready;
+    expect(mock.clearCache).toHaveBeenCalledTimes(1);
+    expect(mock.readSnapshot).toHaveBeenCalledTimes(2);
+    session.dispose();
+  });
   it('keeps graph semantics, Reflog, density, pagination and Detail messages in both hosts', async () => {
     mock.readSnapshot.mockImplementation(async (root: string) => ({ ...snapshot(root), hasMore: true }));
     const editor = GraphPanel.open(context(), 'C:/a');

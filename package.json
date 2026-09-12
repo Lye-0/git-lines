@@ -2,7 +2,7 @@
   "name": "git-lines",
   "displayName": "Git Lines",
   "description": "Read-only Git graph with stable lanes, reflog history, and evidence-based operation overlays.",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "lye-0",
   "license": "MIT",
   "repository": {
@@ -39,6 +39,7 @@
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
+      { "command": "branchGraph.openSidebar", "title": "Git Lines: Open in Sidebar" },
       {
         "command": "branchGraph.open",
         "title": "Git Lines: Open"
@@ -84,12 +85,13 @@
         "branchGraph.density": {
           "type": "string",
           "enum": ["comfortable", "compact"],
-          "default": "comfortable",
+          "default": "compact",
           "description": "Default graph row density."
         }
       }
     },
     "viewsContainers": {
+      "activitybar": [{ "id": "git-lines-sidebar", "title": "Git Lines", "icon": "resources/git-lines.svg" }],
       "panel": [
         {
           "id": "git-lines",
@@ -99,6 +101,7 @@
       ]
     },
     "views": {
+      "git-lines-sidebar": [{ "type": "webview", "id": "branchGraph.sidebarView", "name": "Git Lines" }],
       "git-lines": [
         {
           "type": "webview",

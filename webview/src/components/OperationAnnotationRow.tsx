@@ -2,10 +2,10 @@ import type { CSSProperties } from 'react';
 import type { OverlayRelation } from '../../../src/model/graphModel';
 import { operationAnnotationLabel, operationAnnotationParts, operationAnnotationTooltip } from './operationPresentation';
 
-export function OperationAnnotationRow({ relation, row, rowHeight, hidden = false, selected = false, onSelectEvent }: { relation: OverlayRelation; row: number; rowHeight: number; hidden?: boolean; selected?: boolean; onSelectEvent: (id: string) => void }) {
+export function OperationAnnotationRow({ contentInset, relation, row, rowHeight, hidden = false, selected = false, onSelectEvent }: { contentInset?: number; relation: OverlayRelation; row: number; rowHeight: number; hidden?: boolean; selected?: boolean; onSelectEvent: (id: string) => void }) {
   const label = operationAnnotationLabel(relation);
   const tooltip = operationAnnotationTooltip(relation);
-  const style = { top: row * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px` } as CSSProperties;
+  const style = { ...(contentInset === undefined ? {} : { left: contentInset, width: `calc(100% - ${contentInset}px)` }), top: row * rowHeight, minHeight: rowHeight, '--row-height': `${rowHeight}px` } as CSSProperties;
   const content = <div className={`row-content operation-annotation-row-content${selected ? ' selected' : ''}`}>
     <span className="operation-annotation-detail" title={tooltip}>{operationAnnotationParts(relation).map((part, index) => (
       <span key={index} className={part.className}>{part.text}</span>

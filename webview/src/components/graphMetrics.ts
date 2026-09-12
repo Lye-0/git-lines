@@ -73,9 +73,9 @@ export function timelineContentWidthForLayout(layout: Pick<GraphLayout, 'nodes' 
   return Math.max(TIMELINE_MIN_CONTENT_WIDTH, changesColumnStartForLayout(layout) + CHANGES_COLUMN_WIDTH + 11);
 }
 
-export function graphWidthForLayout(layout: Pick<GraphLayout, 'nodes' | 'laneWidth'> & Partial<Pick<GraphLayout, 'rowHeight' | 'historyRelations' | 'refMovementRelations' | 'rebaseRelations' | 'cherryPickGroupRelations' | 'rewriteCollapseRelations' | 'historyRelationPaths' | 'refMovementPaths' | 'rebaseRelationPaths' | 'cherryPickGroupPaths' | 'rewriteCollapsePaths'>>): number {
+export function graphWidthForLayout(layout: Pick<GraphLayout, 'nodes' | 'laneWidth'> & Partial<Pick<GraphLayout, 'rowHeight' | 'historyRelations' | 'refMovementRelations' | 'rebaseRelations' | 'cherryPickGroupRelations' | 'rewriteCollapseRelations' | 'historyRelationPaths' | 'refMovementPaths' | 'rebaseRelationPaths' | 'cherryPickGroupPaths' | 'rewriteCollapsePaths'>>, compactSidebar = false): number {
   const maxLane = Math.max(0, ...layout.nodes.map((node) => node.lane ?? 0));
-  const laneWidth = Math.max(136, (maxLane + 1) * layout.laneWidth + 48);
+  const laneWidth = compactSidebar ? 42 + maxLane * layout.laneWidth : Math.max(136, (maxLane + 1) * layout.laneWidth + 48);
   let required = laneWidth;
   const byId = new Map(layout.nodes.map((node) => [node.id, node]));
   let badgeExtent = 0;

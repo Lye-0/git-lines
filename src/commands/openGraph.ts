@@ -2,12 +2,13 @@ import * as vscode from 'vscode';
 import { GraphPanel } from '../webview/graphPanel.js';
 import type { GraphViewProvider } from '../webview/graphViewProvider.js';
 
-export type GraphLocation = 'editor' | 'panel';
+export type GraphLocation = 'editor' | 'panel' | 'sidebar';
 
-export async function openGraph(context: vscode.ExtensionContext, panel: GraphViewProvider, location?: GraphLocation): Promise<void> {
+export async function openGraph(context: vscode.ExtensionContext, panel: GraphViewProvider, location?: GraphLocation, sidebar?: GraphViewProvider): Promise<void> {
   const destination = location ?? (await vscode.window.showQuickPick([
     { label: '$(layout) Open in Editor', description: 'メイン画面で開く', location: 'editor' as const },
     { label: '$(layout-panel) Open in Panel', description: '下部パネルで開く', location: 'panel' as const },
+    { label: '$(layout-sidebar-left) Open in Sidebar', description: '左サイドバーで開く', location: 'sidebar' as const },
   ], { placeHolder: 'Git Lines — 表示先を選択', matchOnDescription: true }))?.location;
   if (!destination) return;
 
@@ -25,6 +26,7 @@ export async function openGraph(context: vscode.ExtensionContext, panel: GraphVi
     if (!selected) return;
     root = selected.root;
   }
-  if (destination === 'panel') await panel.open(root);
+  if (destination === 'sidebar') await sidebar?.open(root);
+  else if (destination === 'panel') await panel.open(root);
   else GraphPanel.open(context, root);
 }

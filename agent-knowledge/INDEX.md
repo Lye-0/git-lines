@@ -12,6 +12,22 @@
 - files: `src/layout/laneLayout.ts`, `src/layout/edgeRouter.ts`, `tests/unit/pagination-layout.test.ts`
 - memory: `agent-knowledge/entries/2026-09-12-historical-boundary-lane-c2e85b.md`
 
+### Separate first-open cost from validated cache reuse
+- id: `rm-20260912-history-cache-measurement`
+- type: `constraint`
+- maturity: `candidate`
+- tags: `performance`, `cache`, `invalidation`
+- files: `src/git/gitClient.ts`, `src/webview/graphViewSession.ts`, `docs/technical/history-performance.md` …
+- memory: `agent-knowledge/entries/2026-09-12-history-cache-measurement-e631f4.md`
+
+### Reuse the object process across ancestor traversal rounds
+- id: `rm-20260912-object-reader-process-reuse`
+- type: `pattern`
+- maturity: `candidate`
+- tags: `performance`, `evidence`, `cat-file`
+- files: `src/git/gitClient.ts`, `src/git/objectReader.ts`, `src/git/parsers/commitObjectParser.ts` …
+- memory: `agent-knowledge/entries/2026-09-12-object-reader-process-reuse-903fad.md`
+
 ### Replacing pagination boundaries leaves stale row reservations
 - id: `rm-20260912-pagination-boundary-holes`
 - type: `failure`
@@ -27,6 +43,16 @@
 - tags: `reflog`, `pagination`, `performance`
 - files: `src/git/gitClient.ts`, `src/model/graphBuilder.ts`, `tests/integration/reflog-pagination.test.ts` …
 - memory: `agent-knowledge/entries/2026-09-12-reflog-page-boundary-4bd792.md`
+
+## graph-routing
+
+### Conditionally adopt bounded vertical corridors for long parent edges
+- id: `rm-20260913-bounded-long-parent-routing`
+- type: `decision`
+- maturity: `candidate`
+- tags: `parent`, `long-edge`, `node-avoidance`
+- files: `src/layout/edgeRouter.ts`, `tests/unit/long-parent-routing.test.ts`, `docs/technical/graph-architecture.md`
+- memory: `agent-knowledge/entries/2026-09-13-bounded-long-parent-routing-582cea.md`
 
 ## Search guidance
 

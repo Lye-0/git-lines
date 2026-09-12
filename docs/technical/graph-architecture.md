@@ -38,6 +38,8 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 DAG parent edgeはAnnotation Row挿入後の最終node座標で回避判定する。`src/layout/nodeGeometry.ts`の共通mark / selection ring外形に余白を加え、端点以外のcurrent / historical commitと干渉するBezierだけを横方向へ調整する。曲線の再帰分割による包絡判定を使い、端点、Y方向の制御点、lane、parent順序、色、Operation Overlayは維持する。選択前からring分を確保するため、選択操作で経路は変化しない。
 
+通常のparent pathで端点のXが異なり、最終Y距離が8行以上なら、先に縦の直線と上下各0.75行の短い接続曲線を試す。source/targetのXとそれぞれ±半laneの最大6候補を、全segmentの曲線包絡でnode/ringとの非干渉を確認して採用する。安全な候補がなければ従来のBezier回避に戻す。同一X、短い接続、Rebase event挿入の分割path、Working TreeやOperation Overlayにはこの変更を適用しない。`EdgePath.d`は1本のSVG path内に複数のC segmentを持ち得る。lane allocator、node row、parent edgeの本数・順序・色には影響しない。
+
 1. rowは全可視nodeで一意である。
 2. parent nodeはchildより下に置く。timestamp逆転があってもDAG制約を優先する。
 3. ready queueのcommitter date、kind、stable idを用いて同じ入力から同じ順序を得る。
@@ -70,6 +72,12 @@ Linked worktreeは追加の`working-tree` nodeやtrackを作らない。`GitClie
 表示先ごとに1つのsessionを保持し、同じrepositoryの再表示は既存viewをrevealする。各sessionはReflog・density・pagination・Detail・watcherを所有し、repository切替時は旧sessionをdisposeしてから新しいHTMLとlistenerを設定する。dispose後に完了した非同期読込はwatcher作成や新しいviewへの送信を行わない。下部パネルは非表示時もdocumentを保持し、VS Codeがviewをdisposeした場合だけsessionを解放する。
 
 ToolbarはGraphViewportのスクロール領域内でcanvasより前に配置し、縦スクロールでグラフとともに画面外へ移動する。Detailはその領域の外に置く。操作欄は1行を維持し、実際のグラフ領域の幅が1100px以下ならブランド（アイコン・名称・repository path）を隠す。600px未満では操作欄にも横スクロールでアクセスできる。EditorのタブとToolbarには同じ`resources/icon-v1.png`を使用し、Toolbar用URLはWebview HTMLのmeta経由で渡す。
+
+Sidebarは`git-lines-sidebar` Activity Bar container内の`branchGraph.sidebarView`として独立したprovider/sessionを持つ。起動メニューと`Git Lines: Open in Sidebar`から開ける。graph messageの`presentation: sidebar`で一覧を28pxの1行表示にし、変更統計・補足metadataは一覧から隠す。通常表示のminimum widthは適用せず、実際のlane・operationの必要幅を残して件名を省略する。Detailは既存内容をWebview内の非modal popoverへ載せ、クリック行の上下の空きに応じて配置し、内部をスクロール可能にする。外側クリック、Esc、viewのフォーカス喪失、graphスクロール・更新で閉じる。閉じた後や選択変更後の古いDetail応答は破棄する。Editor / bottom panelの通常Detail配置は維持する。
+
+読み込みの工程計測、ページ・OID・Reflogキャッシュの有効条件、更新通知の集約は[history-performance.md](history-performance.md)を参照する。Density変更は保存済みsnapshotで再描画し、手動更新はキャッシュを破棄する。読み込み中のwatch通知は捨てず、完了後に再確認する。
+
+Sidebarだけlane間隔を22px（通常表示は34px）にする。本文の開始位置は各nodeのXとselection ring余白に合わせ、同じ行を通るDAG pathのcontrol hullより右を確保する。Operation Overlayの範囲・group表示とannotation行は従来のgraph幅を確保して重なりを避ける。本文の最低幅もcanvas幅に反映する。通常のeditor/panelでは行ごとのinsetを使わず、従来の列揃えを維持する。
 
 1. ステータスバーまたは`Git Lines: Open`のQuick Pickでeditor / bottom panelを選び、複数workspace folderがあればrepositoryを選ぶ。`Open in Editor` / `Open in Panel`コマンドは表示先選択を省略する。Panel tabを直接開いた場合はactive fileのworkspace、次に最初のfolderを候補とし、folderがなければ案内を表示する。
 2. `GitClient.readSnapshot`がroot、refs、`HEAD`を含む最新30 commit、各worktree status、operation、reflog、shallow boundaryを読み込む。`git log --numstat`の一括レスポンスから可視commitごとの変更パス数とtracked additions/deletionsを保持し、通常のcommit単位の追加Git呼び出しは行わない。完了Cherry-pick / Revertのsource / target evidenceに限り、対象to commit本文を一括で追加取得する。statusからWorking Treeの変更パス数を保持し、各worktreeにつき一度の`git diff --numstat HEAD`でtracked additions/deletionsを取得する（unborn HEADではcached diffへfallback）。
