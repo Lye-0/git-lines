@@ -44,6 +44,16 @@
 - files: `src/git/gitClient.ts`, `src/model/graphBuilder.ts`, `tests/integration/reflog-pagination.test.ts` …
 - memory: `agent-knowledge/entries/2026-09-12-reflog-page-boundary-4bd792.md`
 
+## graph-routing
+
+### Conditionally adopt bounded vertical corridors for long parent edges
+- id: `rm-20260913-bounded-long-parent-routing`
+- type: `decision`
+- maturity: `candidate`
+- tags: `parent`, `long-edge`, `node-avoidance`
+- files: `src/layout/edgeRouter.ts`, `tests/unit/long-parent-routing.test.ts`, `docs/technical/graph-architecture.md`
+- memory: `agent-knowledge/entries/2026-09-13-bounded-long-parent-routing-582cea.md`
+
 ## Search guidance
 
 Use topic, tags, related paths, filenames, and text search such as `rg` to shortlist entries.

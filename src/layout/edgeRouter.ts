@@ -114,6 +114,33 @@ function routedParentCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, o
   }
 }
 
+/** Bounded alternative for long transitions; keep existing routing if no
+ * nearby vertical corridor clears every unrelated commit and selection ring. */
+function longParentPath(nodes: GraphNode[], from: GraphNode, to: GraphNode, options: EdgeRouterOptions): string | undefined {
+  const a = pointForNode(from, options), b = pointForNode(to, options);
+  const rowHeight = options.rowHeight ?? 38, laneWidth = options.laneWidth ?? 34;
+  if (b.y - a.y < rowHeight * 8 || a.x === b.x) return undefined;
+  const obstacles = nodes.filter((node) => node.id !== from.id && node.id !== to.id
+    && (node.kind === 'commit' || node.kind === 'reflog-commit')).map((node) => {
+    const point = pointForNode(node, options), mark = nodeMarkGeometry(node), ring = nodeRingGeometry(node);
+    return { center: { x: point.x + mark.center.x, y: point.y + mark.center.y },
+      radius: Math.max(mark.radius * (mark.shape === 'square' ? Math.SQRT2 : 1), ring.r) + DAG_NODE_CLEARANCE };
+  }).filter(({ center, radius }) => center.y + radius >= a.y && center.y - radius <= b.y);
+  const turn = rowHeight * 0.75;
+  const corridors = [...new Set([a.x, b.x, a.x + laneWidth / 2, a.x - laneWidth / 2, b.x + laneWidth / 2, b.x - laneWidth / 2])].filter((x) => x >= 0);
+  for (const x of corridors) {
+    const start = { x, y: a.y + turn }, end = { x, y: b.y - turn };
+    const curves: CubicCurve[] = [
+      { p0: a, p1: { x: a.x, y: a.y + turn / 2 }, p2: { x, y: start.y - turn / 2 }, p3: start },
+      { p0: start, p1: lerp(start, end, 1 / 3), p2: lerp(start, end, 2 / 3), p3: end },
+      { p0: end, p1: { x, y: end.y + turn / 2 }, p2: { x: b.x, y: b.y - turn / 2 }, p3: b },
+    ];
+    if (curves.some((curve) => obstacles.some(({ center, radius }) => intersectsDisk(curve, center, radius)))) continue;
+    return curves.map((curve, index) => index === 0 ? curvePath(curve) : curvePath(curve).replace(/^M [^C]+/, '')).join(' ');
+  }
+  return undefined;
+}
+
 function operationCurve(a: Point, b: Point): CubicCurve {
   const delta = Math.min(32, Math.max(8, Math.abs(b.y - a.y) * 0.16));
   return {
@@ -592,6 +619,10 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
     if (edge.type === 'working-tree') {
       const d = routeWorkingTreeEdge(nodes, from, to, a, b, laneWidth);
       return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
+    }
+    if (edge.type === 'parent') {
+      const d = longParentPath(nodes, from, to, options);
+      if (d) return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
     }
     // Keep long branch transitions close to the source/target rows. A
     // distance-proportional control point creates a wide braid when a branch
