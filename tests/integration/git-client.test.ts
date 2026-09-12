@@ -884,7 +884,8 @@ describe('GitClient integration fixture', () => {
     const oldLayoutNode = layout.nodes.find((node) => node.oid === oldTip);
     const currentLayoutNode = layout.nodes.find((node) => (node.kind === 'commit' || node.kind === 'reflog-commit') && node.oid === snapshot.workingTrees[0]?.headOid);
     const amendEvent = snapshot.historyEvents.find((event) => event.type === 'amend');
-    const baseLayoutNode = layout.nodes.find((node) => node.subject === 'base');
+    const baseOid = snapshot.commits.find((commit) => commit.subject === 'base')!.oid;
+    const baseLayoutNode = layout.nodes.find((node) => node.oid === baseOid);
     const historicalTrack = layout.tracks.find((track) => track.id === oldLayoutNode?.trackId);
 
     expect(oldNode?.kind).toBe('reflog-commit');
@@ -896,6 +897,8 @@ describe('GitClient integration fixture', () => {
     expect(oldLayoutNode?.lane).toBeGreaterThan(currentLayoutNode?.lane ?? -1);
     expect(historicalTrack?.color).toMatch(/^hsl\(220 8% 62%\)$/);
     expect(amendEvent?.boundaryOid).toBe(baseLayoutNode?.oid);
+    expect(baseLayoutNode?.kind).toBe('history-boundary');
+    expect(layout.edges.filter((edge) => edge.type === 'parent' && edge.toNodeId === baseLayoutNode?.id)).toHaveLength(2);
     expect(layout.nodes.find((node) => node.id === amendEvent?.id)).toBeUndefined();
     expect(currentLayoutNode?.row).toBeLessThan(oldLayoutNode?.row ?? Number.MAX_SAFE_INTEGER);
     expect(layout.historyRelationPaths).toEqual([expect.objectContaining({ relationId: amendEvent?.id, sourceNodeId: oldLayoutNode?.id, targetNodeId: currentLayoutNode?.id })]);

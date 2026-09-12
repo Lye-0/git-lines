@@ -228,9 +228,11 @@ describe('graph fact builder', () => {
     expect(commit?.linkedWorktrees).toEqual([expect.objectContaining({ path: 'C:/repo', currentWorktree: false })]);
   });
 
-  it('keeps a reachable commit normal even when it was loaded beyond the visible page', () => {
-    const facts = buildGraphFacts({ ...snapshot, visibleCommitCount: 1 });
-    expect(facts.nodes.find((node) => node.oid === oid('a'))?.kind).toBe('commit');
+  it('does not expose an evidence-only live ancestor until its page is requested', () => {
+    const facts = buildGraphFacts({ ...snapshot, visibleCommitCount: 1, hasMore: true });
+    expect(facts.nodes.some((node) => node.oid === oid('a') && (node.kind === 'commit' || node.kind === 'reflog-commit'))).toBe(false);
+    const expanded = buildGraphFacts({ ...snapshot, visibleCommitCount: 2 });
+    expect(expanded.nodes.find((node) => node.oid === oid('a'))?.kind).toBe('commit');
   });
 
   it('materializes every octopus parent without collapsing unrelated roots', () => {

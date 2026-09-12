@@ -111,7 +111,7 @@ export class GraphViewSession implements vscode.Disposable {
         rowHeight: this.density === 'compact' ? 30 : 38,
       });
       this.layoutState.set(layout);
-      this.output.appendLine(`refresh ${Date.now() - started}ms ${next.repository.root}`);
+      this.output.appendLine(`refresh ${Date.now() - started}ms ${next.repository.root} (limit=${this.commitLimit}, live=${next.visibleCommitCount}, evidence=${next.commits.length - next.visibleCommitCount}, nodes=${layout.nodes.length}, append=${isAppend})`);
       await this.send({
         type: 'graph',
         layout,

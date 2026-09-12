@@ -300,16 +300,18 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   const allReachableOids = reachableFromRefs(snapshot, allCommitMap, currentHeadRoots);
   const commits = options.showReflog === false
     ? visibleCommits.filter((commit) => allReachableOids.has(commit.oid))
-    : [...visibleCommits, ...snapshot.commits.slice(visibleCount).filter((commit) => !visibleOids.has(commit.oid))];
+    // Reflog evidence can include live ancestors beyond this page. Keep them
+    // for reachability analysis, but don't let them bypass normal pagination.
+    : [...visibleCommits, ...snapshot.commits.slice(visibleCount).filter((commit) => !visibleOids.has(commit.oid) && !allReachableOids.has(commit.oid))];
   const commitMap = new Map(commits.map((commit) => [commit.oid, commit]));
   const linkedWorktreesByHead = new Map<string, WorkingTreeState[]>();
   for (const tree of snapshot.workingTrees) {
     if (tree.worktreeId === currentSelection?.tree.worktreeId || !tree.headOid) continue;
     linkedWorktreesByHead.set(tree.headOid, [...(linkedWorktreesByHead.get(tree.headOid) ?? []), tree]);
   }
-  const reachableOids = options.showReflog === false ? allReachableOids : reachableFromRefs(snapshot, commitMap, currentHeadRoots);
-  const localReachable = reachableFromRefType(snapshot, commitMap, 'local');
-  const remoteReachable = reachableFromRefType(snapshot, commitMap, 'remote');
+  const reachableOids = allReachableOids;
+  const localReachable = reachableFromRefType(snapshot, allCommitMap, 'local');
+  const remoteReachable = reachableFromRefType(snapshot, allCommitMap, 'remote');
   const previousRoute = options.showReflog === false
     ? { commitOids: new Set<string>(), eventIds: new Set<string>(), routes: new Map<string, HistoricalRouteInfo>() }
     : previousRouteSelection(snapshot, commitMap, reachableOids);

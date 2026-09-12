@@ -66,7 +66,7 @@ export class GitClient {
     if (includeReflog) {
       const reflogOids = [...new Set(reflogs.flatMap((entry) => [entry.newOid, entry.previousOid]).filter((oid): oid is string => Boolean(oid)))];
       const missing = reflogOids.filter((oid) => !known.has(oid));
-      const extra = await this.readCommitObjects(repository.root, missing);
+      const extra = await this.readCommitObjects(repository.root, missing, known);
       const added = new Set<string>();
       for (const commit of extra) {
         if (known.has(commit.oid) || added.has(commit.oid)) continue;
@@ -154,29 +154,53 @@ export class GitClient {
     }
   }
 
-  private async readCommitObjects(root: string, oids: string[]): Promise<GitCommit[]> {
+  private async readCommitObjects(root: string, oids: string[], known: Map<string, GitCommit>): Promise<GitCommit[]> {
     const commits: GitCommit[] = [];
     const pending = [...oids];
     const seen = new Set<string>();
     while (pending.length && commits.length < 500) {
-      const oid = pending.shift() as string;
-      if (seen.has(oid) || !/^[0-9a-f]{7,64}$/i.test(oid)) continue;
-      seen.add(oid);
-      try {
-        const output = await this.runner.runChecked(['show', '-s', `--format=${gitLogFormat(false)}`, oid], {
-          cwd: root,
-          timeoutMs: this.timeoutMs,
-        });
-        const commit = parseGitLogNul(output)[0];
-        if (commit) {
-          commits.push(commit);
-          for (const parent of commit.parentOids) if (!seen.has(parent)) pending.push(parent);
+      // Keep command lines bounded on Windows while avoiding a Git process
+      // for every reflog commit. Preserve the existing breadth-first walk.
+      const batch: string[] = [];
+      const batchLimit = Math.min(64, 500 - commits.length);
+      while (pending.length && batch.length < batchLimit) {
+        const oid = pending.shift() as string;
+        if (seen.has(oid) || !/^[0-9a-f]{7,64}$/i.test(oid)) continue;
+        seen.add(oid);
+        const existing = known.get(oid);
+        if (existing) {
+          for (const parent of existing.parentOids) if (!seen.has(parent)) pending.push(parent);
+          continue;
         }
-      } catch {
-        // A reflog can outlive the object. Missing objects are intentionally not modelled.
+        batch.push(oid);
+      }
+      for (const commit of await this.readCommitObjectBatch(root, batch)) {
+        commits.push(commit);
+        for (const parent of commit.parentOids) if (!seen.has(parent)) pending.push(parent);
       }
     }
     return commits;
+  }
+
+  private async readCommitObjectBatch(root: string, oids: string[]): Promise<GitCommit[]> {
+    if (!oids.length) return [];
+    try {
+      const output = await this.runner.runChecked(['show', '-s', `--format=${gitLogFormat(false)}`, ...oids], {
+        cwd: root,
+        timeoutMs: this.timeoutMs,
+      });
+      return parseGitLogNul(output);
+    } catch (error) {
+      // One expired reflog object must not discard the other objects in its
+      // batch. Only split object-lookup failures; don't multiply timeouts.
+      if (!(error instanceof GitCommandError) || !/bad object|bad revision|invalid object|unknown revision|ambiguous argument/i.test(error.stderr)) return [];
+      if (oids.length === 1) return [];
+      const middle = Math.floor(oids.length / 2);
+      return [
+        ...await this.readCommitObjectBatch(root, oids.slice(0, middle)),
+        ...await this.readCommitObjectBatch(root, oids.slice(middle)),
+      ];
+    }
   }
 
   private async readCommitBodies(root: string, oids: string[]): Promise<Map<string, string>> {
