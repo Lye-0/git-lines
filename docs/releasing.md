@@ -1,5 +1,15 @@
 # Git Lines の公開手順
 
+## 次回以降のGitHub Release
+
+`.github/workflows/release.yml`は`v*`タグのpushで起動する。`package.json`のversionを更新したcommitに、同じversionのタグ（例: `version: "0.1.1"`なら`v0.1.1`）を付けてpushする。workflowファイルもそのcommitに含める。
+
+`vX.Y.Z`形式とversionの完全一致を確認し、`pnpm install --frozen-lockfile` → `pnpm check` → `pnpm package`を順に実行する。空でない`git-lines-X.Y.Z.vsix`の存在とSHA-256を確認した後、標準の`GITHUB_TOKEN`で`Git Lines vX.Y.Z`というGitHub Releaseを作成し、自動生成したRelease notesとVSIXを添付する。
+
+不正なタグ・version不一致・検証失敗・VSIX欠落ではReleaseを作成しない。`--verify-tag`によりタグを自動作成せず、同じタグの実行は直列化する。既存Releaseを上書きする処理はないため、作成済みReleaseに対する再実行は失敗する。Node.js／pnpmのversionを変更するときは`mise.toml`とworkflowの両方を更新する。
+
+このworkflowはGitHub Release専用。VS Code Marketplaceへの公開は、引き続き本人が行う。
+
 ## 0.1.0 の準備状況
 
 2026-09-12時点で、ローカルのリリース候補VSIXを作成・検証済み。Marketplaceへのアップロード、公開、Git push、タグ作成、GitHub Release作成は行っていない。

@@ -1,0 +1,87 @@
+name: GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the pushed tag
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Keep these tool versions aligned with mise.toml.
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.18.0'
+          package-manager-cache: false
+
+      - name: Validate tag and package version
+        id: version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const tag = process.env.GITHUB_REF_NAME;
+          const { version } = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          if (process.env.GITHUB_REF_TYPE !== 'tag' || !/^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(tag)) {
+            console.error(`Expected a vX.Y.Z tag, received: ${tag}`);
+            process.exit(1);
+          }
+          if (tag !== `v${version}`) {
+            console.error(`Tag ${tag} does not match package.json version ${version}`);
+            process.exit(1);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `vsix=git-lines-${version}.vsix\n`);
+          console.log(`Validated ${tag}; expected asset: git-lines-${version}.vsix`);
+          NODE
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: '11.16.0'
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check types, tests, and builds
+        run: pnpm check
+
+      - name: Package VSIX
+        run: pnpm package
+
+      - name: Verify VSIX and print SHA-256
+        env:
+          VSIX_FILE: ${{ steps.version.outputs.vsix }}
+        run: |
+          test -f "$VSIX_FILE" && test -s "$VSIX_FILE"
+          sha256sum -- "$VSIX_FILE"
+
+      - name: Create GitHub Release and attach VSIX
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          VSIX_FILE: ${{ steps.version.outputs.vsix }}
+        run: |
+          gh release create "$RELEASE_TAG" "$VSIX_FILE" \
+            --repo "$GH_REPO" \
+            --verify-tag \
+            --title "Git Lines $RELEASE_TAG" \
+            --generate-notes
