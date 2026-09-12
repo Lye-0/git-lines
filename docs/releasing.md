@@ -9,7 +9,7 @@
 | 項目 | 検証結果 |
 | --- | --- |
 | `pnpm check` | 型検査、367テスト／33ファイル、両bundleのビルドが成功 |
-| `pnpm package` | `vscode:prepublish`を含め成功。39ファイル、6,592,871 bytes |
+| `pnpm package` | `vscode:prepublish`を含め成功。39ファイル、6,592,934 bytes |
 | VSIXの整合性 | ZIPのCRC、実行用JS/CSS・アイコンとビルド元ファイルの一致を確認 |
 | 同梱ファイル | runtime、README画像、README、CHANGELOG、LICENSE、第三者ライセンス通知のみ |
 | README | ローカル参照29件、accordion 16組、変換後の画像URL27件のHTTP 200とPNG形式を確認。追加したGitHubバッジもHTTP 200・SVG形式とVSIX内のリンクを確認 |
@@ -24,12 +24,12 @@ GUIには112と119のfixtureの一時コピーを使用した。ステータス�
 候補ファイルはrepository rootの`git-lines-0.1.0.vsix`。SHA-256:
 
 ```text
-2791f626eafddf5759ab0520bdf5cf5c5f8f9162af6d9d37811ef9a929aecdf0
+b37388e86f2532285ff28e0cbea8057d8a44514f54b1e2fde3714cce99b91ed5
 ```
 
 再生成するとZIPの日時などによりハッシュが変わるため、アップロード対象のファイルを再確認する。
 
-上記の候補はREADMEのGitHubバッジ追加後に再生成したもの。再ビルドとZIP整合性・リンクを確認済み。実行用bundleはGUI検証時と同一であり、GUIの再検証は行っていない。
+上記の候補はREADMEのGitHubバッジ・スター用リンク追加後に再生成したもの。再ビルドとZIP整合性・リンクを確認済み。実行用bundleはGUI検証時と同一であり、GUIの再検証は行っていない。
 
 ## 本人が公開するとき
 
