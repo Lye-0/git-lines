@@ -35,7 +35,10 @@ export class GraphViewSession implements vscode.Disposable {
     this.density = config.get<'comfortable' | 'compact'>('density', 'comfortable');
     this.webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')],
+      localResourceRoots: [
+        vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview'),
+        vscode.Uri.joinPath(context.extensionUri, 'resources'),
+      ],
     };
     this.messageListener = this.webview.onDidReceiveMessage((message: WebviewToExtensionMessage) => this.handleMessage(message));
     this.webview.html = getWebviewHtml(this.webview, context.extensionPath);

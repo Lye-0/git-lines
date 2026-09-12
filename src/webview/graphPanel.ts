@@ -13,6 +13,7 @@ export class GraphPanel implements vscode.Disposable {
       enableScripts: true,
       retainContextWhenHidden: true,
     });
+    this.panel.iconPath = vscode.Uri.joinPath(context.extensionUri, 'resources', 'icon-v1.png');
     this.session = new GraphViewSession(context, this.panel.webview, repositoryRoot);
     this.panel.onDidDispose(() => this.dispose());
     context.subscriptions.push(this);

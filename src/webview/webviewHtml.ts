@@ -14,6 +14,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionPath: string): 
   const styles = files.find((file) => file.endsWith('.css'));
   const scriptUri = script ? webview.asWebviewUri(vscode.Uri.file(path.join(assetDirectory, script))) : '';
   const styleUri = styles ? webview.asWebviewUri(vscode.Uri.file(path.join(assetDirectory, styles))) : '';
+  const iconUri = webview.asWebviewUri(vscode.Uri.file(path.join(extensionPath, 'resources', 'icon-v1.png')));
   const token = nonce();
   const fallback = script ? '' : '<p>Webview assets are not built. Run <code>pnpm build</code> and reopen the panel.</p>';
   return `<!doctype html>
@@ -21,6 +22,7 @@ export function getWebviewHtml(webview: vscode.Webview, extensionPath: string): 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="git-lines-icon" content="${iconUri}" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data:; style-src ${webview.cspSource}; script-src 'nonce-${token}';" />
   ${styleUri ? `<link rel="stylesheet" href="${styleUri}" />` : ''}
   <title>Git Lines</title>

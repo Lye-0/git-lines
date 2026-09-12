@@ -27,7 +27,7 @@ function webview() {
   const incoming = event<WebviewToExtensionMessage>();
   const messages: ExtensionToWebviewMessage[] = [];
   return {
-    incoming, messages, html: '', options: {},
+    incoming, messages, html: '', options: {} as vscode.WebviewOptions,
     onDidReceiveMessage: incoming.subscribe,
     postMessage: vi.fn(async (message: ExtensionToWebviewMessage) => { messages.push(message); return true; }),
   };
@@ -46,7 +46,7 @@ function host() {
 const panels: ReturnType<typeof host>[] = [];
 vi.mock('vscode', () => ({
   ViewColumn: { Active: -1 },
-  Uri: { joinPath: (...parts: unknown[]) => ({ fsPath: parts.join('/') }) },
+  Uri: { joinPath: (base: { fsPath: string }, ...parts: string[]) => ({ fsPath: [base.fsPath, ...parts].join('/') }) },
   window: {
     createWebviewPanel: () => { const panel = host(); panels.push(panel); return panel; },
     createOutputChannel: () => ({ appendLine: vi.fn(), dispose: vi.fn() }),
@@ -221,6 +221,10 @@ describe('shared editor/panel graph session', () => {
     provider.resolveWebviewView(viewOf(view));
     const surfaces = [panels[0].webview, view.webview];
     for (const surface of surfaces) {
+      expect(surface.options.localResourceRoots).toEqual([
+        { fsPath: 'C:/extension/dist/webview' },
+        { fsPath: 'C:/extension/resources' },
+      ]);
       await surface.incoming.fire({ type: 'ready' });
       const graph = surface.messages.find((m) => m.type === 'graph');
       expect(graph?.layout.historyRelations).toHaveLength(1);

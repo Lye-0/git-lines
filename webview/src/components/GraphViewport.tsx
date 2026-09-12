@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { GraphLayout } from '../../../src/layout/layoutTypes';
 import { GraphSvg } from './GraphSvg';
 import { CommitRow } from './CommitRow';
@@ -12,6 +12,7 @@ import { OperationAnnotationRow } from './OperationAnnotationRow';
 import { operationAnnotationLabel } from './operationPresentation';
 
 interface Props {
+  header?: ReactNode;
   layout: GraphLayout;
   filter: string;
   selected?: string;
@@ -25,7 +26,7 @@ interface Props {
   onLoadMore: () => void;
 }
 
-export function GraphViewport({ layout, filter, selected, selectedWorkingTree, selectedEvent, showWorkingTreeStats = true, onSelect, onSelectWorkingTree, onSelectEvent, loading, onLoadMore }: Props) {
+export function GraphViewport({ header, layout, filter, selected, selectedWorkingTree, selectedEvent, showWorkingTreeStats = true, onSelect, onSelectWorkingTree, onSelectEvent, loading, onLoadMore }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const loadGate = useRef(true);
@@ -96,6 +97,7 @@ export function GraphViewport({ layout, filter, selected, selectedWorkingTree, s
 
   return <section className="graph-section" aria-label="Git commit graph">
     <div ref={scrollRef} className="graph-scroll" role="region" aria-label="Scrollable Git Lines graph" aria-busy={loading} tabIndex={0}>
+      {header}
       <div className="graph-canvas" style={{ minWidth: canvasMinWidth, minHeight: canvasHeight }}>
         <GraphSvg layout={layout} width={graphWidth} height={canvasHeight} selected={selected} selectedWorkingTree={selectedWorkingTree} selectedEvent={selectedEvent} onSelectEvent={onSelectEvent} />
         <RefMovementEndpointBadges layout={layout} tracks={layout.tracks} />
