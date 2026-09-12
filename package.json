@@ -85,7 +85,7 @@
         "branchGraph.density": {
           "type": "string",
           "enum": ["comfortable", "compact"],
-          "default": "comfortable",
+          "default": "compact",
           "description": "Default graph row density."
         }
       }

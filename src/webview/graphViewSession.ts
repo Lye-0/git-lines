@@ -46,7 +46,7 @@ export class GraphViewSession implements vscode.Disposable {
     const config = vscode.workspace.getConfiguration('branchGraph');
     this.commitLimit = config.get<number>('initialCommitCount', 30);
     this.showReflog = config.get<boolean>('showReflog', true);
-    this.density = config.get<'comfortable' | 'compact'>('density', 'comfortable');
+    this.density = config.get<'comfortable' | 'compact'>('density', 'compact');
     this.webview.options = {
       enableScripts: true,
       localResourceRoots: [

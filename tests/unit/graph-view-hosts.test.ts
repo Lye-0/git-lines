@@ -6,6 +6,7 @@ import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../..
 const mock = vi.hoisted(() => ({
   folders: [{ name: 'a', uri: { fsPath: 'C:/a' } }],
   choices: [] as Array<number | undefined>,
+  density: undefined as 'comfortable' | 'compact' | undefined,
   readSnapshot: vi.fn(), readCommitDetail: vi.fn(), clearCache: vi.fn(),
   pick: vi.fn(), info: vi.fn(), execute: vi.fn(),
   watchers: [] as Array<{ dispose: ReturnType<typeof vi.fn>; onChange: (reason: string) => void }>,
@@ -55,7 +56,7 @@ vi.mock('vscode', () => ({
   },
   workspace: {
     get workspaceFolders() { return mock.folders; },
-    getConfiguration: () => ({ get: (_key: string, fallback: unknown) => fallback }),
+    getConfiguration: () => ({ get: (key: string, fallback: unknown) => key === 'density' ? mock.density ?? fallback : fallback }),
   },
   commands: { executeCommand: mock.execute },
 }));
@@ -100,6 +101,7 @@ beforeEach(() => {
   mock.watchers.length = 0;
   mock.folders = [{ name: 'a', uri: { fsPath: 'C:/a' } }];
   mock.choices = [];
+  mock.density = undefined;
   mock.pick.mockImplementation(async (items: unknown[]) => {
     const choice = mock.choices.shift();
     return choice === undefined ? undefined : items[choice];
@@ -215,6 +217,14 @@ describe('graph launch locations', () => {
 });
 
 describe('shared editor/panel graph session', () => {
+  it('respects an explicitly configured Comfortable density', async () => {
+    mock.density = 'comfortable';
+    const surface = webview();
+    const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    await surface.incoming.fire({ type: 'ready' });
+    expect(surface.messages.find((message) => message.type === 'graph')).toMatchObject({ density: 'comfortable', layout: { rowHeight: 38 } });
+    session.dispose();
+  });
   it('opens an independent sidebar view with compact presentation', async () => {
     const sidebar = new GraphViewProvider(context(), 'sidebar');
     const view = host();
@@ -227,7 +237,7 @@ describe('shared editor/panel graph session', () => {
     const bottom = host();
     panel.resolveWebviewView(viewOf(bottom));
     await bottom.webview.incoming.fire({ type: 'ready' });
-    expect(bottom.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'standard', layout: { rowHeight: 38 } });
+    expect(bottom.webview.messages.find((message) => message.type === 'graph')).toMatchObject({ presentation: 'standard', density: 'compact', layout: { rowHeight: 30 } });
     sidebar.dispose();
     panel.dispose();
   });

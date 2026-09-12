@@ -300,3 +300,19 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .sidebar-popover::before { content: ''; position: absolute; top: -5px; left: 22px; width: 8px; height: 8px;
   transform: rotate(45deg); background: var(--graph-surface); border-top: 1px solid var(--graph-border); border-left: 1px solid var(--graph-border); }
 .sidebar-popover.opens-up::before { top: auto; bottom: -5px; transform: rotate(225deg); }
+
+.density-trigger { display: inline-flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 144px;
+  min-height: 32px; padding: 5px 10px; color: var(--graph-text); background: var(--graph-surface); border: 1px solid var(--graph-border); border-radius: 6px; cursor: pointer; }
+.density-trigger:hover, .density-trigger[aria-expanded="true"] { border-color: var(--graph-muted); background: color-mix(in srgb, var(--graph-text) 5%, var(--graph-surface)); }
+.density-chevron { width: 7px; height: 7px; margin: -3px 2px 0 0; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); color: var(--graph-muted); }
+.density-menu { position: fixed; z-index: 100; width: min(244px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto;
+  padding: 5px; border: 1px solid var(--vscode-widget-border, var(--graph-border)); border-radius: 9px;
+  color: var(--graph-text); background: var(--vscode-dropdown-listBackground, var(--graph-surface)); box-shadow: 0 8px 24px var(--vscode-widget-shadow, #0006); }
+.density-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid transparent; border-radius: 5px; cursor: pointer; outline: none; }
+.density-option:hover { background: color-mix(in srgb, var(--graph-text) 7%, transparent); }
+.density-option[aria-selected="true"] { background: color-mix(in srgb, var(--graph-accent) 12%, transparent); }
+.density-option:focus-visible { border-color: var(--vscode-focusBorder, var(--graph-accent)); }
+.density-choice-text { display: grid; gap: 3px; }
+.density-choice-text strong { font-size: 12px; font-weight: 600; }
+.density-choice-text > span { font-size: 11px; color: var(--graph-muted); }
+.density-check { color: var(--graph-accent); min-width: 14px; }
