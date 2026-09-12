@@ -49,6 +49,8 @@ DAG parent edgeはAnnotation Row挿入後の最終node座標で回避判定す�
 
 lane claimはvisual trackの補助情報であり、「commitがbranchに所属する」というGitの事実を表さない。Reset/AmendでfromOid側に残ったreflog commitはcurrent Routeとは別のhistorical Routeとしてgrayのside laneへ置き、通常行では`PREVIOUS` badgeをmessageの横に表示する。削除・renameなどの理由が確定できないreflog-only経路は`UNREFERENCED`として同じside-lane機構へ渡し、route先頭だけbadgeを表示する。merge済みで現在もDAGから到達可能なside routeはhistoricalではなくlive routeとして扱い、grayを使わない。branch作成地点やdeleted branch名はreflogに明示的な証拠がない限り表示しない。
 
+未読parentに既存のtrack / ancestry claimがない場合は、入ってくるparent edgeのchildからtrackを継承して継続先を表す。共有stubではrowが最も近いchildを優先し、同順位はIDで決定する。既知のlive/shared ancestry claimを上書きせず、読み込み後の実parentは通常の割当へ戻す。historical stubをtrack未設定のままlane 0へ落とすと、mainへの見かけ上の合流と、途中のlive nodeを避ける大きなBezierの膨らみを誘発する。
+
 ## Reflogとoperation
 
 拡張は独自履歴DBを持たない。`ReflogEntry.previousOid`は同一refのselector indexが連続している場合だけ導出する。`Fast-forward`は明示的なmerge/pullまたはoperation-less `Fast-forward` subject、既存ancestor関係、移動先commitがsingle-parentであることのすべてが成立した場合だけ`fast-forward`に分類し、通常commit・checkout・fetch更新・multi-parent mergeなどはイベント化しない。意味のあるイベントも種別とfrom/to OIDが一致するHEAD/local/remote更新を1つの論理イベントへまとめ、refごとの時刻差には依存しない。FF eventには`git rev-list old..new`相当の`commitCount`を保持し、明示的に判別できた`pull`/`merge`だけを`operation`へ保存する。元のreflog subjectは`rawReflogMessage`としてtooltipへ残し、object graphが不完全な場合は件数を推測しない。

@@ -4,6 +4,14 @@
 
 ## git-history-pagination
 
+### Unclaimed historical boundaries cause false main joins and oversized curves
+- id: `rm-20260912-historical-boundary-lane`
+- type: `failure`
+- maturity: `candidate`
+- tags: `historical`, `boundary`, `lane`
+- files: `src/layout/laneLayout.ts`, `src/layout/edgeRouter.ts`, `tests/unit/pagination-layout.test.ts`
+- memory: `agent-knowledge/entries/2026-09-12-historical-boundary-lane-c2e85b.md`
+
 ### Replacing pagination boundaries leaves stale row reservations
 - id: `rm-20260912-pagination-boundary-holes`
 - type: `failure`

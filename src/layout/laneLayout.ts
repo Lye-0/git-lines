@@ -556,6 +556,27 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     ?.slice()
     .sort((a, b) => a.distance - b.distance || priority(a.trackId) - priority(b.trackId) || a.trackId.localeCompare(b.trackId))[0]
     ?.trackId;
+  // Historical routes contain loaded commits only. Their unread parents have
+  // no ancestry claim, but are continuations of those routes, not lane 0.
+  // Preserve known shared/live ancestry; only fill otherwise unclaimed stubs.
+  const incomingBoundaryTracks = new Map<string, Array<{ trackId: string; row: number; id: string }>>();
+  const nodeById = new Map(facts.nodes.map((node) => [node.id, node]));
+  for (const edge of facts.edges) {
+    if (edge.type !== 'parent') continue;
+    const target = nodeById.get(edge.toNodeId);
+    const child = nodeById.get(edge.fromNodeId);
+    if (target?.kind !== 'history-boundary' || !target.oid || !child?.oid) continue;
+    if (trackByOid.has(target.oid) || trackForClaim(target.oid)) continue;
+    const trackId = trackByOid.get(child.oid) ?? trackForClaim(child.oid);
+    if (!trackId) continue;
+    incomingBoundaryTracks.set(target.oid, [...(incomingBoundaryTracks.get(target.oid) ?? []), { trackId, row: child.row ?? 0, id: child.id }]);
+  }
+  for (const [oid, sources] of incomingBoundaryTracks) {
+    // A shared unread parent keeps one identity. Prefer its nearest child,
+    // independently of the order in which parent edges were supplied.
+    sources.sort((a, b) => b.row - a.row || a.id.localeCompare(b.id));
+    trackByOid.set(oid, sources[0].trackId);
+  }
   const historicalEventTrackForNode = (node: GraphNode): string | undefined => {
     const event = node.event;
     if (!event || (event.type !== 'reset' && event.type !== 'amend' && event.type !== 'rebase')) return undefined;
