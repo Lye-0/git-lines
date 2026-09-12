@@ -11,6 +11,7 @@ The Git Lines output channel emits `perf` records per graph request. Git records
 - Page reuse requires identical repository metadata, refs, worktree HEADs and shallow boundaries. A prospective next page uses previous immutable tip OIDs and `--skip`; validation runs alongside it. If identity changes, discard that page and read from the current tip. Normal refs/status/operation checks remain fresh.
 - The cached prefix is limited to 2,000 commits and 64 unique tips, bounding Windows command-line size. Larger repositories still work using full-prefix reads.
 - Supplemental commit objects are copied into a root/OID cache capped at 2,000 entries. A changed page identity clears it. Missing objects are not cached as successes. Commit bodies required for operation evidence remain freshly fetched.
+- Uncached supplementary commits use one lazy `git cat-file --batch` process per evidence traversal, closed in `finally`. The existing breadth-first ordering, 500-object cap and maximum 64 outstanding requests remain intact. Responses are framed by byte lengths, with per-request timeouts and bounded shutdown. Missing OIDs are individual responses, not failures of the whole batch. Raw commit metadata honors parent order, author/committer timestamps and declared encoding; unsupported decoder encodings fall back to Git pretty output.
 - Reflog reuse requires matching file identity, size, modification time and change time. HEAD uses the worktree Git directory; other refs use the common directory. Missing files, unsupported storage and stat failures fall back to Git. Retention is capped at 256 files and 20,000 entries in total; this bounds reuse, not displayed history.
 - Uncached Reflogs are fetched by at most four workers. Results are stored by the original ref index and flattened in that order, preserving the sequential classifier input even when processes complete out of order. An unavailable log contributes no entries without cancelling other workers. There is no new history count limit.
 - Manual refresh clears all caches, including when requested during a read. Watcher events during reads coalesce into a subsequent full state check; a pending data update takes precedence over a presentation-only update. Dispose prevents subsequent queued work and logging.
@@ -45,3 +46,15 @@ Same read-only repository, Reflog ON, three interleaved runs per variant with no
 Four workers reduced the Reflog stage by approximately 77% and initial total by 26%. Git command counts remained 103/23/17 for initial/append/unchanged. Cache-heavy phases remain approximately unchanged. Snapshot commit/Reflog/event data and node row/lane/parent-edge digests matched across all variants and runs; target Git metadata and worktree status were unchanged.
 
 The regression test also forces out-of-order completion and a missing Reflog, verifies equality with sequential parsing, and asserts that concurrent Reflog commands never exceed four. The existing cache invalidation tests remain applicable. Supplementary object loading still contributes to initial latency; progressive statistics and rendering virtualization remain outside this phase. GUI measurement is still unperformed.
+
+## Supplementary object process reuse
+
+Baseline `ff5e784`, same repository and three interleaved runs per implementation. Investigation found no failed `show` commands in this case: repeated process starts while traversing successive ancestors caused the delay, rather than missing-OID retries.
+
+| Phase | Total before → after | Evidence before → after | Git processes before → after |
+|---|---:|---:|---:|
+| Initial 30, Reflog ON | 3,309 → 751 ms | 2,617 → 49 ms | 103 → 54 |
+| Append to 40 | 555 → 491 ms | 215 → 40 ms | 23 → 19 |
+| Unchanged 40 | 432 → 326 ms | 2 → 1 ms | 17 → 17 |
+
+These medians exclude GUI delivery/rendering. The initial total improved approximately 77%; warm-read differences also include normal Git process timing variation. Commit/Reflog/event data and node row/lane/parent-edge digests matched in every comparison. Target Git metadata and worktree status remained unchanged. UTF-8 multibyte framing, binary separators, missing objects, trees, merge parent order, multiline subjects, timezones, abnormal exit and request timeout have regression coverage. GUI measurement remains unperformed.

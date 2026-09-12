@@ -2,6 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { RepositoryDiscovery } from '../repository/repositoryDiscovery.js';
 import { GitCommandError, GitRunner } from './gitRunner.js';
+import type { ObjectReader } from './objectReader.js';
+import { parseCommitObject } from './parsers/commitObjectParser.js';
 import type {
   GitCommit,
   GitCommitDetail,
@@ -203,64 +205,59 @@ export class GitClient {
     const commits: GitCommit[] = [];
     const pending = [...oids];
     const seen = new Set<string>();
-    while (pending.length && commits.length < 500) {
-      // Keep command lines bounded on Windows while avoiding a Git process
-      // for every reflog commit. Preserve the existing breadth-first walk.
-      const batch: string[] = [];
-      const batchLimit = Math.min(64, 500 - commits.length);
-      while (pending.length && batch.length < batchLimit) {
-        const oid = pending.shift() as string;
-        if (seen.has(oid) || !/^[0-9a-f]{7,64}$/i.test(oid)) continue;
-        seen.add(oid);
-        const existing = known.get(oid);
-        if (existing) {
-          for (const parent of existing.parentOids) if (!seen.has(parent)) pending.push(parent);
-          continue;
+    let reader: ObjectReader | undefined;
+    const getReader = () => reader ??= this.runner.openObjectReader({ cwd: root, timeoutMs: this.timeoutMs });
+    try {
+      while (pending.length && commits.length < 500) {
+        // Bound outstanding object requests and preserve the existing breadth-first walk.
+        const batch: string[] = [];
+        const batchLimit = Math.min(64, 500 - commits.length);
+        while (pending.length && batch.length < batchLimit) {
+          const oid = pending.shift() as string;
+          if (seen.has(oid) || !/^[0-9a-f]{7,64}$/i.test(oid)) continue;
+          seen.add(oid);
+          const existing = known.get(oid);
+          if (existing) {
+            for (const parent of existing.parentOids) if (!seen.has(parent)) pending.push(parent);
+            continue;
+          }
+          batch.push(oid);
         }
-        batch.push(oid);
+        for (const commit of await this.readCommitObjectBatch(root, batch, getReader)) {
+          commits.push(commit);
+          for (const parent of commit.parentOids) if (!seen.has(parent)) pending.push(parent);
+        }
       }
-      for (const commit of await this.readCommitObjectBatch(root, batch)) {
-        commits.push(commit);
-        for (const parent of commit.parentOids) if (!seen.has(parent)) pending.push(parent);
-      }
-    }
-    return commits;
+      return commits;
+    } finally { await reader?.close(); }
   }
 
-  private async readCommitObjectBatch(root: string, oids: string[]): Promise<GitCommit[]> {
-    if (!oids.length) return [];
-    const cached = oids.flatMap((oid) => {
-      const commit = this.objectCache.get(`${root}:${oid}`);
-      return commit ? [structuredClone(commit)] : [];
-    });
-    if (cached.length) {
-      const found = new Set(cached.map((commit) => commit.oid));
-      const loaded = await this.readCommitObjectBatch(root, oids.filter((oid) => !found.has(oid)));
-      const all = new Map([...cached, ...loaded].map((commit) => [commit.oid, commit]));
-      return oids.flatMap((oid) => all.has(oid) ? [all.get(oid)!] : []);
-    }
-    try {
-      const output = await this.runner.runChecked(['show', '-s', `--format=${gitLogFormat(false)}`, ...oids], {
-        cwd: root,
-        timeoutMs: this.timeoutMs,
-      });
-      const parsed = parseGitLogNul(output);
-      for (const commit of parsed) {
-        this.objectCache.set(`${root}:${commit.oid}`, structuredClone(commit));
-        if (this.objectCache.size > 2000) this.objectCache.delete(this.objectCache.keys().next().value!);
+  private async readCommitObjectBatch(root: string, oids: string[], getReader: () => ObjectReader): Promise<GitCommit[]> {
+    const results = await Promise.all(oids.map(async (oid) => {
+      const key = root + ':' + oid;
+      const cached = this.objectCache.get(key);
+      if (cached) return structuredClone(cached);
+      try {
+        const object = await getReader().read(oid);
+        let commit: GitCommit | undefined;
+        try { commit = object && parseCommitObject(object); }
+        catch {
+          // Git's iconv support may exceed TextDecoder's legacy encodings.
+          const output = await this.runner.runChecked(['show', '-s', `--format=${gitLogFormat(false)}`, oid], { cwd: root, timeoutMs: this.timeoutMs });
+          commit = parseGitLogNul(output)[0];
+        }
+        if (commit) {
+          this.objectCache.set(key, structuredClone(commit));
+          if (this.objectCache.size > 2000) this.objectCache.delete(this.objectCache.keys().next().value!);
+        }
+        return commit;
+      } catch {
+        // Missing objects are individual responses; a process failure must
+        // not multiply retries or discard already completed valid responses.
+        return undefined;
       }
-      return parsed;
-    } catch (error) {
-      // One expired reflog object must not discard the other objects in its
-      // batch. Only split object-lookup failures; don't multiply timeouts.
-      if (!(error instanceof GitCommandError) || !/bad object|bad revision|invalid object|unknown revision|ambiguous argument/i.test(error.stderr)) return [];
-      if (oids.length === 1) return [];
-      const middle = Math.floor(oids.length / 2);
-      return [
-        ...await this.readCommitObjectBatch(root, oids.slice(0, middle)),
-        ...await this.readCommitObjectBatch(root, oids.slice(middle)),
-      ];
-    }
+    }));
+    return results.filter((commit): commit is GitCommit => commit !== undefined);
   }
 
   private async readCommitBodies(root: string, oids: string[]): Promise<Map<string, string>> {

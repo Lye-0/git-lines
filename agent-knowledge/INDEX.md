@@ -20,6 +20,14 @@
 - files: `src/git/gitClient.ts`, `src/webview/graphViewSession.ts`, `docs/technical/history-performance.md` …
 - memory: `agent-knowledge/entries/2026-09-12-history-cache-measurement-e631f4.md`
 
+### Reuse the object process across ancestor traversal rounds
+- id: `rm-20260912-object-reader-process-reuse`
+- type: `pattern`
+- maturity: `candidate`
+- tags: `performance`, `evidence`, `cat-file`
+- files: `src/git/gitClient.ts`, `src/git/objectReader.ts`, `src/git/parsers/commitObjectParser.ts` …
+- memory: `agent-knowledge/entries/2026-09-12-object-reader-process-reuse-903fad.md`
+
 ### Replacing pagination boundaries leaves stale row reservations
 - id: `rm-20260912-pagination-boundary-holes`
 - type: `failure`

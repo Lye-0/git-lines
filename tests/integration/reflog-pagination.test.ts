@@ -9,6 +9,12 @@ class CountingRunner extends GitRunner {
   readonly shows: string[][] = [];
   readonly calls: string[][] = [];
   missingOid?: string;
+  readers = 0;
+  override openObjectReader(options: GitRunOptions) {
+    this.readers++;
+    const reader = super.openObjectReader(options);
+    return { read: (oid: string) => oid === this.missingOid ? Promise.resolve(undefined) : reader.read(oid), close: () => reader.close() };
+  }
 
   override async run(args: string[], options: GitRunOptions) {
     this.calls.push(args);
@@ -98,7 +104,7 @@ describe('reflog pagination and batched object reads', () => {
       expect(facts.nodes.find((node) => node.oid === oldTip)).toMatchObject({ kind: 'reflog-commit', previousRoute: true });
       expect(facts.historyRelations).toContainEqual(expect.objectContaining({ kind: 'amend', sourceOid: oldTip, targetOid: newTip }));
       expect(runner.shows.length).toBeLessThanOrEqual(3);
-      expect(runner.shows.some((args) => args.filter((arg) => /^[0-9a-f]{40}$/.test(arg)).length > 1)).toBe(true);
+      expect(runner.readers).toBe(1);
     }
   }, 20000);
 
