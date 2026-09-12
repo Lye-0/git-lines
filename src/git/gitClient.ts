@@ -126,7 +126,10 @@ export class GitClient {
 
   private async readCommits(root: string, limit: number): Promise<GitCommit[]> {
     try {
-      const baseArgs = ['log', '--all', '--topo-order', '--date-order', '--no-decorate', '-n', String(Math.max(1, limit)), '--numstat'];
+      // `--all` does not include a detached HEAD that is not reachable from a
+      // named ref.  Add HEAD explicitly so a newly-created detached commit is
+      // still available to the graph as the current live state.
+      const baseArgs = ['log', '--all', 'HEAD', '--topo-order', '--date-order', '--no-decorate', '-n', String(Math.max(1, limit)), '--numstat'];
       let output: string;
       try {
         output = await this.runner.runChecked([...baseArgs, '--diff-merges=first-parent', `--format=${gitLogNumstatFormat()}`], { cwd: root, timeoutMs: this.timeoutMs });

@@ -108,4 +108,21 @@ describe('event detail presentation', () => {
     expect(fields.find((field) => field.label === 'Removed commits')?.value).toBe('3');
     expect(fields.find((field) => field.label === 'Removed range')).toMatchObject({ value: 'bbbbbbbbbbbb … dddddddddddd (3 commits)', title: `${'b'.repeat(40)} … ${'d'.repeat(40)}` });
   });
+
+  it('shows completed rebase old/new tips, commit count, and onto', () => {
+    const rebase: HistoryEvent = {
+      ...event,
+      id: 'history:rebase:10:new',
+      type: 'rebase',
+      commitCount: 3,
+      boundaryOid: 'c'.repeat(40),
+      rawReflogMessage: 'rebase (finish): refs/heads/feature onto ' + 'c'.repeat(40),
+    };
+    const fields = eventDetailFields(rebase);
+    expect(fields.map((field) => field.label)).toEqual(['Operation', 'Branch / Ref', 'Old tip', 'New tip', 'Commits', 'Onto', 'Timestamp', 'Raw reflog message']);
+    expect(fields.find((field) => field.label === 'Operation')?.value).toBe('Rebase');
+    expect(fields.find((field) => field.label === 'Old tip')).toMatchObject({ value: 'aaaaaaaaaaaa', title: 'a'.repeat(40), kind: 'hash' });
+    expect(fields.find((field) => field.label === 'New tip')).toMatchObject({ value: 'bbbbbbbbbbbb', title: 'b'.repeat(40), kind: 'hash' });
+    expect(fields.find((field) => field.label === 'Commits')?.value).toBe('3');
+  });
 });

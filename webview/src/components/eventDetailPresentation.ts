@@ -62,6 +62,13 @@ export function eventDetailFields(event: HistoryEvent): EventDetailField[] {
             { label: 'From', value: compactHash(event.fromOid), title: event.fromOid, kind: 'hash' },
             { label: 'To', value: compactHash(event.toOid), title: event.toOid, kind: 'hash' },
           ]
+        : event.type === 'rebase'
+          ? [
+            { label: 'Old tip', value: compactHash(event.fromOid), title: event.fromOid, kind: 'hash' },
+            { label: 'New tip', value: compactHash(event.toOid), title: event.toOid, kind: 'hash' },
+            ...(event.commitCount && event.commitCount > 0 ? [{ label: 'Commits', value: String(event.commitCount) }] : []),
+            ...(event.boundaryOid ? [{ label: 'Onto', value: compactHash(event.boundaryOid), title: event.boundaryOid, kind: 'hash' as const }] : []),
+          ]
         : event.type === 'reset'
           ? [
             { label: 'From', value: compactHash(event.fromOid), title: event.fromOid, kind: 'hash' },

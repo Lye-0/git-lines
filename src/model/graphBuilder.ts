@@ -1,5 +1,10 @@
-import type { HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
-import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind } from './graphModel.js';
+import type { GitCommit, HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
+import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind, HistoryRelation } from './graphModel.js';
+import { buildRefMovementRelations, ghostRefBadgesByOid, isCompleteRefMovement, isRefMovementEvent } from './refMovement.js';
+import { buildCherryPickGroups } from './cherryPickGroupRelation.js';
+import { buildRebaseRelations, isCompleteRebaseOverlay } from './rebaseRelation.js';
+import { buildRewordRelations } from './rewordRelation.js';
+import { buildRewriteCollapseRelations, isCompleteRewriteCollapseOverlay, transientOidsForRewriteCollapse } from './rewriteCollapseRelation.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
 export interface GraphBuilderOptions {
@@ -7,9 +12,16 @@ export interface GraphBuilderOptions {
   primaryBranch?: string | null;
 }
 
-function reachableFromRefs(snapshot: RepositorySnapshot, commits: Map<string, { parentOids: string[] }>): Set<string> {
+function reachableFromRefs(
+  snapshot: RepositorySnapshot,
+  commits: Map<string, { parentOids: string[] }>,
+  additionalRoots: Iterable<string> = [],
+): Set<string> {
   const reachable = new Set<string>();
-  const queue = snapshot.refs.filter(isUserFacingRef).map((ref) => ref.oid).filter((oid): oid is string => Boolean(oid));
+  const queue = [
+    ...snapshot.refs.filter(isUserFacingRef).map((ref) => ref.oid).filter((oid): oid is string => Boolean(oid)),
+    ...additionalRoots,
+  ];
   while (queue.length) {
     const oid = queue.shift() as string;
     if (reachable.has(oid)) continue;
@@ -54,6 +66,39 @@ interface HistoricalRouteInfo {
 
 function normalizedWorktreePath(value: string): string {
   return value.replaceAll('\\', '/').replace(/\/+$/, '').toLocaleLowerCase();
+}
+
+function overlayEndpoints(event: HistoryEvent): { kind: HistoryRelation['kind']; sourceOid: string; targetOid: string } | undefined {
+  if (event.type === 'amend' && event.fromOid) return { kind: 'amend', sourceOid: event.fromOid, targetOid: event.toOid };
+  if (event.type === 'cherry-pick' && event.sourceOid) return { kind: 'cherry-pick', sourceOid: event.sourceOid, targetOid: event.toOid };
+  if (event.type === 'revert' && event.targetOid) return { kind: 'revert', sourceOid: event.targetOid, targetOid: event.toOid };
+  return undefined;
+}
+
+function isVisibleExactOverlay(event: HistoryEvent, commits: Map<string, GitCommit>): boolean {
+  const endpoints = overlayEndpoints(event);
+  return Boolean(endpoints && commits.has(endpoints.sourceOid) && commits.has(endpoints.targetOid));
+}
+
+function buildHistoryRelations(events: HistoryEvent[], commits: Map<string, GitCommit>): HistoryRelation[] {
+  const seen = new Set<string>();
+  return events.flatMap((event) => {
+    const endpoints = overlayEndpoints(event);
+    if (!endpoints || !commits.has(endpoints.sourceOid) || !commits.has(endpoints.targetOid)) return [];
+    const key = `${endpoints.kind}\0${endpoints.sourceOid}\0${endpoints.targetOid}`;
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [{
+      id: event.id,
+      kind: endpoints.kind,
+      sourceOid: endpoints.sourceOid,
+      targetOid: endpoints.targetOid,
+      refName: event.refName,
+      timestamp: event.timestamp,
+      rawReflogMessage: event.rawReflogMessage ?? event.subject,
+      evidence: 'reflog' as const,
+    }];
+  });
 }
 
 function currentWorktreeSelection(snapshot: RepositorySnapshot): { tree: RepositorySnapshot['workingTrees'][number]; index: number } | undefined {
@@ -239,11 +284,20 @@ function operationForWorkingTree(tree: RepositorySnapshot['workingTrees'][number
 export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuilderOptions = {}): GraphFactModel {
   const currentSelection = currentWorktreeSelection(snapshot);
   const currentBranch = currentSelection?.tree.branch;
+  const currentHeadOid = currentSelection?.tree.headOid;
+  const currentHeadState = currentSelection
+    ? currentSelection.tree.detached ? 'detached' as const : 'attached' as const
+    : undefined;
   const visibleCount = Math.min(snapshot.visibleCommitCount, snapshot.commits.length);
   const visibleCommits = snapshot.commits.slice(0, visibleCount);
   const visibleOids = new Set(visibleCommits.map((commit) => commit.oid));
   const allCommitMap = new Map(snapshot.commits.map((commit) => [commit.oid, commit]));
-  const allReachableOids = reachableFromRefs(snapshot, allCommitMap);
+  // A detached HEAD is a live root even though it has no branch ref.  Include
+  // the currently opened worktree's actual HEAD alongside normal refs; when
+  // HEAD is attached this is the same OID as its local branch and the Set
+  // naturally deduplicates it.
+  const currentHeadRoots = currentSelection?.tree.headOid ? [currentSelection.tree.headOid] : [];
+  const allReachableOids = reachableFromRefs(snapshot, allCommitMap, currentHeadRoots);
   const commits = options.showReflog === false
     ? visibleCommits.filter((commit) => allReachableOids.has(commit.oid))
     : [...visibleCommits, ...snapshot.commits.slice(visibleCount).filter((commit) => !visibleOids.has(commit.oid))];
@@ -253,7 +307,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     if (tree.worktreeId === currentSelection?.tree.worktreeId || !tree.headOid) continue;
     linkedWorktreesByHead.set(tree.headOid, [...(linkedWorktreesByHead.get(tree.headOid) ?? []), tree]);
   }
-  const reachableOids = options.showReflog === false ? allReachableOids : reachableFromRefs(snapshot, commitMap);
+  const reachableOids = options.showReflog === false ? allReachableOids : reachableFromRefs(snapshot, commitMap, currentHeadRoots);
   const localReachable = reachableFromRefType(snapshot, commitMap, 'local');
   const remoteReachable = reachableFromRefType(snapshot, commitMap, 'remote');
   const previousRoute = options.showReflog === false
@@ -266,11 +320,42 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       ...previousRoute.routes.entries(),
       ...unreferencedRouteSelection(snapshot, commitMap, reachableOids, previousRouteOids).entries(),
     ]);
+  const events = options.showReflog === false ? [] : snapshot.historyEvents;
+  // Exact overlays are proven source -> target transformations, not timeline
+  // nodes.  Keep the reflog-derived event in `events` for the detail view and
+  // emit a relation only when both endpoint commits are on this graph page.
+  const exactHistoryRelations = [
+    ...buildHistoryRelations(events, commitMap),
+    ...(options.showReflog === false ? [] : buildRewordRelations(events, commitMap, snapshot.reflogs, snapshot.operations)),
+  ];
+  const cherryPickGroups = options.showReflog === false
+    ? { groups: [] as const, remaining: exactHistoryRelations }
+    : buildCherryPickGroups(exactHistoryRelations, commitMap, {
+      events,
+      reflogs: snapshot.reflogs,
+      operations: snapshot.operations,
+    });
+  const historyRelations = cherryPickGroups.remaining;
+  const cherryPickGroupRelations = [...cherryPickGroups.groups];
+  const refMovementRelations = buildRefMovementRelations(events, commitMap);
+  const rebaseRelations = options.showReflog === false
+    ? []
+    : buildRebaseRelations(events, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations });
+  const rewriteCollapseRelations = options.showReflog === false
+    ? []
+    : buildRewriteCollapseRelations(events, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations });
+  const hiddenTransientOids = options.showReflog === false
+    ? new Set<string>()
+    : transientOidsForRewriteCollapse(rewriteCollapseRelations, events, snapshot.reflogs, commitMap, reachableOids);
+  const displayCommits = hiddenTransientOids.size === 0
+    ? commits
+    : commits.filter((commit) => !hiddenTransientOids.has(commit.oid));
+  const ghostsByOid = ghostRefBadgesByOid(refMovementRelations, snapshot.refs, currentBranch);
   const refsByOid = new Map<string, ReturnType<typeof toGraphRefBadge>[]>();
   for (const ref of snapshot.refs) {
     if (ref.oid && isUserFacingRef(ref)) refsByOid.set(ref.oid, [...(refsByOid.get(ref.oid) ?? []), toGraphRefBadge(ref)]);
   }
-  const nodes: GraphNode[] = commits.map((commit) => {
+  const nodes: GraphNode[] = displayCommits.map((commit) => {
     const refBadges = uniqueGraphRefBadges(refsByOid.get(commit.oid) ?? [], currentBranch);
     const historical = historicalRoutes.get(commit.oid);
     return {
@@ -284,17 +369,19 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       label: commit.subject,
       commit,
       syncState: syncStateFor(commit.oid, localReachable, remoteReachable),
+      headState: commit.oid === currentHeadOid ? currentHeadState : undefined,
       previousRoute: previousRouteOids.has(commit.oid),
       historicalKind: historical?.kind,
       historicalRouteId: historical?.routeId,
       historicalRouteHead: historical?.head,
       linkedWorktrees: linkedWorktreesByHead.get(commit.oid),
+      ghostRefBadges: ghostsByOid.get(commit.oid) ?? [],
     };
   });
   const nodeByOid = new Map(nodes.filter((node) => node.oid).map((node) => [node.oid as string, node]));
   const edges: GraphEdge[] = [];
   const addNode = (node: GraphNode) => { if (!nodes.some((existing) => existing.id === node.id)) nodes.push(node); };
-  for (const commit of commits) {
+  for (const commit of displayCommits) {
     for (const parentOid of commit.parentOids) {
       let parentNode = nodeByOid.get(parentOid);
       if (!parentNode && (snapshot.hasMore || snapshot.repository.shallow)) {
@@ -332,10 +419,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
       }
     }
   }
-  const events = options.showReflog === false
-    ? []
-    : snapshot.historyEvents.filter((event) => event.type !== 'amend' || previousRoute.eventIds.has(event.id));
-  for (const event of events) {
+  for (const event of events.filter((candidate) => candidate.type !== 'amend' && !isVisibleExactOverlay(candidate, commitMap) && !isCompleteRebaseOverlay(candidate, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations }) && !isCompleteRewriteCollapseOverlay(candidate, commitMap, { reflogs: snapshot.reflogs, operations: snapshot.operations }) && !isCompleteRefMovement(candidate, commitMap) && !(isRefMovementEvent(candidate) && candidate.fromOid === candidate.toOid))) {
     const target = nodeByOid.get(event.toOid);
     if (!target) continue;
     const eventStart = event.eventStartOid ? nodeByOid.get(event.eventStartOid) : undefined;
@@ -384,6 +468,11 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
     workingTrees: snapshot.workingTrees,
     operations: snapshot.operations,
     events,
+    historyRelations,
+    refMovementRelations,
+    rebaseRelations,
+    cherryPickGroupRelations,
+    rewriteCollapseRelations,
     primaryBranch: primaryBranch(snapshot, options.primaryBranch),
     shallowBoundaryOids: snapshot.shallowBoundaryOids,
   };

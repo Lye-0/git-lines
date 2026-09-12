@@ -3,7 +3,7 @@ import { assignBranchSegmentLanes, computeLaneLayout } from '../../src/layout/la
 import { computeRowLayout, assertRowInvariants } from '../../src/layout/rowLayout.js';
 import { createGraphLayout } from '../../src/layout/graphLayout.js';
 import { filterRenderableEdgePaths } from '../../src/layout/edgeVisibility.js';
-import { pointForNode, routeEdges } from '../../src/layout/edgeRouter.js';
+import { COMMIT_NODE_RADIUS, historyRelationTargetInset, pointForNode, routeEdges } from '../../src/layout/edgeRouter.js';
 import { HISTORICAL_ROUTE_COLOR, isSafeLiveBranchColor } from '../../src/utils/color.js';
 import type { EdgePath } from '../../src/layout/layoutTypes.js';
 import type { GraphFactModel, GraphNode } from '../../src/model/graphModel.js';
@@ -18,6 +18,20 @@ function refFor(shortName: string, type: 'local' | 'remote', commitOid: string) 
     type,
     oid: commitOid,
   } as const;
+}
+
+function svgPathNumbers(path: string): number[] {
+  return (path.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+}
+
+function firstSvgPoint(path: string): { x: number; y: number } {
+  const numbers = svgPathNumbers(path);
+  return { x: numbers[0], y: numbers[1] };
+}
+
+function lastSvgPoint(path: string): { x: number; y: number } {
+  const numbers = svgPathNumbers(path);
+  return { x: numbers[numbers.length - 2], y: numbers[numbers.length - 1] };
 }
 
 function linearRefFacts(localOid: string, remoteOid: string): GraphFactModel {
@@ -930,31 +944,22 @@ describe('graph layout', () => {
     assertRowInvariants(layout.nodes, layout.edges);
   });
 
-  it('keeps an Amend event on the live boundary before the old commit side route', () => {
+  it('keeps an Amend overlay outside the timeline while retaining the old side route', () => {
     const base = commitNode('a', 1);
     const parent = { ...commitNode('b', 2), refIds: ['main'] };
-    const oldCommit = { ...commitNode('o', 2.5), kind: 'reflog-commit' as const, previousRoute: true };
+    const oldCommit = { ...commitNode('o', 2.5), kind: 'reflog-commit' as const, previousRoute: true, historicalKind: 'previous' as const, historicalRouteId: 'history:previous:event:amend', historicalRouteHead: true };
     const newCommit = { ...commitNode('c', 3), refIds: ['main'] };
-    const event: GraphNode = {
+    const event = {
       id: 'event:amend',
-      kind: 'history-event',
-      refIds: ['main'],
+      type: 'amend' as const,
+      refName: 'refs/heads/main',
+      fromOid: oldCommit.oid!,
+      toOid: newCommit.oid!,
+      boundaryOid: parent.oid,
+      eventStartOid: newCommit.oid,
       timestamp: 4,
-      label: 'Amend · main',
-      anchorCommitId: newCommit.id,
-      eventBoundaryCommitId: parent.id,
-      eventStartCommitId: newCommit.id,
-      targetRef: 'refs/heads/main',
-      event: {
-        id: 'event:amend',
-        type: 'amend',
-        refName: 'refs/heads/main',
-        fromOid: oldCommit.oid!,
-        toOid: newCommit.oid!,
-        boundaryOid: parent.oid,
-        eventStartOid: newCommit.oid,
-        timestamp: 4,
-      },
+      rawReflogMessage: 'commit (amend): new',
+      subject: 'commit (amend): new',
     };
     const commits = [
       { oid: newCommit.oid!, parentOids: [parent.oid!], subject: 'new', authorName: 'A', authorDate: 3, committerName: 'A', committerDate: 3 },
@@ -963,31 +968,61 @@ describe('graph layout', () => {
       { oid: base.oid!, parentOids: [], subject: 'base', authorName: 'A', authorDate: 1, committerName: 'A', committerDate: 1 },
     ];
     const layout = createGraphLayout({
-      nodes: [newCommit, oldCommit, parent, base, event],
+      nodes: [newCommit, oldCommit, parent, base],
       edges: [
         { id: 'parent:new:parent', type: 'parent', fromNodeId: newCommit.id, toNodeId: parent.id },
         { id: 'parent:old:parent', type: 'parent', fromNodeId: oldCommit.id, toNodeId: parent.id },
         { id: 'parent:parent:base', type: 'parent', fromNodeId: parent.id, toNodeId: base.id },
-        { id: 'event:amend:annotation', type: 'history-event', fromNodeId: newCommit.id, toNodeId: event.id, annotation: 'ref-event' },
       ],
       refs: [{ fullName: 'refs/heads/main', shortName: 'main', type: 'local', oid: newCommit.oid! }],
       commits,
       workingTrees: [],
       operations: [],
-      events: [event.event!],
+      events: [event],
+      historyRelations: [{ id: event.id, kind: 'amend', sourceOid: oldCommit.oid!, targetOid: newCommit.oid!, refName: event.refName, timestamp: event.timestamp, rawReflogMessage: event.rawReflogMessage, evidence: 'reflog' }],
       primaryBranch: 'main',
       shallowBoundaryOids: [],
     }, { visibleCommitCount: commits.length, hasMore: false });
     const laidOutNew = layout.nodes.find((node) => node.id === newCommit.id)!;
-    const laidOutEvent = layout.nodes.find((node) => node.id === event.id)!;
     const laidOutOld = layout.nodes.find((node) => node.id === oldCommit.id)!;
     const laidOutParent = layout.nodes.find((node) => node.id === parent.id)!;
+    const annotationRow = layout.operationAnnotationRows?.find((row) => row.relationId === event.id);
 
-    expect(laidOutNew.row).toBeLessThan(laidOutEvent.row!);
-    expect(laidOutEvent.row).toBeLessThan(laidOutOld.row!);
+    expect(layout.nodes.some((node) => node.id === event.id)).toBe(false);
+    expect(annotationRow).toBeDefined();
+    expect(laidOutNew.row).toBeLessThan(annotationRow!.row);
+    expect(annotationRow!.row).toBeLessThan(laidOutOld.row!);
+    expect(laidOutNew.row).toBeLessThan(laidOutParent.row!);
     expect(laidOutOld.row).toBeLessThan(laidOutParent.row!);
     expect(laidOutOld.lane).toBeGreaterThan(laidOutNew.lane!);
     expect(layout.tracks.find((track) => track.id === laidOutOld.trackId)?.family).toBe('historical');
+    expect(layout.historyRelations).toEqual([expect.objectContaining({ id: event.id, sourceOid: oldCommit.oid, targetOid: newCommit.oid })]);
+    const relationPath = layout.historyRelationPaths?.[0];
+    expect(layout.historyRelationPaths).toEqual([expect.objectContaining({ relationId: event.id, sourceNodeId: oldCommit.id, targetNodeId: newCommit.id })]);
+    expect(layout.historyRelationPaths).toHaveLength(1);
+    expect(relationPath?.d).toBeDefined();
+    expect(relationPath?.arrowD).toBeDefined();
+    const targetPoint = pointForNode(laidOutNew);
+    const lineEnd = lastSvgPoint(relationPath!.d);
+    const arrowTip = firstSvgPoint(relationPath!.arrowD);
+    const arrowNumbers = svgPathNumbers(relationPath!.arrowD);
+    const arrowBaseX = (arrowNumbers[2] + arrowNumbers[4]) / 2;
+    const arrowBaseY = (arrowNumbers[3] + arrowNumbers[5]) / 2;
+    const targetDistance = Math.hypot(arrowTip.x - targetPoint.x, arrowTip.y - targetPoint.y);
+    const arrowVertices = [
+      arrowTip,
+      { x: arrowNumbers[2], y: arrowNumbers[3] },
+      { x: arrowNumbers[4], y: arrowNumbers[5] },
+    ];
+    expect(lineEnd).toEqual(arrowTip);
+    expect(targetDistance).toBeCloseTo(historyRelationTargetInset(), 5);
+    expect(arrowVertices.every((vertex) => Math.hypot(vertex.x - targetPoint.x, vertex.y - targetPoint.y) > COMMIT_NODE_RADIUS)).toBe(true);
+    expect(arrowTip.y).toBeLessThan(arrowBaseY);
+    expect(arrowTip.x).toBeLessThan(arrowBaseX);
+    const sourcePoint = pointForNode(laidOutOld);
+    const midpoint = { x: (sourcePoint.x + targetPoint.x) / 2, y: (sourcePoint.y + targetPoint.y) / 2 };
+    expect(Math.hypot(relationPath!.labelX - midpoint.x, relationPath!.labelY - midpoint.y)).toBeLessThan(Math.hypot(sourcePoint.x - targetPoint.x, sourcePoint.y - targetPoint.y) * 0.2 + 2);
+    expect(layout.edges.filter((edge) => edge.type === 'history-event')).toHaveLength(0);
     assertRowInvariants(layout.nodes, layout.edges);
   });
 

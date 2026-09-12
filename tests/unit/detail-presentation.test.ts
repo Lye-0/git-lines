@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { GitCommitDetail } from '../../src/git/gitTypes.js';
-import { commitDescription, detailFileChanges, resolveDetailRefBadges, shortHash } from '../../webview/src/components/detailPresentation';
+import { commitDescription, detailFileChanges, detailHeadLabel, detailRouteLabel, resolveDetailRefBadges, shortHash } from '../../webview/src/components/detailPresentation';
 
 const detail = (body?: string): GitCommitDetail => ({
   oid: 'abcdef0123456789',
@@ -43,6 +43,13 @@ describe('commit detail presentation', () => {
     expect(commitDescription(detail('Improve graph'))).toBeUndefined();
     expect(commitDescription(detail('Improve graph\n'))).toBeUndefined();
     expect(commitDescription(detail('Improve graph\n\nImprove graph'))).toBeUndefined();
+  });
+
+  it('keeps detached HEAD separate from the Branch / Route detail', () => {
+    expect(detailRouteLabel(undefined)).toBe('None');
+    expect(detailHeadLabel('detached')).toBe('Detached');
+    expect(detailHeadLabel('attached')).toBe('Current');
+    expect(detailHeadLabel(undefined)).toBe('Not current');
   });
 
   it('returns only additional body text when the subject is included', () => {

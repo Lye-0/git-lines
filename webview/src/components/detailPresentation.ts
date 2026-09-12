@@ -1,11 +1,19 @@
 import type { GitCommitDetail, GitFileChange } from '../../../src/git/gitTypes';
-import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
+import type { GraphHeadState, GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import type { GraphRefBadge } from '../../../src/model/refDisplay';
 
 export type DetailRefBadge = GraphRefBadge & { color?: string };
 
 export function shortHash(oid: string, length = 8): string {
   return oid.slice(0, length);
+}
+
+export function detailRouteLabel(routeName?: string): string {
+  return routeName || 'None';
+}
+
+export function detailHeadLabel(headState?: GraphHeadState): string {
+  return headState === 'detached' ? 'Detached' : headState === 'attached' ? 'Current' : 'Not current';
 }
 
 export function detailFileChanges(detail: GitCommitDetail): GitFileChange[] {

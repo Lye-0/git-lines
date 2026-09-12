@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { GraphNode } from '../../src/model/graphModel';
-import { isLinkedWorktreeCommit, isSelectedCommit, isUnsyncedCommit, nodeFillStyle, unsyncedGradientForNode } from '../../webview/src/components/nodePresentation';
+import { isLinkedWorktreeCommit, isSelectedCommit, isUnsyncedCommit, nodeFillStyle, nodeMarkGeometry, nodeRingGeometry, NODE_LOCAL_CENTER, NODE_SELECTION_RING_RADIUS, SMALL_COMMIT_NODE_RADIUS, unsyncedGradientForNode } from '../../webview/src/components/nodePresentation';
+import { COMMIT_NODE_RADIUS, pointForNode } from '../../src/layout/edgeRouter.js';
+import { insertOperationAnnotationRows } from '../../src/layout/operationRows.js';
 
 const oid = (letter: string) => letter.repeat(40);
 
@@ -49,5 +51,59 @@ describe('unsynchronized node presentation', () => {
     const node: GraphNode = { id: `${kind}:a`, kind, row: 0, lane: 0, refIds: [], trackId: 'main', syncState };
     expect(isUnsyncedCommit(node)).toBe(false);
     expect(unsyncedGradientForNode(node, '#2563eb', 'node-sync-gradient-auxiliary')).toBeUndefined();
+  });
+});
+
+describe('node mark and selection ring geometry', () => {
+  const previous: GraphNode = {
+    id: `commit:${oid('o')}`,
+    kind: 'reflog-commit',
+    oid: oid('o'),
+    refIds: [],
+    row: 2,
+    lane: 1,
+    subject: 'previous',
+    previousRoute: true,
+    historicalKind: 'previous',
+  };
+  const unreferenced: GraphNode = { ...previous, id: `commit:${oid('u')}`, oid: oid('u'), historicalKind: 'unreferenced', previousRoute: false };
+  const linked = {
+    ...commit(),
+    linkedWorktrees: [{ worktreeId: 'linked', path: 'C:/linked', detached: false, staged: 0, unstaged: 0, untracked: 0, conflicted: 0, clean: true }],
+  };
+
+  it.each([
+    { name: 'normal commit', node: commit(), radius: COMMIT_NODE_RADIUS, shape: 'dot' as const },
+    { name: 'PREVIOUS', node: previous, radius: SMALL_COMMIT_NODE_RADIUS, shape: 'dot' as const },
+    { name: 'UNREFERENCED', node: unreferenced, radius: SMALL_COMMIT_NODE_RADIUS, shape: 'dot' as const },
+    { name: 'linked worktree', node: linked, radius: COMMIT_NODE_RADIUS, shape: 'square' as const },
+  ])('shares one center between the $name mark and its selection ring', ({ node, radius, shape }) => {
+    const mark = nodeMarkGeometry(node);
+    const ring = nodeRingGeometry(node);
+    expect(mark.center).toEqual(NODE_LOCAL_CENTER);
+    expect(mark.shape).toBe(shape);
+    expect(mark.radius).toBe(radius);
+    expect(ring).toEqual({ cx: mark.center.x, cy: mark.center.y, r: NODE_SELECTION_RING_RADIUS });
+  });
+
+  it('keeps PREVIOUS mark and ring concentric after an OperationAnnotationRow shifts visual Y', () => {
+    const live = { ...commit(), row: 0 };
+    const old = { ...previous, row: 1 };
+    const inserted = insertOperationAnnotationRows([live, old], [{
+      id: 'amend:one',
+      kind: 'amend',
+      sourceOid: old.oid!,
+      targetOid: live.oid!,
+      timestamp: 1,
+      evidence: 'reflog',
+    }]);
+    const shifted = inserted.nodes.find((node) => node.id === old.id)!;
+    expect(shifted.row).not.toBe(old.row);
+    const origin = pointForNode(shifted);
+    const mark = nodeMarkGeometry(shifted);
+    const ring = nodeRingGeometry(shifted);
+    expect(origin.x + mark.center.x).toBe(origin.x + ring.cx);
+    expect(origin.y + mark.center.y).toBe(origin.y + ring.cy);
+    expect(mark.center).toEqual(NODE_LOCAL_CENTER);
   });
 });

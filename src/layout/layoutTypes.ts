@@ -1,4 +1,4 @@
-import type { GraphEdge, GraphNode, GraphTrack } from '../model/graphModel.js';
+import type { CherryPickGroupRelation, GraphEdge, GraphNode, GraphTrack, HistoryRelation, RebaseRelation, RefMovementRelation, RewriteCollapseRelation } from '../model/graphModel.js';
 
 export interface GraphLayout {
   nodes: GraphNode[];
@@ -9,6 +9,28 @@ export interface GraphLayout {
   rowHeight: number;
   laneWidth: number;
   edgePaths?: EdgePath[];
+  /** Presentation-only operation paths; they never affect row or lane layout. */
+  historyRelations?: HistoryRelation[];
+  historyRelationPaths?: HistoryRelationPath[];
+  refMovementRelations?: RefMovementRelation[];
+  refMovementPaths?: RefMovementPath[];
+  rebaseRelations?: RebaseRelation[];
+  rebaseRelationPaths?: HistoryRelationPath[];
+  rebaseGroupOutlines?: RebaseGroupOutline[];
+  cherryPickGroupRelations?: CherryPickGroupRelation[];
+  cherryPickGroupPaths?: HistoryRelationPath[];
+  cherryPickGroupOutlines?: RebaseGroupOutline[];
+  rewriteCollapseRelations?: RewriteCollapseRelation[];
+  rewriteCollapsePaths?: HistoryRelationPath[];
+  rewriteCollapseOutlines?: RebaseGroupOutline[];
+  /** Visual-only rows for operation annotations; never DAG nodes or lane claims. */
+  operationAnnotationRows?: OperationAnnotationRow[];
+}
+
+export interface OperationAnnotationRow {
+  id: string;
+  relationId: string;
+  row: number;
 }
 
 export interface EdgePath {
@@ -26,4 +48,38 @@ export interface EdgePath {
   /** Visual endpoints for a segmented path; these may include an event node. */
   fromNodeId?: string;
   toNodeId?: string;
+}
+
+export interface HistoryRelationPath {
+  id: string;
+  relationId: string;
+  kind: HistoryRelation['kind'] | RebaseRelation['kind'] | CherryPickGroupRelation['kind'] | RewriteCollapseRelation['kind'];
+  sourceNodeId: string;
+  targetNodeId: string;
+  d: string;
+  /** Triangle at NEW for amend / cherry-pick. Empty for revert. */
+  arrowD: string;
+  /** Cancel mark at TARGET for revert. Absent for amend / cherry-pick. */
+  sourceMarkerD?: string;
+  labelX: number;
+  labelY: number;
+}
+
+export interface RebaseGroupOutline {
+  id: string;
+  relationId: string;
+  role: 'old' | 'new' | 'source' | 'target';
+  d: string;
+}
+
+export interface RefMovementPath {
+  id: string;
+  relationId: string;
+  kind: RefMovementRelation['kind'];
+  sourceNodeId: string;
+  targetNodeId: string;
+  d: string;
+  arrowD: string;
+  labelX: number;
+  labelY: number;
 }

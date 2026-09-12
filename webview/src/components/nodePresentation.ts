@@ -1,3 +1,5 @@
+export { NODE_LOCAL_CENTER, SMALL_COMMIT_NODE_RADIUS, NODE_SELECTION_RING_RADIUS, nodeMarkGeometry, nodeRingGeometry, isLinkedWorktreeCommit } from '../../../src/layout/nodeGeometry';
+export type { NodeMarkShape, NodeMarkGeometry, NodeRingGeometry } from '../../../src/layout/nodeGeometry';
 import type { GraphNode } from '../../../src/model/graphModel';
 
 export interface UnsyncedNodeGradientStop {
@@ -17,11 +19,6 @@ export interface UnsyncedNodeGradient {
 
 export function isUnsyncedCommit(node: Pick<GraphNode, 'kind' | 'syncState'>): boolean {
   return node.kind === 'commit' && (node.syncState === 'local-only' || node.syncState === 'remote-only');
-}
-
-/** Linked worktrees change the symbol of the real commit node, never the graph topology. */
-export function isLinkedWorktreeCommit(node: Pick<GraphNode, 'kind' | 'linkedWorktrees'>): boolean {
-  return (node.kind === 'commit' || node.kind === 'reflog-commit') && (node.linkedWorktrees?.length ?? 0) > 0;
 }
 
 export function isSelectedCommit(node: Pick<GraphNode, 'kind' | 'id' | 'oid'>, selected?: string): boolean {
