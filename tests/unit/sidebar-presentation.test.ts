@@ -4,6 +4,22 @@ import type { GraphLayout } from '../../src/layout/layoutTypes';
 import { graphWidthForLayout } from '../../webview/src/components/graphMetrics';
 
 describe('sidebar presentation', () => {
+  it('aligns Working Tree with the commit below it instead of the widest graph lane', () => {
+    const layout: GraphLayout = {
+      nodes: [
+        { id: 'wt', kind: 'working-tree', row: 0, lane: 0, refIds: [] },
+        { id: 'head', kind: 'commit', row: 1, lane: 0, refIds: [] },
+        { id: 'side', kind: 'commit', row: 2, lane: 2, refIds: [] },
+      ],
+      edges: [{ id: 'wt:head', type: 'working-tree', fromNodeId: 'wt', toNodeId: 'head' }],
+      edgePaths: [{ id: 'wt:head', type: 'working-tree', d: 'M 24 18 C 24 26, 24 38, 24 46' }],
+      tracks: [], laneWidth: 22, rowHeight: 28, hasMore: false, visibleCommitCount: 2,
+    };
+    const offsets = sidebarRowOffsets(layout, 86);
+    expect(offsets.get('wt')).toBe(38);
+    expect(offsets.get('wt')).toBe(offsets.get('head'));
+    expect(offsets.get('side')).toBe(82);
+  });
   it('starts next to each row node while reserving space for a continuing side route', () => {
     const layout: GraphLayout = { nodes: [
       { id: 'a', kind: 'commit', row: 0, lane: 0, refIds: [] },

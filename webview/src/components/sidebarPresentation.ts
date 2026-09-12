@@ -24,7 +24,7 @@ export function sidebarRowOffsets(layout: GraphLayout, graphWidth: number): Map<
   const groupedOverlay = Boolean(layout.rebaseGroupOutlines?.length || layout.cherryPickGroupOutlines?.length || layout.rewriteCollapseOutlines?.length);
   return new Map(layout.nodes.map((node: GraphNode) => {
     if (groupedOverlay || overlaySpans.some((span) => span.first <= (node.row ?? 0) && span.last >= (node.row ?? 0))
-      || !['commit', 'reflog-commit', 'history-boundary'].includes(node.kind)) return [node.id, graphWidth];
+      || !['commit', 'reflog-commit', 'history-boundary', 'working-tree'].includes(node.kind)) return [node.id, graphWidth];
     let right = pointForNode(node, layout).x;
     for (const span of spans) if (span.first <= (node.row ?? 0) && span.last >= (node.row ?? 0)) right = Math.max(right, span.right);
     return [node.id, right + nodeRingGeometry(node).r + 4];
