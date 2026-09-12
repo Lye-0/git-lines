@@ -167,6 +167,16 @@ describe('graph launch locations', () => {
     expect(view.webview.incoming.size).toBe(0);
   });
 
+  it('releases editor resources when VS Code disposes the extension context', async () => {
+    const ctx = context();
+    GraphPanel.open(ctx, 'C:/a');
+    await panels[0].webview.incoming.fire({ type: 'ready' });
+    for (const disposable of ctx.subscriptions) disposable.dispose();
+    expect(panels[0].webview.incoming.size).toBe(0);
+    expect(mock.watchers[0].dispose).toHaveBeenCalledOnce();
+    expect(GraphPanel.current).toBeUndefined();
+  });
+
   it('discards an old pending snapshot after a panel repository switch', async () => {
     const provider = new GraphViewProvider(context());
     const view = host();
