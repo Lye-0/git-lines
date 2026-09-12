@@ -2,6 +2,7 @@ import type { GitCommitDetail, HistoryEvent, RepositoryInfo, WorkingTreeState } 
 import type { GraphLayout } from '../layout/layoutTypes.js';
 
 export type WebviewToExtensionMessage =
+  | { type: 'rendered'; requestId: number; renderMs: number }
   | { type: 'ready' }
   | { type: 'refresh' }
   | { type: 'loadMore' }
@@ -13,6 +14,7 @@ export type WebviewToExtensionMessage =
 export type ExtensionToWebviewMessage =
   | {
       type: 'graph';
+      requestId?: number;
       layout: GraphLayout;
       repository: RepositoryInfo;
       currentBranch?: string;

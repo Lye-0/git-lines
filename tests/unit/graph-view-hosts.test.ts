@@ -6,9 +6,9 @@ import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../..
 const mock = vi.hoisted(() => ({
   folders: [{ name: 'a', uri: { fsPath: 'C:/a' } }],
   choices: [] as Array<number | undefined>,
-  readSnapshot: vi.fn(), readCommitDetail: vi.fn(),
+  readSnapshot: vi.fn(), readCommitDetail: vi.fn(), clearCache: vi.fn(),
   pick: vi.fn(), info: vi.fn(), execute: vi.fn(),
-  watchers: [] as Array<{ dispose: ReturnType<typeof vi.fn> }>,
+  watchers: [] as Array<{ dispose: ReturnType<typeof vi.fn>; onChange: (reason: string) => void }>,
 }));
 
 function event<T>() {
@@ -62,10 +62,12 @@ vi.mock('vscode', () => ({
 vi.mock('../../src/git/gitClient.js', () => ({ GitClient: class {
   readSnapshot = mock.readSnapshot;
   readCommitDetail = mock.readCommitDetail;
+  clearCache = mock.clearCache;
 } }));
 vi.mock('../../src/repository/repositoryWatcher.js', () => ({ RepositoryWatcher: class {
   dispose = vi.fn();
-  constructor() { mock.watchers.push(this); }
+  onChange: (reason: string) => void;
+  constructor(_dir: string, options: { onChange: (reason: string) => void }) { this.onChange = options.onChange; mock.watchers.push(this); }
 } }));
 vi.mock('../../src/webview/webviewHtml.js', () => ({ getWebviewHtml: () => '<html>graph</html>' }));
 
@@ -213,6 +215,52 @@ describe('graph launch locations', () => {
 });
 
 describe('shared editor/panel graph session', () => {
+  it('changes density without Git reads or clearing Detail', async () => {
+    const surface = webview();
+    const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    await surface.incoming.fire({ type: 'ready' });
+    mock.readSnapshot.mockClear();
+    surface.messages.length = 0;
+    await surface.incoming.fire({ type: 'setDensity', density: 'compact' });
+    expect(mock.readSnapshot).not.toHaveBeenCalled();
+    expect(surface.messages.find((message) => message.type === 'graph')).toMatchObject({ density: 'compact', layout: { rowHeight: 30 } });
+    expect(surface.messages.some((message) => message.type === 'detail')).toBe(false);
+    session.dispose();
+  });
+
+  it('coalesces watcher changes during a read and retains the final update', async () => {
+    const surface = webview();
+    const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    await surface.incoming.fire({ type: 'ready' });
+    let complete!: (snapshot: RepositorySnapshot) => void;
+    mock.readSnapshot.mockImplementationOnce(() => new Promise<RepositorySnapshot>((resolve) => { complete = resolve; }));
+    const refresh = session.refresh();
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    mock.watchers[0].onChange('refs/heads/main');
+    mock.watchers[0].onChange('logs/HEAD');
+    await surface.incoming.fire({ type: 'setDensity', density: 'compact' });
+    complete(snapshot());
+    await refresh;
+    expect(mock.readSnapshot).toHaveBeenCalledTimes(3);
+    expect(surface.messages.filter((message) => message.type === 'graph').at(-1)).toMatchObject({ density: 'compact' });
+    session.dispose();
+  });
+
+  it('defers forced cache invalidation until a pending read finishes', async () => {
+    const surface = webview();
+    const session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    let complete!: (snapshot: RepositorySnapshot) => void;
+    mock.readSnapshot.mockImplementationOnce(() => new Promise<RepositorySnapshot>((resolve) => { complete = resolve; }));
+    const ready = surface.incoming.fire({ type: 'ready' });
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    await session.refresh();
+    expect(mock.clearCache).not.toHaveBeenCalled();
+    complete(snapshot());
+    await ready;
+    expect(mock.clearCache).toHaveBeenCalledTimes(1);
+    expect(mock.readSnapshot).toHaveBeenCalledTimes(2);
+    session.dispose();
+  });
   it('keeps graph semantics, Reflog, density, pagination and Detail messages in both hosts', async () => {
     mock.readSnapshot.mockImplementation(async (root: string) => ({ ...snapshot(root), hasMore: true }));
     const editor = GraphPanel.open(context(), 'C:/a');

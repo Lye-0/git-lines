@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GitCommit } from '../../src/git/gitTypes';
 import type { GraphNode } from '../../src/model/graphModel';
 import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../../src/webview/messageProtocol';
@@ -15,6 +15,16 @@ const vscode = window.acquireVsCodeApi();
 
 export function App() {
   const [graph, setGraph] = useState<GraphMessage | undefined>();
+  const receivedAt = useRef(0);
+  useEffect(() => {
+    if (graph?.requestId === undefined) return;
+    const received = receivedAt.current;
+    let second = 0;
+    const first = requestAnimationFrame(() => {
+      second = requestAnimationFrame(() => vscode.postMessage({ type: 'rendered', requestId: graph.requestId!, renderMs: performance.now() - received } satisfies WebviewToExtensionMessage));
+    });
+    return () => { cancelAnimationFrame(first); cancelAnimationFrame(second); };
+  }, [graph]);
   const [detail, setDetail] = useState<DetailMessage>(null);
   const [detailEvent, setDetailEvent] = useState<DetailEventMessage>();
   const [loading, setLoading] = useState(false);
@@ -27,7 +37,7 @@ export function App() {
   useEffect(() => {
     const listener = (event: MessageEvent) => {
       const message = event.data as ExtensionToWebviewMessage;
-      if (message.type === 'graph') { setGraph(message); setError(undefined); }
+      if (message.type === 'graph') { receivedAt.current = performance.now(); setGraph(message); setError(undefined); }
       if (message.type === 'loading') setLoading(Boolean(message.loading));
       if (message.type === 'error') setError({ title: message.title, detail: message.detail });
       if (message.type === 'detail') { setDetail(message.detail); setDetailEvent(message.event ?? undefined); }

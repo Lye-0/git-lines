@@ -25,6 +25,8 @@ import { resolveHistoryEvents } from '../model/historyEventResolver.js';
 export interface GitClientOptions {
   runner?: GitRunner;
   timeoutMs?: number;
+  onTiming?: (stage: string, ms: number) => void;
+  onCommand?: (command: string, ms: number, bytes: number, ok: boolean) => void;
 }
 
 const DEFAULT_TIMEOUT = 12000;
@@ -38,9 +40,28 @@ export class GitClient {
   private readonly discovery: RepositoryDiscovery;
   private readonly operations: OperationStateReader;
   private readonly timeoutMs: number;
+  private readonly onTiming?: GitClientOptions['onTiming'];
+  private pageCache?: { key: string; commits: GitCommit[]; tips: string[] };
+  private readonly objectCache = new Map<string, GitCommit>();
+  private objectContext?: string;
+  private readonly reflogCache = new Map<string, { stamp: string; entries: ReflogEntry[] }>();
+
+  public clearCache(): void {
+    this.pageCache = undefined;
+    this.objectCache.clear();
+    this.objectContext = undefined;
+    this.reflogCache.clear();
+  }
+
+  private async timed<T>(stage: string, action: () => Promise<T>): Promise<T> {
+    const started = performance.now();
+    try { return await action(); }
+    finally { this.onTiming?.(stage, performance.now() - started); }
+  }
 
   public constructor(options: GitClientOptions = {}) {
-    this.runner = options.runner ?? new GitRunner();
+    this.runner = options.runner ?? new GitRunner('git', options.onCommand);
+    this.onTiming = options.onTiming;
     this.discovery = new RepositoryDiscovery(this.runner);
     this.operations = new OperationStateReader(this.runner);
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT;
@@ -51,22 +72,45 @@ export class GitClient {
   }
 
   public async readSnapshot(cwd: string, commitLimit: number, includeReflog = true): Promise<RepositorySnapshot> {
-    const repository = await this.discover(cwd);
-    const [commits, refs, worktrees, operations, shallowBoundaryOids] = await Promise.all([
-      this.readCommits(repository.root, commitLimit),
-      this.readRefs(repository.root),
-      this.readWorktrees(repository),
-      this.operations.read(repository),
-      this.readShallowBoundaries(repository),
+    const repository = await this.timed('discover', () => this.discover(cwd));
+    const previousPage = this.pageCache;
+    const skip = previousPage?.commits.length ?? 0;
+    const [prefetchedCommits, refs, worktrees, operations, shallowBoundaryOids] = await Promise.all([
+      // Read the candidate next page alongside state validation. If refs or
+      // HEAD moved, discard it and restart at the current tip below.
+      skip < commitLimit ? this.timed('commits-prefetch', () => this.readCommits(repository.root, commitLimit - skip, skip, previousPage?.tips)) : Promise.resolve(undefined),
+      this.timed('refs', () => this.readRefs(repository.root)),
+      this.timed('worktrees', () => this.readWorktrees(repository)),
+      this.timed('operations', () => this.operations.read(repository)),
+      this.timed('shallow', () => this.readShallowBoundaries(repository)),
+    ]);
+    const key = JSON.stringify([repository, refs, worktrees.map((tree) => [tree.path, tree.headOid]), shallowBoundaryOids]);
+    if (this.objectContext !== key) {
+      this.objectCache.clear();
+      this.objectContext = key;
+    }
+    const [commits, reflogs] = await Promise.all([
+      this.timed('commits', async () => {
+        const cached = previousPage?.key === key ? previousPage.commits : [];
+        const extra = previousPage && previousPage.key !== key
+          ? await this.readCommits(repository.root, commitLimit)
+          : prefetchedCommits ?? [];
+        const combined = [...cached, ...extra];
+        // Bound retained page data; very large views can still be loaded normally.
+        const head = worktrees.find((tree) => tree.currentWorktree === true || tree.path === repository.root)?.headOid;
+        const tips = [...new Set([...refs.filter((ref) => ref.fullName.startsWith('refs/')).map((ref) => ref.oid), head].filter((oid): oid is string => Boolean(oid)))];
+        this.pageCache = combined.length <= 2000 && tips.length <= 64 ? { key, commits: structuredClone(combined), tips } : undefined;
+        return structuredClone(combined.slice(0, commitLimit));
+      }),
+      includeReflog ? this.timed('reflogs', () => this.readReflogs(repository, refs)) : Promise.resolve([] as ReflogEntry[]),
     ]);
     const visibleCommitCount = Math.min(commitLimit, commits.length);
     const hasMore = commits.length >= commitLimit;
-    const reflogs = includeReflog ? await this.readReflogs(repository.root, refs) : [];
     const known = new Map(commits.map((commit) => [commit.oid, commit]));
     if (includeReflog) {
       const reflogOids = [...new Set(reflogs.flatMap((entry) => [entry.newOid, entry.previousOid]).filter((oid): oid is string => Boolean(oid)))];
       const missing = reflogOids.filter((oid) => !known.has(oid));
-      const extra = await this.readCommitObjects(repository.root, missing, known);
+      const extra = await this.timed('evidence', () => this.readCommitObjects(repository.root, missing, known));
       const added = new Set<string>();
       for (const commit of extra) {
         if (known.has(commit.oid) || added.has(commit.oid)) continue;
@@ -74,18 +118,18 @@ export class GitClient {
         commits.push(commit);
       }
     }
-    let historyEvents = includeReflog ? resolveHistoryEvents(reflogs, commits) : [];
+    let historyEvents = includeReflog ? await this.timed('history-events', async () => resolveHistoryEvents(reflogs, commits)) : [];
     if (includeReflog && historyEvents.length) {
       const operationCommitOids = [...new Set(historyEvents
         .filter((event) => event.type === 'cherry-pick' || event.type === 'revert')
         .map((event) => event.toOid))];
-      const bodies = await this.readCommitBodies(repository.root, operationCommitOids);
+      const bodies = await this.timed('commit-bodies', () => this.readCommitBodies(repository.root, operationCommitOids));
       if (bodies.size) {
         for (const commit of commits) {
           const body = bodies.get(commit.oid);
           if (body !== undefined) commit.body = body;
         }
-        historyEvents = resolveHistoryEvents(reflogs, commits);
+        historyEvents = await this.timed('history-events-with-bodies', async () => resolveHistoryEvents(reflogs, commits));
       }
     }
     return {
@@ -124,12 +168,13 @@ export class GitClient {
     return { ...commit, files: changes.map((change) => change.path), fileChanges: changes, changedFiles: changes.length, additions, deletions };
   }
 
-  private async readCommits(root: string, limit: number): Promise<GitCommit[]> {
+  private async readCommits(root: string, limit: number, skip = 0, tips?: string[]): Promise<GitCommit[]> {
     try {
       // `--all` does not include a detached HEAD that is not reachable from a
       // named ref.  Add HEAD explicitly so a newly-created detached commit is
       // still available to the graph as the current live state.
-      const baseArgs = ['log', '--all', 'HEAD', '--topo-order', '--date-order', '--no-decorate', '-n', String(Math.max(1, limit)), '--numstat'];
+      const baseArgs = ['log', ...(tips?.length ? tips : ['--all', 'HEAD']), '--topo-order', '--date-order', '--no-decorate', '-n', String(Math.max(1, limit)), '--numstat'];
+      if (skip) baseArgs.push(`--skip=${skip}`);
       let output: string;
       try {
         output = await this.runner.runChecked([...baseArgs, '--diff-merges=first-parent', `--format=${gitLogNumstatFormat()}`], { cwd: root, timeoutMs: this.timeoutMs });
@@ -184,12 +229,27 @@ export class GitClient {
 
   private async readCommitObjectBatch(root: string, oids: string[]): Promise<GitCommit[]> {
     if (!oids.length) return [];
+    const cached = oids.flatMap((oid) => {
+      const commit = this.objectCache.get(`${root}:${oid}`);
+      return commit ? [structuredClone(commit)] : [];
+    });
+    if (cached.length) {
+      const found = new Set(cached.map((commit) => commit.oid));
+      const loaded = await this.readCommitObjectBatch(root, oids.filter((oid) => !found.has(oid)));
+      const all = new Map([...cached, ...loaded].map((commit) => [commit.oid, commit]));
+      return oids.flatMap((oid) => all.has(oid) ? [all.get(oid)!] : []);
+    }
     try {
       const output = await this.runner.runChecked(['show', '-s', `--format=${gitLogFormat(false)}`, ...oids], {
         cwd: root,
         timeoutMs: this.timeoutMs,
       });
-      return parseGitLogNul(output);
+      const parsed = parseGitLogNul(output);
+      for (const commit of parsed) {
+        this.objectCache.set(`${root}:${commit.oid}`, structuredClone(commit));
+        if (this.objectCache.size > 2000) this.objectCache.delete(this.objectCache.keys().next().value!);
+      }
+      return parsed;
     } catch (error) {
       // One expired reflog object must not discard the other objects in its
       // batch. Only split object-lookup failures; don't multiply timeouts.
@@ -311,7 +371,8 @@ export class GitClient {
     }
   }
 
-  private async readReflogs(root: string, refs: GitRef[]): Promise<ReflogEntry[]> {
+  private async readReflogs(repository: RepositoryInfo, refs: GitRef[]): Promise<ReflogEntry[]> {
+    const root = repository.root;
     const names = [
       'HEAD',
       ...refs.filter((ref) => ref.type === 'local' || ref.type === 'remote').map((ref) => ref.fullName),
@@ -320,11 +381,23 @@ export class GitClient {
     const all: ReflogEntry[] = [];
     for (const refName of [...new Set(names)]) {
       try {
+        const logPath = path.join(refName === 'HEAD' ? repository.gitDir : repository.commonGitDir, 'logs', refName);
+        const stamp = await fs.stat(logPath).then((stat) => `${stat.ino}:${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`, () => undefined);
+        const cached = this.reflogCache.get(logPath);
+        if (stamp !== undefined && cached?.stamp === stamp) {
+          all.push(...structuredClone(cached.entries));
+          continue;
+        }
         const output = await this.runner.runChecked(['reflog', 'show', '--format=' + reflogFormat, refName], {
           cwd: root,
           timeoutMs: this.timeoutMs,
         });
-        all.push(...parseReflogRecords(output, refName));
+        const entries = parseReflogRecords(output, refName);
+        all.push(...entries);
+        if (stamp !== undefined && entries.length <= 20000) this.reflogCache.set(logPath, { stamp, entries: structuredClone(entries) });
+        while (this.reflogCache.size > 256 || [...this.reflogCache.values()].reduce((sum, value) => sum + value.entries.length, 0) > 20000) {
+          this.reflogCache.delete(this.reflogCache.keys().next().value!);
+        }
       } catch {
         // Reflogs are optional and commonly absent for remote refs.
       }

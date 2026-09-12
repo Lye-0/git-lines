@@ -12,6 +12,14 @@
 - files: `src/layout/laneLayout.ts`, `src/layout/edgeRouter.ts`, `tests/unit/pagination-layout.test.ts`
 - memory: `agent-knowledge/entries/2026-09-12-historical-boundary-lane-c2e85b.md`
 
+### Separate first-open cost from validated cache reuse
+- id: `rm-20260912-history-cache-measurement`
+- type: `constraint`
+- maturity: `candidate`
+- tags: `performance`, `cache`, `invalidation`
+- files: `src/git/gitClient.ts`, `src/webview/graphViewSession.ts`, `docs/technical/history-performance.md` …
+- memory: `agent-knowledge/entries/2026-09-12-history-cache-measurement-e631f4.md`
+
 ### Replacing pagination boundaries leaves stale row reservations
 - id: `rm-20260912-pagination-boundary-holes`
 - type: `failure`
