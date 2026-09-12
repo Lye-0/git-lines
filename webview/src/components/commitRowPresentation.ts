@@ -1,5 +1,17 @@
 import type { GraphHeadState, GraphNode } from '../../../src/model/graphModel';
 
+/** Keep every DAG endpoint, but show the shared unread-history notice once. */
+export function commitRowsForDisplay(nodes: GraphNode[]): GraphNode[] {
+  let hasUnreadHistoryNotice = false;
+  return nodes.slice().sort((a, b) => (a.row ?? 0) - (b.row ?? 0)).filter((node) => {
+    // Shallow-clone boundaries have no OID and retain their distinct notice.
+    if (node.kind !== 'history-boundary' || !node.oid) return true;
+    if (hasUnreadHistoryNotice) return false;
+    hasUnreadHistoryNotice = true;
+    return true;
+  });
+}
+
 export interface CommitRowPresentation {
   previousRoute: boolean;
   previousBadgeLabel?: string;

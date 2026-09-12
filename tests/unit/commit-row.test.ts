@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { commitRowPresentation } from '../../webview/src/components/commitRowPresentation';
+import { commitRowPresentation, commitRowsForDisplay } from '../../webview/src/components/commitRowPresentation';
+import type { GraphNode } from '../../src/model/graphModel';
 
 describe('commit row presentation', () => {
+  it('shows one unread-history notice while preserving DAG data and shallow notices', () => {
+    const boundaries: GraphNode[] = ['a', 'b', 'c'].map((oid, index) => ({ id: `boundary:${oid}`, oid, kind: 'history-boundary', refIds: [], row: index + 1, label: 'More history' }));
+    const commit: GraphNode = { id: 'commit:head', kind: 'commit', oid: 'head', refIds: [], row: 0 };
+    const shallow: GraphNode = { id: 'shallow:head', kind: 'history-boundary', refIds: [], row: 4, label: 'Shallow history boundary' };
+    const nodes = [boundaries[2], shallow, commit, boundaries[1], boundaries[0]];
+    const before = structuredClone(nodes);
+    expect(commitRowsForDisplay(nodes)).toEqual([commit, boundaries[0], shallow]);
+    expect(nodes).toEqual(before);
+    expect(commitRowsForDisplay([commit, boundaries[2]])).toEqual([commit, boundaries[2]]);
+    expect(commitRowsForDisplay([commit])).toEqual([commit]);
+  });
   it('marks only reset/amend previous-route commits as PREVIOUS without moving their metadata column', () => {
     const previous = commitRowPresentation({ kind: 'reflog-commit', previousRoute: true });
     const otherReflog = commitRowPresentation({ kind: 'reflog-commit', previousRoute: false });
