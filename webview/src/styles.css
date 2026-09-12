@@ -248,6 +248,12 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
   .detail-panel { width: 100%; height: auto; flex-basis: auto; max-height: 45vh; border-left: 0; border-top: 1px solid var(--graph-border); }
   .commit-row { padding-right: 8px; }
 }
+/* A bottom panel can be much shorter than an editor: keep every detail reachable. */
+@media (max-height: 600px) {
+  .detail-panel { overflow-y: auto; scrollbar-gutter: stable; }
+  .detail-panel > * { flex-shrink: 0; }
+  .detail-operation-commits, .detail-operation-orders, .detail-files-section { flex: 0 0 auto; overflow: visible; }
+}
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition: none !important; } }
 @media (forced-colors: active) {
   .edge { stroke: CanvasText; }

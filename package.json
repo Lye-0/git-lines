@@ -11,7 +11,8 @@
   "categories": ["Other"],
   "activationEvents": [
     "onCommand:branchGraph.open",
-    "onCommand:branchGraph.refresh"
+    "onCommand:branchGraph.refresh",
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -19,6 +20,14 @@
       {
         "command": "branchGraph.open",
         "title": "Git Lines: Open"
+      },
+      {
+        "command": "branchGraph.openEditor",
+        "title": "Git Lines: Open in Editor"
+      },
+      {
+        "command": "branchGraph.openPanel",
+        "title": "Git Lines: Open in Panel"
       },
       {
         "command": "branchGraph.refresh",
@@ -57,6 +66,24 @@
           "description": "Default graph row density."
         }
       }
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "git-lines",
+          "title": "Git Lines",
+          "icon": "resources/git-lines.svg"
+        }
+      ]
+    },
+    "views": {
+      "git-lines": [
+        {
+          "type": "webview",
+          "id": "branchGraph.panelView",
+          "name": "Git Lines"
+        }
+      ]
     }
   },
   "scripts": {

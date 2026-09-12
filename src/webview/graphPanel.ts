@@ -1,161 +1,40 @@
 import * as vscode from 'vscode';
-import { GitClient } from '../git/gitClient.js';
-import type { HistoryEvent, RepositorySnapshot } from '../git/gitTypes.js';
-import { buildGraphFacts } from '../model/graphBuilder.js';
-import { createGraphLayout } from '../layout/graphLayout.js';
-import { LayoutState } from '../layout/layoutState.js';
-import { getWebviewHtml } from './webviewHtml.js';
-import { RepositoryWatcher } from '../repository/repositoryWatcher.js';
-import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from './messageProtocol.js';
+import { GraphViewSession } from './graphViewSession.js';
 
+/** Editor host. Git reading and messages are shared with the panel view. */
 export class GraphPanel {
   public static current: GraphPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
-  private readonly client: GitClient;
-  private readonly layoutState = new LayoutState();
-  private readonly output: vscode.OutputChannel;
-  private snapshot?: RepositorySnapshot;
-  private repositoryRoot: string;
-  private commitLimit: number;
-  private showReflog: boolean;
-  private density: 'comfortable' | 'compact';
-  private watcher?: RepositoryWatcher;
-  private disposed = false;
-  private loading = false;
-  private visibleEvents = new Map<string, HistoryEvent>();
+  private readonly session: GraphViewSession;
 
-  private constructor(private readonly context: vscode.ExtensionContext, repositoryRoot: string) {
-    this.repositoryRoot = repositoryRoot;
-    this.client = new GitClient();
-    this.output = vscode.window.createOutputChannel('Git Lines');
-    const config = vscode.workspace.getConfiguration('branchGraph');
-    this.commitLimit = config.get<number>('initialCommitCount', 30);
-    this.showReflog = config.get<boolean>('showReflog', true);
-    this.density = config.get<'comfortable' | 'compact'>('density', 'comfortable');
+  private constructor(context: vscode.ExtensionContext, public readonly repositoryRoot: string) {
     this.panel = vscode.window.createWebviewPanel('branchGraph', 'Git Lines', vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview')],
     });
-    this.panel.webview.html = getWebviewHtml(this.panel.webview, context.extensionPath);
+    this.session = new GraphViewSession(context, this.panel.webview, repositoryRoot);
     this.panel.onDidDispose(() => {
-      this.disposed = true;
-      this.watcher?.dispose();
+      this.session.dispose();
       if (GraphPanel.current === this) GraphPanel.current = undefined;
-      this.output.dispose();
     }, undefined, context.subscriptions);
-    this.panel.webview.onDidReceiveMessage((message: WebviewToExtensionMessage) => this.handleMessage(message), undefined, context.subscriptions);
+    context.subscriptions.push(this.panel);
     GraphPanel.current = this;
   }
 
   public static open(context: vscode.ExtensionContext, repositoryRoot: string): GraphPanel {
-    if (GraphPanel.current) {
-      if (GraphPanel.current.repositoryRoot !== repositoryRoot) {
-        GraphPanel.current.panel.dispose();
-      } else {
-        GraphPanel.current.panel.reveal(vscode.ViewColumn.Active);
-        return GraphPanel.current;
-      }
+    if (GraphPanel.current?.repositoryRoot === repositoryRoot) {
+      GraphPanel.current.panel.reveal(vscode.ViewColumn.Active);
+      return GraphPanel.current;
     }
+    GraphPanel.current?.panel.dispose();
     return new GraphPanel(context, repositoryRoot);
   }
 
-  public async refresh(): Promise<void> {
-    await this.load(false);
+  public get active(): boolean {
+    return this.panel.active;
   }
 
-  public async loadMore(): Promise<void> {
-    if (this.loading || (this.snapshot && !this.snapshot.hasMore)) return;
-    const step = vscode.workspace.getConfiguration('branchGraph').get<number>('loadMoreCount', 10);
-    this.commitLimit += Math.max(1, step);
-    await this.load(true);
-  }
-
-  private async handleMessage(message: WebviewToExtensionMessage): Promise<void> {
-    if (message.type === 'ready' || message.type === 'refresh') await this.load(false);
-    else if (message.type === 'loadMore') await this.loadMore();
-    else if (message.type === 'select') await this.select(message.oid);
-    else if (message.type === 'selectEvent') await this.selectEvent(message.id);
-    else if (message.type === 'toggleReflog') {
-      this.showReflog = message.enabled;
-      await this.load(false);
-    } else if (message.type === 'setDensity') {
-      this.density = message.density;
-      await this.load(false);
-    }
-  }
-
-  private async load(isAppend: boolean): Promise<void> {
-    if (this.disposed || this.loading) return;
-    this.loading = true;
-    await this.send({ type: 'loading', loading: true });
-    const started = Date.now();
-    try {
-      const next = await this.client.readSnapshot(this.repositoryRoot, this.commitLimit, this.showReflog);
-      this.snapshot = next;
-      if (!this.watcher) {
-        this.watcher = new RepositoryWatcher(next.repository.gitDir, {
-          onChange: (reason) => {
-            this.output.appendLine(`watch ${reason}`);
-            void this.load(false);
-          },
-        });
-      }
-      const primaryBranch = vscode.workspace.getConfiguration('branchGraph').get<string | null>('primaryBranch', null);
-      const facts = buildGraphFacts(next, { showReflog: this.showReflog, primaryBranch });
-      this.visibleEvents = new Map(facts.events.map((event) => [event.id, event]));
-      const layout = createGraphLayout(facts, {
-        visibleCommitCount: next.visibleCommitCount,
-        hasMore: next.hasMore,
-        primaryBranch: facts.primaryBranch,
-        previousRows: isAppend ? this.layoutState.rows : undefined,
-        previousLanes: isAppend ? this.layoutState.lanes : undefined,
-        previousNodeLanes: isAppend ? this.layoutState.nodeLanes : undefined,
-        rowHeight: this.density === 'compact' ? 30 : 38,
-      });
-      this.layoutState.set(layout);
-      this.output.appendLine(`refresh ${Date.now() - started}ms ${next.repository.root}`);
-      await this.send({
-        type: 'graph',
-        layout,
-        repository: next.repository,
-        currentBranch: next.workingTrees.find((tree) => tree.currentWorktree === true)?.branch ?? next.workingTrees[0]?.branch,
-        workingTrees: next.workingTrees,
-        reflogEnabled: this.showReflog,
-        density: this.density,
-      });
-      await this.send({ type: 'detail', detail: null, event: null });
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      this.output.appendLine(`error ${detail}`);
-      const title = /spawn .*ENOENT|not recognized|cannot find.*git/i.test(detail)
-        ? 'Git executable not found'
-        : /not a git repository|repository/i.test(detail)
-          ? 'No Git repository found'
-          : 'Unable to read Git repository';
-      await this.send({ type: 'error', title, detail });
-    } finally {
-      this.loading = false;
-      await this.send({ type: 'loading', loading: false });
-    }
-  }
-
-  private async select(oid: string): Promise<void> {
-    if (!this.snapshot) return;
-    try {
-      const detail = await this.client.readCommitDetail(this.snapshot.repository.root, oid);
-      await this.send({ type: 'detail', detail, event: null });
-    } catch (error) {
-      await this.send({ type: 'error', title: 'Unable to read commit details', detail: error instanceof Error ? error.message : String(error) });
-    }
-  }
-
-  private async selectEvent(id: string): Promise<void> {
-    const event = this.visibleEvents.get(id);
-    if (event) await this.send({ type: 'detail', detail: null, event });
-  }
-
-  private async send(message: ExtensionToWebviewMessage): Promise<void> {
-    if (!this.disposed) await this.panel.webview.postMessage(message);
+  public refresh(): Promise<void> {
+    return this.session.refresh();
   }
 }

@@ -371,12 +371,14 @@ orphan branch は、既存履歴とは独立した root を持つ通常 branch �
 
 ## 使い方
 
-1. Command Palette から `Git Lines: Open` を実行します。
+1. ステータスバーの `Git Lines ⌄`、または Command Palette の `Git Lines: Open` から、`Open in Editor`（メイン画面）／`Open in Panel`（下部パネル）を選びます。複数folderを開いている場合は続けてrepositoryを選びます。
 2. ヘッダーで Reflog の表示、`Comfortable / Compact` 密度、Refresh を切り替えます。
 3. commit または operation を選ぶと Detail Panel が開きます。
 4. 初期表示は 30 commit です。下へスクロールすると残りが少なくなった時点で追加されます（`Load more` も利用できます）。
 
 Marketplace 未公開です。手元では Extension Development Host で開けます。
+
+下部パネルでは「ターミナル」「出力」などと並ぶ `Git Lines` タブに表示します。どちらの表示先でも同じグラフ・Reflog・Detailを利用できます。Command Paletteの `Git Lines: Open in Editor` / `Git Lines: Open in Panel` から表示先を直接指定することもできます。
 
 ```powershell
 code --extensionDevelopmentPath="<path-to-git-lines>"
