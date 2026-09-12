@@ -1,5 +1,7 @@
 # Git Lines
 
+[![View on GitHub](https://img.shields.io/badge/View_on_GitHub-111820?style=for-the-badge&logo=github&logoColor=2DCDF0)](https://github.com/Lye-0/git-lines)
+
 VS Code向けの読み取り専用Gitグラフです。現在のDAGを安定したレーンで示し、Git標準情報から確実に復元できる操作だけを Operation Overlay として重ねます。
 
 <p align="center">
