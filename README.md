@@ -109,9 +109,24 @@ No reliable evidence  → Current DAG only
 
 Git Lines は、commit の類似度や「こうなったはず」という推測だけでは歴史操作を描きません。証明できる範囲だけを overlay にし、それ以外はいまの DAG を優先します。
 
+<details>
+<summary><strong>Intentionally not inferred</strong></summary>
+
+次のものは、Git 標準情報から Exact に証明できないため **未実装ではなく意図的に推測しません**。
+
+- 完了した Squash Merge の source / range（最終 commit は通常の 1-parent に見える）
+- 非連続な Interactive Squash / Fixup の member 集合
+- `-x` などの確実な source が無い Cherry-pick
+
+検出条件や研究メモは [グラフアーキテクチャ](docs/technical/graph-architecture.md) を参照してください。
+
+</details>
+
 ## Supported Operations
 
 現在、実装と確認が済んでいるものだけです。
+
+✅ は、専用 overlay の有無によらず、Evidence-first 方針に基づく扱いが確定・実装済みであることを示します。
 
 | Operation / State | Support | Visualization |
 | --- | --- | --- |
@@ -122,6 +137,10 @@ Git Lines は、commit の類似度や「こうなったはず」という推測
 | Branch move | ✅ | Ref movement |
 | Branch rename | ✅ | Rename event（位置は動かない） |
 | Rebase | ✅ | Single / group rewrite |
+| Reorder | ✅ | Group Rebase として扱う。Reorder 自体は推測しない |
+| Drop | ✅ | Generic Rebase fallback |
+| Reword | ✅ | Generic Rebase + Exact local Reword |
+| Edit | ✅ | Generic Rebase + 実際に観測された operation |
 | Interactive Squash / Fixup | ✅ | 安全な連続 N → 1 のみ |
 | Detached HEAD | ✅ | 専用の HEAD 状態 |
 | Multiple worktrees | ✅ | Commit 上の worktree 注釈 |
@@ -129,6 +148,21 @@ Git Lines は、commit の類似度や「こうなったはず」という推測
 | Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
 | ORIG_HEAD | ✅ | 通常の commit / special ref |
 | Reflog OFF | ✅ | Current DAG へ縮退 |
+
+## Supported DAG Topologies
+
+Git Lines は Operation Overlay とは別に、Git object の実際の parent 関係をそのまま DAG として描画します。特殊な topology でも、架空の edge や operation は追加しません。
+
+| Topology | Support | Visualization |
+| --- | --- | --- |
+| Normal branch / merge | ✅ | 通常の DAG |
+| Octopus merge | ✅ | 3つ以上の parent edge |
+| Criss-cross merge | ✅ | 交差する merge DAG |
+| Multiple roots | ✅ | 独立 root を別々に表示 |
+| Unrelated histories merge | ✅ | merge commit で初めて履歴を接続 |
+| Orphan branch | ✅ | 独立 root を持つ通常 branch として表示 |
+
+これらには専用 Operation Overlay を追加せず、実際の parent relation そのものを描画します。
 
 ## Git Operations
 
@@ -156,12 +190,22 @@ source を Git 標準情報から確実に追跡できる場合だけ、source �
 
 完了 session と linear な old / new range を安全に復元できる場合、single または group rewrite として表示します。
 
-完了session内の局所的なreword遷移がreflogで直接確認できる場合は、Reword relationを表示します。Editでは実際に観測されたAmend等を表示し、generic Rebaseと併記します。
+Reorder は completed evidence だけでは通常 Rebase と区別できないため専用表示せず、Group Rebase として扱います。個別 commit の mapping や順序維持は主張しません。Drop は dropped member を Exact に特定できないため、Generic Rebase へ fallback します。
+
+Reword は完了 session 内で reflog が直接証明する局所 rewrite だけを Reword relation として表示し、Generic Rebase と併記します。Edit 自体には専用 relation を作らず、実際に観測された Amend 等を Generic Rebase と併記します。
 
 #### Completed
 
 <p align="center">
   <img src="docs/images/readme/details/rebase.png" alt="完了RebaseのOLDとNEWのgroup overlay" width="640">
+</p>
+
+#### Reword
+
+画像は、rebase session 内の UNREFERENCED な一時 commit T → B reworded（B′）を reflog が直接証明する Exact local Reword relation です。元の pre-rebase commit B との個別 mapping は推測しません。
+
+<p align="center">
+  <img src="docs/images/readme/details/reword.png" alt="Rebase内部の一時commitからreword後commitへのExact Reword relation" width="640">
 </p>
 
 #### In progress
@@ -236,7 +280,7 @@ tip の位置は動かず、ref 名だけが変わった event として表示�
 <details>
 <summary><strong>Merge in progress</strong></summary>
 
-完了した通常 Merge は Current DAG そのものなので、専用の operation overlay は出しません。進行中の Merge は Working Tree 行へ統合します。
+完了した通常 Merge、Octopus merge、Unrelated histories merge は、いずれも専用 Operation Overlay を追加せず、Current DAG の実際の parent relation として表示します。進行中の Merge は Working Tree 行へ統合します。
 
 <p align="center">
   <img src="docs/images/readme/details/merge-in-progress.png" alt="進行中MergeのWorking Tree表示" width="640">
@@ -268,16 +312,60 @@ linked worktree のために新しい graph lane は作りません。対象 com
 
 </details>
 
+## DAG Topologies
+
 <details>
-<summary><strong>Intentionally not inferred</strong></summary>
+<summary><strong>Octopus merge</strong></summary>
 
-次のものは、Git 標準情報から Exact に証明できないため **未実装ではなく意図的に推測しません**。
+3つ以上の parent を持つ merge commit でも、全 parent edge を実際の parent relation に従って描画します。
 
-- 完了した Squash Merge の source / range（最終 commit は通常の 1-parent に見える）
-- 非連続な Interactive Squash / Fixup の member 集合
-- `-x` などの確実な source が無い Cherry-pick
+<p align="center">
+  <img src="docs/images/readme/details/octopus-merge.png" alt="Octopus mergeで複数のparent edgeが1つのmerge commitへ接続するGit Lines表示" width="640">
+</p>
 
-検出条件や研究メモは [グラフアーキテクチャ](docs/technical/graph-architecture.md) を参照してください。
+</details>
+
+<details>
+<summary><strong>Criss-cross merge</strong></summary>
+
+互いを merge したことで交差する DAG でも、parent relation と branch lane を維持します。
+
+<p align="center">
+  <img src="docs/images/readme/details/criss-cross-merge.png" alt="Criss-cross mergeの交差するDAGとbranch lane" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Multiple roots</strong></summary>
+
+共通祖先を持たない複数の root を、存在しない edge でつながず独立して表示します。
+
+<p align="center">
+  <img src="docs/images/readme/details/multiple-roots.png" alt="共通祖先を持たない複数のrootを独立して表示したDAG" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Unrelated histories merge</strong></summary>
+
+独立していた2つの history は、実際の merge commit で初めて接続されます。専用の Unrelated operation overlay は作りません。
+
+<p align="center">
+  <img src="docs/images/readme/details/unrelated-histories-merge.png" alt="独立した2つの履歴が実際のmerge commitで接続されたDAG" width="640">
+</p>
+
+</details>
+
+<details>
+<summary><strong>Orphan branch</strong></summary>
+
+orphan branch は、既存履歴とは独立した root を持つ通常 branch として表示します。
+
+<p align="center">
+  <img src="docs/images/readme/details/orphan-branch.png" alt="既存履歴とは独立したrootを持つorphan branchのDAG" width="640">
+</p>
 
 </details>
 
@@ -319,12 +407,14 @@ pnpm build
 
 ## Roadmap
 
-今後の候補です。完了したものだけ Supported Operations へ移します。
+主要な local Git operation と特殊 DAG topology への対応は一旦完了しています。
 
-- Interactive rebase の追加パターン（drop / reorder など）
-- より複雑な merge topology
+今後の候補:
+
 - remote / ref の境界ケース
-- shallow や repository 境界
+- shallow clone
+- reflog の期限切れ / 欠落
+- repository / history 境界の追加検証
 
 ## Technical Documentation
 
