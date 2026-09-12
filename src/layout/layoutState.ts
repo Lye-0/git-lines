@@ -16,7 +16,9 @@ export class LayoutState {
     // Operation annotation rows are presentation-only gaps inserted after
     // the structural row layout.  Keep the structural coordinates here so a
     // later page append does not insert the same virtual row a second time.
-    const rows = new Map(layout.nodes.filter((node) => node.row !== undefined).map((node) => [node.id, node.row as number]));
+    // Unread-parent placeholders can move when a page replaces them with commits.
+    // Keeping their rows would permanently reserve empty space between pages.
+    const rows = new Map(layout.nodes.filter((node) => node.row !== undefined && node.kind !== 'history-boundary').map((node) => [node.id, node.row as number]));
     for (const annotation of [...(layout.operationAnnotationRows ?? [])].sort((a, b) => b.row - a.row)) {
       for (const [nodeId, row] of rows) {
         if (row > annotation.row) rows.set(nodeId, row - 1);

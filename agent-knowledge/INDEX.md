@@ -4,6 +4,14 @@
 
 ## git-history-pagination
 
+### Replacing pagination boundaries leaves stale row reservations
+- id: `rm-20260912-pagination-boundary-holes`
+- type: `failure`
+- maturity: `candidate`
+- tags: `pagination`, `boundary`, `row-gaps`
+- files: `src/layout/layoutState.ts`, `src/layout/rowLayout.ts`, `src/model/graphBuilder.ts` …
+- memory: `agent-knowledge/entries/2026-09-12-pagination-boundary-holes-a918c4.md`
+
 ### Reflog evidence must not expand the live graph page
 - id: `rm-20260912-reflog-page-boundary`
 - type: `failure`

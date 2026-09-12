@@ -41,11 +41,19 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
   }
   const existing = new Map<string, number>();
   for (const node of structuralNodes) {
+    if (node.kind === 'history-boundary') continue;
     const row = previousRows?.get(node.id) ?? node.row;
     if (row !== undefined && ![...existing.values()].includes(row)) existing.set(node.id, row);
   }
   const result = new Map<string, number>(existing);
   const assigned = new Set(existing.keys());
+  // Reused rows have already consumed their child-to-parent constraints. Release
+  // them before sorting the new page, including parents with skewed timestamps.
+  for (const nodeId of assigned) {
+    for (const target of outgoing.get(nodeId) ?? []) {
+      indegree.set(target, (indegree.get(target) ?? 0) - 1);
+    }
+  }
   const ready = structuralNodes.filter((node) => !assigned.has(node.id) && (indegree.get(node.id) ?? 0) === 0).sort(compareNodes);
   let nextRow = Math.max(-1, ...result.values()) + 1;
   const pushReady = (nodeId: string) => {
