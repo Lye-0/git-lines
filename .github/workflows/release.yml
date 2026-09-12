@@ -47,8 +47,8 @@ jobs:
             console.error(`Tag ${tag} does not match package.json version ${version}`);
             process.exit(1);
           }
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `vsix=git-lines-${version}.vsix\n`);
-          console.log(`Validated ${tag}; expected asset: git-lines-${version}.vsix`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `vsix=releases/git-lines-${version}.vsix\n`);
+          console.log(`Validated ${tag}; expected asset: releases/git-lines-${version}.vsix`);
           NODE
 
       - name: Set up pnpm

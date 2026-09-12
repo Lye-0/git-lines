@@ -386,7 +386,7 @@ VS Code 1.90以降と、PATHから実行できるGitが必要です。Git reposi
 3. commit または operation を選ぶと詳細が開きます（左サイドバーでは吹き出し表示）。
 4. 初期表示は 30 commit です。下へスクロールすると残りが少なくなった時点で追加されます（`Load more` も利用できます）。
 
-VSIXからインストールする場合は、Command Paletteの `Extensions: Install from VSIX...` で `git-lines-1.0.0.vsix` を選びます。
+VSIXからインストールする場合は、Command Paletteの `Extensions: Install from VSIX...` で `releases/git-lines-1.0.0.vsix` を選びます。
 
 下部パネルでは「ターミナル」「出力」などと並ぶ `Git Lines` タブ、左サイドバーではアクティビティバーの専用アイコンから表示します。どの表示先でも同じグラフ・Reflog・詳細情報を利用できます。Command Paletteの `Git Lines: Open in Editor` / `Git Lines: Open in Panel` / `Git Lines: Open in Sidebar` から表示先を直接指定することもできます。
 
@@ -409,7 +409,7 @@ pnpm build
 code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 ```
 
-`pnpm package` はビルドを実行してVSIXを生成します。公開処理は行いません。
+`pnpm package` はビルドを実行し、`releases/git-lines-<version>.vsix` を生成します。バージョンごとにファイルを残せます（同じバージョンの再生成は上書き）。公開処理は行いません。
 
 ## Settings
 

@@ -120,7 +120,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "vscode:prepublish": "pnpm build",
-    "package": "vsce package --no-dependencies --githubBranch main",
+    "package": "node -e \"require('node:fs').mkdirSync('releases', { recursive: true })\" && vsce package --no-dependencies --githubBranch main --out releases/",
     "check": "pnpm lint && pnpm test && pnpm build"
   },
   "devDependencies": {
