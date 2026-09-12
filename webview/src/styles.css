@@ -135,6 +135,11 @@ h1, h2, p { margin: 0; }
 .detail-change-stat.additions strong, .file-stats .additions { color: #81d3a4; }
 .detail-change-stat.deletions strong, .file-stats .deletions { color: #ef8f9d; }
 .row-change-stats { margin-left: auto; }
+/* Unknown statistics still reserve their column so compact metadata aligns. */
+.row-commit .row-content:not(.has-change-stats)::after,
+.row-reflog-commit .row-content:not(.has-change-stats)::after {
+  content: ''; flex: 0 0 var(--changes-column-width, 222px);
+}
 code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 11px; }
 .ref-badge { color: var(--badge-color, var(--graph-accent)); border: 1px solid color-mix(in srgb, var(--badge-color, var(--graph-accent)) 48%, var(--graph-border)); border-radius: 4px; padding: 1px 5px; line-height: 16px; max-width: 240px; min-width: 0; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ref-badge-local { font-weight: 600; }
@@ -268,6 +273,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .sidebar-mode .filter-label input { width: 100%; min-width: 0; }
 .sidebar-mode .toolbar-button { min-height: 26px; padding: 3px 7px; }
 .sidebar-mode .rows::before { display: none; }
+.sidebar-mode .row-content::after { display: none; }
 .sidebar-mode .rows { min-width: 0; }
 .sidebar-mode .commit-row { padding-right: 4px; }
 .sidebar-mode .row-content { width: 100%; min-height: 28px; height: 28px; padding: 2px 4px; gap: 4px; }
