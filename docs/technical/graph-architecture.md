@@ -36,6 +36,8 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 ## Rowとlaneの不変条件
 
+CompactのSVG中心は行高の半分（30px行は15px、sidebarの28px行は14px）とし、HTML行の中心へ揃える。Comfortableは従来の18px offsetを維持する。node・edge端点・Operation AnnotationのY座標は`graphRowCenterY`を共有する。
+
 DAG parent edgeはAnnotation Row挿入後の最終node座標で回避判定する。`src/layout/nodeGeometry.ts`の共通mark / selection ring外形に余白を加え、端点以外のcurrent / historical commitと干渉するBezierだけを横方向へ調整する。曲線の再帰分割による包絡判定を使い、端点、Y方向の制御点、lane、parent順序、色、Operation Overlayは維持する。選択前からring分を確保するため、選択操作で経路は変化しない。
 
 通常のparent pathで端点のXが異なり、最終Y距離が8行以上なら、先に縦の直線と上下各0.75行の短い接続曲線を試す。source/targetのXとそれぞれ±半laneの最大6候補を、全segmentの曲線包絡でnode/ringとの非干渉を確認して採用する。安全な候補がなければ従来のBezier回避に戻す。同一X、短い接続、Rebase event挿入の分割path、Working TreeやOperation Overlayにはこの変更を適用しない。`EdgePath.d`は1本のSVG path内に複数のC segmentを持ち得る。lane allocator、node row、parent edgeの本数・順序・色には影響しない。

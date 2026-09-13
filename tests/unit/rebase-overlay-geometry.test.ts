@@ -139,7 +139,7 @@ describe('completed rebase overlay geometry', () => {
     expect(overlay.outlines).toEqual([]);
   });
 
-  it('RA1–RA5 align the multi marker with the annotation row between the groups', () => {
+  it.each([28, 30, 38])('RA1–RA5 align the multi marker with the annotation row between the groups at %ipx', (rowHeight) => {
     const laidOut = insertOperationAnnotationRows(
       [
         commit('3', 0, 0),
@@ -153,13 +153,12 @@ describe('completed rebase overlay geometry', () => {
       [relation(['c', 'd', 'e'], ['1', '2', '3'])],
     );
     const annotationRow = laidOut.rows[0]!;
-    const rowHeight = 38;
     const overlay = routeRebaseRelations(laidOut.nodes, [relation(['c', 'd', 'e'], ['1', '2', '3'])], {
       rowHeight,
       annotationRows: new Map([[annotationRow.relationId, annotationRow.row]]),
     });
     const path = overlay.paths[0]!;
-    const markerY = 18 + annotationRow.row * rowHeight;
+    const markerY = (rowHeight === 38 ? 18 : rowHeight / 2) + annotationRow.row * rowHeight;
     expect(path.labelY).toBe(markerY);
     const start = firstSvgPoint(path.d);
     const end = lastSvgPoint(path.d);

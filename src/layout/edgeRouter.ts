@@ -23,6 +23,11 @@ interface CubicCurve {
   p3: Point;
 }
 
+/** Center compact rows while preserving the established comfortable offset. */
+export function graphRowCenterY(row: number, rowHeight: number): number {
+  return row * rowHeight + Math.min(18, rowHeight / 2);
+}
+
 export function pointForNode(node: GraphNode, options: EdgeRouterOptions = {}): { x: number; y: number } {
   const rowHeight = options.rowHeight ?? 38;
   const laneWidth = options.laneWidth ?? 34;
@@ -32,7 +37,7 @@ export function pointForNode(node: GraphNode, options: EdgeRouterOptions = {}): 
     // the one exception: its layout X is placed on the existing live parent
     // curve so the glyph is an insertion point, not a second branch lane.
     x: node.visualX ?? leftPadding + (node.lane ?? 0) * laneWidth,
-    y: 18 + (node.row ?? 0) * rowHeight,
+    y: graphRowCenterY(node.row ?? 0, rowHeight),
   };
 }
 
@@ -658,7 +663,7 @@ export function routeHistoryRelations(nodes: GraphNode[], relations: HistoryRela
     const annotationRow = options.annotationRows?.get(relation.id);
     const labelFor = (curve: CubicCurve) => annotationRow === undefined
       ? cubicPoint(curve, 0.42)
-      : cubicPoint(curve, parameterAtY(curve, 18 + annotationRow * rowHeight));
+      : cubicPoint(curve, parameterAtY(curve, graphRowCenterY(annotationRow, rowHeight)));
 
     if (relation.kind === 'revert') {
       const sourceInset = Math.min(historyRelationSourceCrossInset(source), distance / 2);
@@ -820,7 +825,7 @@ export function routeRefMovements(nodes: GraphNode[], relations: RefMovementRela
     const annotationRow = options.annotationRows?.get(relation.id);
     const labelFor = (curve: CubicCurve) => annotationRow === undefined
       ? cubicPoint(curve, 0.42)
-      : cubicPoint(curve, parameterAtY(curve, 18 + annotationRow * rowHeight));
+      : cubicPoint(curve, parameterAtY(curve, graphRowCenterY(annotationRow, rowHeight)));
     const targetInset = Math.min(REF_MOVEMENT_ENDPOINT_INSET, distance / 2);
     const sourceInset = Math.min(HISTORY_RELATION_ARROW_GAP, Math.max(0, (distance - targetInset) / 3));
     const pairOffset = pairOffsets.get(relation.id) ?? 0;
@@ -916,7 +921,7 @@ function rectBoundaryPoint(bounds: RebaseGroupBounds, from: Point, toward: Point
 }
 
 function rebaseLabelPoint(curve: CubicCurve, annotationRow: number | undefined, rowHeight: number): Point {
-  const labelY = annotationRow === undefined ? cubicPoint(curve, 0.42).y : 18 + annotationRow * rowHeight;
+  const labelY = annotationRow === undefined ? cubicPoint(curve, 0.42).y : graphRowCenterY(annotationRow, rowHeight);
   const onCurve = cubicPoint(curve, parameterAtY(curve, labelY));
   return { x: onCurve.x, y: labelY };
 }
@@ -983,7 +988,7 @@ function routeMemberGroupOverlay(
   const distance = Math.hypot(rawEnd.x - start.x, rawEnd.y - start.y);
   if (distance < Number.EPSILON) return undefined;
   const annotationRow = options.annotationRows?.get(spec.id);
-  const markerY = annotationRow === undefined ? undefined : 18 + annotationRow * rowHeight;
+  const markerY = annotationRow === undefined ? undefined : graphRowCenterY(annotationRow, rowHeight);
   const curve = rebaseGroupConnector(start, rawEnd, markerY);
   const tangent = cubicDerivative(curve, 1);
   const labelPoint = rebaseLabelPoint(curve, annotationRow, rowHeight);
@@ -1127,7 +1132,7 @@ export function routeRewriteCollapseRelations(
     const distance = Math.hypot(facing.x - start.x, facing.y - start.y);
     if (distance < Number.EPSILON) continue;
     const annotationRow = options.annotationRows?.get(relation.id);
-    const markerY = annotationRow === undefined ? undefined : 18 + annotationRow * rowHeight;
+    const markerY = annotationRow === undefined ? undefined : graphRowCenterY(annotationRow, rowHeight);
     const curve = rebaseGroupConnector(start, facing, markerY);
     const tangent = cubicDerivative(curve, 1);
     const labelPoint = rebaseLabelPoint(curve, annotationRow, rowHeight);
