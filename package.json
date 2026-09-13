@@ -2,7 +2,7 @@
   "name": "git-lines",
   "displayName": "Git Lines",
   "description": "Read-only Git graph with stable lanes, reflog history, and evidence-based operation overlays.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "publisher": "lye-0",
   "license": "MIT",
   "repository": {

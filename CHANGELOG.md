@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.2
+
+- Fix vertical graph alignment in Compact mode across editor, bottom-panel, and sidebar views.
+- Keep nodes, connecting edges, and operation markers aligned while preserving Comfortable mode positioning.
+
 ## 1.0.1
 
 - Improve automatic graph refresh after commits, branch changes, staging, and Git operation state changes, including linked worktrees.
