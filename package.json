@@ -2,7 +2,7 @@
   "name": "git-lines",
   "displayName": "Git Lines",
   "description": "Read-only Git graph with stable lanes, reflog history, and evidence-based operation overlays.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "lye-0",
   "license": "MIT",
   "repository": {
@@ -120,7 +120,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "vscode:prepublish": "pnpm build",
-    "package": "node -e \"require('node:fs').mkdirSync('releases', { recursive: true })\" && vsce package --no-dependencies --githubBranch main --out releases/",
+    "package": "node -e \"require('node:fs').mkdirSync('releases', { recursive: true })\" && vsce package --no-dependencies --githubBranch main --readme-path README.marketplace.md --out releases/",
     "check": "pnpm lint && pnpm test && pnpm build"
   },
   "devDependencies": {

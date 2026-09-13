@@ -1,7 +1,7 @@
 # Ship only runtime assets, public documentation, and license notices.
 **
 !package.json
-!README.md
+!README.marketplace.md
 !CHANGELOG.md
 !LICENSE
 !THIRD_PARTY_NOTICES.md

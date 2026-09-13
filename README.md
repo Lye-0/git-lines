@@ -1,6 +1,6 @@
 # Git Lines
 
-[![Star on GitHub ⭐](https://img.shields.io/badge/Star_on_GitHub_%E2%AD%90-111820?style=for-the-badge&logo=github&logoColor=2DCDF0)](https://github.com/Lye-0/git-lines)
+[![日本語](https://img.shields.io/badge/日本語-176B87?style=for-the-badge)](https://github.com/Lye-0/git-lines/blob/main/README.md) [![English](https://img.shields.io/badge/English-176B87?style=for-the-badge)](https://github.com/Lye-0/git-lines/blob/main/README.en.md)
 
 VS Code向けの読み取り専用Gitグラフです。現在のDAGを安定したレーンで示し、Git標準情報から確実に復元できる操作だけを Operation Overlay として重ねます。
 
@@ -386,13 +386,15 @@ VS Code 1.90以降と、PATHから実行できるGitが必要です。Git reposi
 3. commit または operation を選ぶと詳細が開きます（左サイドバーでは吹き出し表示）。
 4. 初期表示は 30 commit です。下へスクロールすると残りが少なくなった時点で追加されます（`Load more` も利用できます）。
 
-VSIXからインストールする場合は、Command Paletteの `Extensions: Install from VSIX...` で `releases/git-lines-1.0.0.vsix` を選びます。
+VSIXからインストールする場合は、Command Paletteの `Extensions: Install from VSIX...` で、利用するバージョンの `releases/git-lines-<version>.vsix` を選びます。
 
 下部パネルでは「ターミナル」「出力」などと並ぶ `Git Lines` タブ、左サイドバーではアクティビティバーの専用アイコンから表示します。どの表示先でも同じグラフ・Reflog・詳細情報を利用できます。Command Paletteの `Git Lines: Open in Editor` / `Git Lines: Open in Panel` / `Git Lines: Open in Sidebar` から表示先を直接指定することもできます。
 
 グラフは読み取り専用です。checkout、branch 作成、merge、rebase、push など Git を変更する操作は提供しません。
 
 ## Development
+
+GitHubの初期表示は日本語の `README.md`、英語版は `README.en.md` です。Marketplaceには `README.marketplace.md` をパッケージ時に指定します。内容を更新するときは3ファイルを合わせて確認してください。
 
 ```bash
 pnpm install

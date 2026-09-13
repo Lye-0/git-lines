@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.3
+
+- Add Japanese and English README language links, with Japanese as the GitHub default.
+- Use a dedicated English README for Marketplace, linking to both GitHub language versions.
+- Show the Star on GitHub button only in the Marketplace README.
+
 ## 1.0.2
 
 - Fix vertical graph alignment in Compact mode across editor, bottom-panel, and sidebar views.
