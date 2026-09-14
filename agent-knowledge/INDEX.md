@@ -62,6 +62,14 @@
 - files: `src/layout/laneLayout.ts`, `tests/unit/layout.test.ts`, `webview/src/components/routePresentation.ts` …
 - memory: `agent-knowledge/entries/2026-09-14-primary-spine-ref-stop-a07aa3.md`
 
+### Equal reflog evidence can hide different branch-creation contexts
+- id: `rm-20260915-source-branch-lineage-ambiguity`
+- type: `constraint`
+- maturity: `candidate`
+- tags: `lineage`, `reflog`, `ambiguity`, `source-branch`
+- files: `src/model/branchProtection.ts`, `src/model/graphBuilder.ts`, `src/layout/laneLayout.ts` …
+- memory: `agent-knowledge/entries/2026-09-15-source-branch-lineage-ambiguity.md`
+
 ## Search guidance
 
 Use topic, tags, related paths, filenames, and text search such as `rg` to shortlist entries.
