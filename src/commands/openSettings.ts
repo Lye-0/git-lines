@@ -24,10 +24,10 @@ export async function openSettings(context: vscode.ExtensionContext, repositoryR
       ? refs.find((ref) => ref.fullName === value.fixedBranch)?.shortName ?? 'Unknown'
       : `Auto · ${target?.branch ?? 'Unknown'}`;
     const selected = await vscode.window.showQuickPick([
-      { label: '$(git-branch) Layout', description: value.layoutMode === 'legacy' ? 'Standard' : 'Default Fixed', detail: scope('layoutMode'), key: 'layoutMode' },
-      { label: '$(history) Reflog', description: value.showReflog ? 'On' : 'Off', detail: scope('showReflog'), key: 'showReflog' },
-      { label: '$(list-flat) Density', description: value.density === 'compact' ? 'Compact' : 'Comfortable', detail: `Editor / Panel · ${scope('density')}`, key: 'density' },
-      ...(root ? [{ label: '$(pin) Default Branch', description: branchLabel, detail: 'Repository', key: 'target' }] : []),
+      { label: '$(git-branch) Layout', description: `= ${value.layoutMode === 'legacy' ? 'Standard' : 'Default Fixed'}`, detail: scope('layoutMode'), key: 'layoutMode' },
+      { label: '$(history) Reflog', description: `= ${value.showReflog ? 'On' : 'Off'}`, detail: scope('showReflog'), key: 'showReflog' },
+      { label: '$(list-flat) Density', description: `= ${value.density === 'compact' ? 'Compact' : 'Comfortable'}`, detail: `Editor / Panel · ${scope('density')}`, key: 'density' },
+      ...(root ? [{ label: '$(pin) Default Branch', description: `= ${branchLabel}`, detail: 'Repository', key: 'target' }] : []),
     ], { title: 'Git Lines — Settings', placeHolder: 'Select a setting', matchOnDescription: true });
     if (!selected) return;
     try {
