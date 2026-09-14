@@ -54,6 +54,14 @@
 - files: `src/layout/edgeRouter.ts`, `tests/unit/long-parent-routing.test.ts`, `docs/technical/graph-architecture.md`
 - memory: `agent-knowledge/entries/2026-09-13-bounded-long-parent-routing-582cea.md`
 
+### Removing primary ref-tip stops conflicts with existing route ownership
+- id: `rm-20260914-primary-spine-ref-stop`
+- type: `constraint`
+- maturity: `candidate`
+- tags: `primary`, `first-parent`, `ref-tip`
+- files: `src/layout/laneLayout.ts`, `tests/unit/layout.test.ts`, `webview/src/components/routePresentation.ts` …
+- memory: `agent-knowledge/entries/2026-09-14-primary-spine-ref-stop-a07aa3.md`
+
 ## Search guidance
 
 Use topic, tags, related paths, filenames, and text search such as `rg` to shortlist entries.
