@@ -36,7 +36,9 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 ## Rowとlaneの不変条件
 
-`branchGraph.layoutMode`の初期値は`legacy`で、従来のlane allocatorをそのまま使用する。`default-fixed`では従来の出力を不変入力として`defaultFixedLayout`で配置する。defaultはremote HEADまたはrepository単位の手動指定から解決し、解決不能なら従来配置を維持する。defaultに割り当てられた列を0へ固定し、他trackは1以降に保持する。
+`branchGraph.layoutMode`の初期値は`legacy`（Standard）。両モードとも従来のlane allocatorの後に`fastForwardLayout`を適用する。branch reflogのFast-forward記録と到達関係で取り込み範囲を確認し、その中でcommit作成元の証拠があるnodeのみ元branchの独立trackに保護する。既に元branchに割り当てられたnode、証拠のないnode、FF以外の履歴にはこの補正を適用しない。保護trackは親子edgeの区間も含めて他列との衝突を避ける。`Branch / Route`も保護後のtrack名を使う。
+
+`default-fixed`は共通のFF保護後に`defaultFixedLayout`で配置する。defaultはremote HEADまたはrepository単位の手動指定から解決し、解決不能ならStandard配置を維持する。defaultに割り当てられた列を0へ固定し、他trackは1以降に保持する。FFのref-event線は両端の実際の座標へ接続し、別列に移ったcommitの手前で垂直線が途切れないようにする。
 
 設定の入口は全表示先のToolbarの`?`左側にある歯車ボタン。`openSettings` messageはsessionのrepositoryRootを渡すため、複数folderでも表示中のrepositoryの設定を直接開く。ステータスバーは表示先選択専用とし、Command Paletteの`Git Lines: Settings`も利用できる。
 

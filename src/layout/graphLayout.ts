@@ -5,6 +5,7 @@ import { computeRowLayout } from './rowLayout.js';
 import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeCherryPickGroups, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements, routeRewriteCollapseRelations } from './edgeRouter.js';
 import { insertOperationAnnotationRows } from './operationRows.js';
 import { defaultFixedLayout } from './defaultFixedLayout.js';
+import { fastForwardLayout } from './fastForwardLayout.js';
 import type { DefaultBranchTarget } from '../model/defaultBranchResolver.js';
 import type { ReflogEntry } from '../git/gitTypes.js';
 
@@ -28,8 +29,9 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
     previousNodeLanes: options.previousNodeLanes,
     primaryBranch: options.primaryBranch,
   });
+  const protectedLanes = fastForwardLayout(legacyLanes, facts, options.protectionReflogs ?? []);
   const lanes = options.fixedDefault
-    ? defaultFixedLayout(legacyLanes, facts, options.fixedDefault, options.protectionReflogs ?? []) : legacyLanes;
+    ? defaultFixedLayout(protectedLanes, facts, options.fixedDefault, options.protectionReflogs ?? []) : protectedLanes;
   const laidOutNodes = lanes.nodes.map((node) => ({ ...node, row: rows.rows.get(node.id) ?? node.row }));
   const rowHeight = options.rowHeight ?? 38;
   const laneWidth = options.laneWidth ?? 34;

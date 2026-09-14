@@ -156,10 +156,9 @@ export class GraphViewSession implements vscode.Disposable {
       this.snapshot = next;
       if (!reuseSnapshot) this.protectionLogs = undefined;
       const fixedDefault = settingsValue.layoutMode === 'default-fixed' ? resolveDefaultBranch(next.refs, settingsValue.fixedBranch) : undefined;
-      if (fixedDefault) {
-        this.protectionLogs ??= await this.client.readBranchProtection(next);
-        if (this.disposed || settingsRevision !== this.settingsRevision) return;
-      }
+      // Both modes preserve FF source routes, independently of Reflog visibility.
+      this.protectionLogs ??= await this.client.readBranchProtection(next);
+      if (this.disposed || settingsRevision !== this.settingsRevision) return;
       if (!this.watcher) {
         this.watcher = new RepositoryWatcher(next.repository.gitDir, {
           commonGitDir: next.repository.commonGitDir,

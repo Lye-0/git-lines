@@ -127,12 +127,15 @@ try {
       const protectionReflogs = await client.readBranchProtection(snapshot);
       const facts = buildGraphFacts(snapshot, { showReflog });
       for (const [host, rowHeight, laneWidth] of [['sidebar', 28, 22], ['compact', 30, 34], ['comfortable', 38, 34]]) {
-        const options = { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, rowHeight, laneWidth };
+        const options = { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, rowHeight, laneWidth, protectionReflogs };
         const standard = createGraphLayout(facts, options);
         const fixed = createGraphLayout(facts, { ...options, fixedDefault: target, protectionReflogs });
         const track = fixed.tracks.find((item) => item.refNames.includes(target.refName));
         assert.equal(track?.lane, 0, `${id}: default track`);
         for (const oid of scenario.protectedOids) assert(fixed.nodes.some((n) => n.oid === oid && n.kind === 'commit' && n.lane > 0), `${id}: protected ${oid}`);
+        if (['ff', 'deleted', 'continued'].includes(scenario.kind)) {
+          for (const oid of scenario.protectedOids) assert(standard.nodes.some((n) => n.oid === oid && n.kind === 'commit' && n.lane > 0), `${id}: Standard FF protection ${oid}`);
+        }
         for (const oid of scenario.defaultOids) assert(fixed.nodes.some((n) => n.oid === oid && n.kind === 'commit' && n.lane === 0), `${id}: default ${oid}`);
         const working = fixed.nodes.find((n) => n.kind === 'working-tree');
         assert(working && (scenario.workingLane === 'default' ? working.lane === 0 : working.lane > 0), `${id}: working tree`);

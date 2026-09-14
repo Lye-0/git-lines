@@ -39,4 +39,6 @@ The user clarified that independence includes a physically separate column: a fe
 
 ## Verification
 
+The real-Git fixture `141-default-fast-forward` exposed a distinct shared-tip exception: legacy Standard claims both feature-created commits as main after FF, despite intact creation reflogs. Do not cite the older mid-chain-ref test as proof of universal source-column independence. The user explicitly authorized correcting FF in both modes. `fastForwardLayout` now protects proven imported source commits before optional default pinning; `tests/integration/fast-forward-placement.test.ts` checks both modes, Reflog ON/OFF, source deletion, later main commits, route labels and connected FF annotation endpoints. This targeted FF correction does not adopt the rejected unrestricted first-parent-walk change.
+
 Re-run baseline layout tests and the full suite with the isolated one-call variant. Compare facts and layouts from identical snapshots, including stale mid-chain refs, both merge directions, pagination and operation overlays. Verify GUI separately; passing DAG geometry checks does not prove operation labels or popovers remain usable.

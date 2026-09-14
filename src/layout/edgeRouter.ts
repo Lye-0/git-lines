@@ -614,6 +614,9 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
     const a = pointForNode(from, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const b = pointForNode(to, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     if (edge.annotation === 'ref-event') {
+      if (a.x !== b.x && (from.kind === 'fast-forward-event' || to.kind === 'fast-forward-event')) {
+        return [{ id: edge.id, type: edge.type, d: curvePath(parentCurve(a, b)), label: edge.label, annotation: edge.annotation }];
+      }
       // Keep the connector vertical on the target lane.  In the usual case
       // the destination commit is on that lane too; when lane claiming puts a
       // shared commit elsewhere, this still avoids a branch-like horizontal
