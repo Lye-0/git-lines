@@ -382,7 +382,7 @@ An orphan branch appears as a normal branch with a root independent of existing 
 Requires VS Code 1.90 or later and Git available on PATH. Open a Git repository folder and enable Workspace Trust. Remote workspaces require Git on the remote host. Virtual workspaces without files accessible to the Git CLI are not supported.
 
 1. Select `Git Lines` in the status bar or `Git Lines: Open` in the Command Palette, then choose `Open in Editor`, `Open in Panel`, or `Open in Sidebar`. With multiple folders open, select a repository next.
-2. Use the header to toggle Reflog or refresh the graph. Editor and bottom-panel views also offer `Compact / Comfortable` density.
+2. Use the gear button to the left of `?` in the graph to choose lane placement, Reflog, and Density. Refresh remains available in the graph header.
 3. Select a commit or operation to open its details (a popover in the sidebar).
 4. The initial view contains 30 commits. Scrolling near the bottom loads more history; `Load more` is also available.
 
@@ -391,6 +391,14 @@ To install a VSIX, run `Extensions: Install from VSIX...` from the Command Palet
 The bottom panel has a `Git Lines` tab alongside Terminal and Output; the sidebar has a dedicated Activity Bar icon. All locations provide the same graph, Reflog, and detail information. You can also choose a location directly using `Git Lines: Open in Editor`, `Git Lines: Open in Panel`, or `Git Lines: Open in Sidebar`.
 
 The graph is read-only. It does not provide Git mutations such as checkout, branch creation, merge, rebase, or push.
+
+## Display settings
+
+Use the **gear button to the left of ?** in the graph, or run `Git Lines: Settings`. Changes are saved, restored on the next launch, and applied to open views. Settings normally use user scope; existing workspace overrides are respected and the save scope is shown. Density applies to the editor and bottom panel; the sidebar retains its dedicated spacing.
+
+Choose **Legacy placement** (the default) or **Pin the default column left**. Fixed placement protects other branch columns: feature commits whose origin is established by reflog evidence stay outside the default column after a fast-forward. This protection uses reflog records internally even when Reflog display is OFF. It does not reconstruct every historical branch of origin; existing route identities are retained where evidence is insufficient.
+
+The target is resolved from locally stored remote HEAD metadata. If unresolved, choose a **Fixed target** in Settings. This override is stored per repository inside VS Code and does not modify Git configuration.
 
 ## Development
 
@@ -417,6 +425,7 @@ code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 
 | Setting | Default | Description |
 | --- | --- | --- |
+| `branchGraph.layoutMode` | `legacy` | Legacy placement or fixed default column (`default-fixed`) |
 | `branchGraph.showReflog` | `true` | Reflog-dependent content such as PREVIOUS commits and overlays |
 | `branchGraph.density` | `compact` | Row density (`comfortable` / `compact`) |
 | `branchGraph.initialCommitCount` | `30` | Initial number of commits to load |

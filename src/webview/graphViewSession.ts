@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { GitClient } from '../git/gitClient.js';
-import type { HistoryEvent, RepositorySnapshot } from '../git/gitTypes.js';
+import type { HistoryEvent, RepositorySnapshot, ReflogEntry } from '../git/gitTypes.js';
 import { buildGraphFacts } from '../model/graphBuilder.js';
 import { createGraphLayout } from '../layout/graphLayout.js';
 import { LayoutState } from '../layout/layoutState.js';
@@ -8,11 +8,19 @@ import { getWebviewHtml } from './webviewHtml.js';
 import { RepositoryWatcher } from '../repository/repositoryWatcher.js';
 import { GitStateWatcher } from '../repository/gitStateWatcher.js';
 import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from './messageProtocol.js';
+import { graphSettings, type GraphSettings, type GraphSettingsService } from '../settings/graphSettings.js';
+import { resolveDefaultBranch } from '../model/defaultBranchResolver.js';
+import { openSettings } from '../commands/openSettings.js';
 
 export class GraphViewSession implements vscode.Disposable {
   private readonly messageListener: vscode.Disposable;
   private readonly client: GitClient;
-  private readonly layoutState = new LayoutState();
+  private readonly layoutStates = new Map<string, LayoutState>();
+  private readonly settings: GraphSettingsService;
+  private readonly settingsListener: vscode.Disposable;
+  private settingsValue: GraphSettings;
+  private settingsRevision = 0;
+  private protectionLogs?: ReflogEntry[];
   private readonly output: vscode.OutputChannel;
   private snapshot?: RepositorySnapshot;
   private commitLimit: number;
@@ -31,7 +39,7 @@ export class GraphViewSession implements vscode.Disposable {
   private visibleEvents = new Map<string, HistoryEvent>();
 
   public constructor(
-    context: vscode.ExtensionContext,
+    private readonly context: vscode.ExtensionContext,
     private readonly webview: vscode.Webview,
     public readonly repositoryRoot: string | undefined,
     private readonly presentation: 'standard' | 'sidebar' = 'standard',
@@ -47,8 +55,18 @@ export class GraphViewSession implements vscode.Disposable {
     });
     const config = vscode.workspace.getConfiguration('branchGraph');
     this.commitLimit = config.get<number>('initialCommitCount', 30);
-    this.showReflog = config.get<boolean>('showReflog', true);
-    this.density = config.get<'comfortable' | 'compact'>('density', 'compact');
+    this.settings = graphSettings(context);
+    this.settingsValue = this.settings.read(repositoryRoot);
+    this.showReflog = this.settingsValue.showReflog;
+    this.density = this.settingsValue.density;
+    this.settingsListener = this.settings.onDidChange(() => {
+      const value = this.settings.read(this.repositoryRoot);
+      const old = this.settingsValue;
+      if (JSON.stringify(value) === JSON.stringify(old)) return;
+      this.settingsValue = value; this.showReflog = value.showReflog; this.density = value.density;
+      this.settingsRevision++;
+      if (this.snapshot || this.loading) void this.load(false, old.showReflog === value.showReflog);
+    });
     this.webview.options = {
       enableScripts: true,
       localResourceRoots: [
@@ -64,6 +82,7 @@ export class GraphViewSession implements vscode.Disposable {
     if (this.disposed) return;
     this.disposed = true;
     this.messageListener.dispose();
+    this.settingsListener.dispose();
     this.watcher?.dispose();
     this.gitStateWatcher?.dispose();
     this.output.dispose();
@@ -90,15 +109,14 @@ export class GraphViewSession implements vscode.Disposable {
       }
     } else if (message.type === 'ready') await this.load(false);
     else if (message.type === 'refresh') await this.refresh();
+    else if (message.type === 'openSettings') await openSettings(this.context, this.repositoryRoot);
     else if (message.type === 'loadMore') await this.loadMore();
     else if (message.type === 'select') await this.select(message.oid);
     else if (message.type === 'selectEvent') await this.selectEvent(message.id);
     else if (message.type === 'toggleReflog') {
-      this.showReflog = message.enabled;
-      await this.load(false);
+      await this.settings.save('showReflog', message.enabled, this.repositoryRoot);
     } else if (message.type === 'setDensity') {
-      this.density = message.density;
-      await this.load(false, true);
+      await this.settings.save('density', message.density, this.repositoryRoot);
     }
   }
 
@@ -124,10 +142,24 @@ export class GraphViewSession implements vscode.Disposable {
     const preciseStart = performance.now();
     const requestId = ++this.requestId;
     const commandsBefore = this.commandCount;
+    const settingsRevision = this.settingsRevision;
+    const settingsValue = this.settingsValue;
     try {
       const next = reuseSnapshot && this.snapshot ? this.snapshot : await this.client.readSnapshot(this.repositoryRoot, this.commitLimit, this.showReflog);
       if (this.disposed) return;
+      if (settingsRevision !== this.settingsRevision) {
+        // A presentation change must not discard newly-read Git state and
+        // then render an older cached snapshot as the final result.
+        if (!reuseSnapshot) this.pendingReload = true;
+        return;
+      }
       this.snapshot = next;
+      if (!reuseSnapshot) this.protectionLogs = undefined;
+      const fixedDefault = settingsValue.layoutMode === 'default-fixed' ? resolveDefaultBranch(next.refs, settingsValue.fixedBranch) : undefined;
+      if (fixedDefault) {
+        this.protectionLogs ??= await this.client.readBranchProtection(next);
+        if (this.disposed || settingsRevision !== this.settingsRevision) return;
+      }
       if (!this.watcher) {
         this.watcher = new RepositoryWatcher(next.repository.gitDir, {
           commonGitDir: next.repository.commonGitDir,
@@ -145,17 +177,24 @@ export class GraphViewSession implements vscode.Disposable {
       this.output.appendLine(`perf request=${requestId} factsMs=${(performance.now() - factsStart).toFixed(1)}`);
       this.visibleEvents = new Map(facts.events.map((event) => [event.id, event]));
       const layoutStart = performance.now();
+      const stateKey = `${settingsValue.layoutMode}:${fixedDefault?.refName ?? ''}`;
+      const layoutState = this.layoutStates.get(stateKey) ?? new LayoutState();
+      this.layoutStates.set(stateKey, layoutState);
+      // Manual target changes must not retain an unbounded collection of states.
+      if (this.layoutStates.size > 4) this.layoutStates.delete(this.layoutStates.keys().next().value!);
       const layout = createGraphLayout(facts, {
         visibleCommitCount: next.visibleCommitCount,
         hasMore: next.hasMore,
         primaryBranch: facts.primaryBranch,
-        previousRows: isAppend ? this.layoutState.rows : undefined,
-        previousLanes: isAppend || reuseSnapshot ? this.layoutState.lanes : undefined,
-        previousNodeLanes: isAppend || reuseSnapshot ? this.layoutState.nodeLanes : undefined,
+        previousRows: isAppend ? layoutState.rows : undefined,
+        previousLanes: !fixedDefault && (isAppend || reuseSnapshot) ? layoutState.lanes : undefined,
+        previousNodeLanes: !fixedDefault && (isAppend || reuseSnapshot) ? layoutState.nodeLanes : undefined,
+        fixedDefault,
+        protectionReflogs: this.protectionLogs,
         rowHeight: this.presentation === 'sidebar' ? 28 : this.density === 'compact' ? 30 : 38,
         laneWidth: this.presentation === 'sidebar' ? 22 : undefined,
       });
-      this.layoutState.set(layout);
+      layoutState.set(layout);
       this.output.appendLine(`perf request=${requestId} layoutMs=${(performance.now() - layoutStart).toFixed(1)} gitCommands=${this.commandCount - commandsBefore} reuseSnapshot=${reuseSnapshot}`);
       this.output.appendLine(`refresh ${Date.now() - started}ms ${next.repository.root} (limit=${this.commitLimit}, live=${next.visibleCommitCount}, evidence=${next.commits.length - next.visibleCommitCount}, nodes=${layout.nodes.length}, append=${isAppend})`);
       this.renderStarts.set(requestId, preciseStart);

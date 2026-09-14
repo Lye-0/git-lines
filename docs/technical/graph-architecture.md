@@ -36,6 +36,16 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 ## Rowとlaneの不変条件
 
+`branchGraph.layoutMode`の初期値は`legacy`で、従来のlane allocatorをそのまま使用する。`default-fixed`では従来の出力を不変入力として`defaultFixedLayout`で配置する。defaultはremote HEADまたはrepository単位の手動指定から解決し、解決不能なら従来配置を維持する。defaultに割り当てられた列を0へ固定し、他trackは1以降に保持する。
+
+設定の入口は全表示先のToolbarの`?`左側にある歯車ボタン。`openSettings` messageはsessionのrepositoryRootを渡すため、複数folderでも表示中のrepositoryの設定を直接開く。ステータスバーは表示先選択専用とし、Command Paletteの`Git Lines: Settings`も利用できる。
+
+固定モードではbranch reflogのcommit作成記録、または連続した同一HEAD reflogのcheckout→commitから作成元を確認する。defaultへ取り込まれた別branchの作成commitを、そのbranchのtrackへ保護する。削除済みbranchは記録に基づく表示trackを作るが、存在しないref badgeを追加しない。FF/ref移動や到達関係だけではsource範囲を割り当てない。HEADのselector/OID断絶、rebaseなど未知の遷移ではcheckout状態の引継ぎを止める。証拠が不足する区間は従来の識別を保持する。
+
+固定モードのReflog OFFは歴史表示をOFFにしたまま、`readBranchProtection`で作成元判定用のreflogだけを取得する。この経路では補助commit objectの取得や履歴範囲の拡張は行わない。最終laneから既存routerで全経路を計算し、固定後のlaneを従来allocatorのprevious情報へ戻さない。
+
+固定モードの保護用読込は、他の利用可能なlinked worktreeのHEAD logも最大4並列で取得する。HEAD logはworktreeごとに分け、checkoutの移動先から後続commitを追う方法と、移動元から直前の連続commitを辿る方法を使う。作成直後のcheckout記録がないworktreeでも、そのbranchから離れた記録があれば作成元を確認できる。
+
 CompactのSVG中心は行高の半分（30px行は15px、sidebarの28px行は14px）とし、HTML行の中心へ揃える。Comfortableは従来の18px offsetを維持する。node・edge端点・Operation AnnotationのY座標は`graphRowCenterY`を共有する。
 
 DAG parent edgeはAnnotation Row挿入後の最終node座標で回避判定する。`src/layout/nodeGeometry.ts`の共通mark / selection ring外形に余白を加え、端点以外のcurrent / historical commitと干渉するBezierだけを横方向へ調整する。曲線の再帰分割による包絡判定を使い、端点、Y方向の制御点、lane、parent順序、色、Operation Overlayは維持する。選択前からring分を確保するため、選択操作で経路は変化しない。

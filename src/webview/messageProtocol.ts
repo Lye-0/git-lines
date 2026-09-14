@@ -5,6 +5,7 @@ export type WebviewToExtensionMessage =
   | { type: 'rendered'; requestId: number; renderMs: number }
   | { type: 'ready' }
   | { type: 'refresh' }
+  | { type: 'openSettings' }
   | { type: 'loadMore' }
   | { type: 'select'; oid: string }
   | { type: 'selectEvent'; id: string }

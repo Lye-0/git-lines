@@ -148,6 +148,25 @@ export class GitClient {
     };
   }
 
+  /** Fixed placement needs creation evidence even when historical display is
+   * disabled. Do not expand commit history or resolve operation objects here. */
+  public async readBranchProtection(snapshot: RepositorySnapshot): Promise<ReflogEntry[]> {
+    const entries = snapshot.reflogs.length ? snapshot.reflogs : await this.readReflogs(snapshot.repository, snapshot.refs);
+    const others = snapshot.workingTrees.filter((tree) => !tree.inaccessible && tree.currentWorktree !== true && tree.path !== snapshot.repository.root);
+    const extra: ReflogEntry[][] = new Array(others.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, others.length) }, async () => {
+      while (next < others.length) {
+        const index = next++, tree = others[index];
+        try {
+          const output = await this.runner.runChecked(['reflog', 'show', '--format=' + reflogFormat, 'HEAD'], { cwd: tree.path, timeoutMs: this.timeoutMs });
+          extra[index] = parseReflogRecords(output, `worktree:${tree.worktreeId}/HEAD`);
+        } catch { extra[index] = []; }
+      }
+    }));
+    return [...entries, ...extra.flat()];
+  }
+
   public async readCommitDetail(root: string, oid: string): Promise<GitCommitDetail> {
     if (!/^[0-9a-f]{7,64}$/i.test(oid)) throw new Error('Invalid commit object id');
     const output = await this.runner.runChecked(
@@ -278,7 +297,7 @@ export class GitClient {
     }
   }
 
-  private async readRefs(root: string): Promise<GitRef[]> {
+  public async readRefs(root: string): Promise<GitRef[]> {
     const output = await this.runner.runChecked(['for-each-ref', '--sort=refname', `--format=${refFormat}`], {
       cwd: root,
       timeoutMs: this.timeoutMs,

@@ -4,6 +4,9 @@ import { computeLaneLayout } from './laneLayout.js';
 import { computeRowLayout } from './rowLayout.js';
 import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCurves, routeCherryPickGroups, routeEdges, routeHistoryRelations, routeRebaseRelations, routeRefMovements, routeRewriteCollapseRelations } from './edgeRouter.js';
 import { insertOperationAnnotationRows } from './operationRows.js';
+import { defaultFixedLayout } from './defaultFixedLayout.js';
+import type { DefaultBranchTarget } from '../model/defaultBranchResolver.js';
+import type { ReflogEntry } from '../git/gitTypes.js';
 
 export interface GraphLayoutOptions {
   visibleCommitCount: number;
@@ -14,15 +17,19 @@ export interface GraphLayoutOptions {
   previousNodeLanes?: Map<string, number>;
   rowHeight?: number;
   laneWidth?: number;
+  fixedDefault?: DefaultBranchTarget;
+  protectionReflogs?: ReflogEntry[];
 }
 
 export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOptions): GraphLayout {
   const rows = computeRowLayout(facts.nodes, facts.edges, options.previousRows);
-  const lanes = computeLaneLayout({ ...facts, nodes: rows.nodes }, {
+  const legacyLanes = computeLaneLayout({ ...facts, nodes: rows.nodes }, {
     previousLanes: options.previousLanes,
     previousNodeLanes: options.previousNodeLanes,
     primaryBranch: options.primaryBranch,
   });
+  const lanes = options.fixedDefault
+    ? defaultFixedLayout(legacyLanes, facts, options.fixedDefault, options.protectionReflogs ?? []) : legacyLanes;
   const laidOutNodes = lanes.nodes.map((node) => ({ ...node, row: rows.rows.get(node.id) ?? node.row }));
   const rowHeight = options.rowHeight ?? 38;
   const laneWidth = options.laneWidth ?? 34;

@@ -382,7 +382,7 @@ orphan branch は、既存履歴とは独立した root を持つ通常 branch �
 VS Code 1.90以降と、PATHから実行できるGitが必要です。Git repositoryのfolderを開き、Workspace Trustを有効にして利用します。Remote Workspaceでは、その接続先にGitが必要です。仮想workspace（Git CLIで読めるファイルがない環境）は対象外です。
 
 1. ステータスバーの `Git Lines`、または Command Palette の `Git Lines: Open` から、`Open in Editor`（メイン画面）／`Open in Panel`（下部パネル）／`Open in Sidebar`（左サイドバー）を選びます。複数folderを開いている場合は続けてrepositoryを選びます。
-2. ヘッダーで Reflog の表示やRefreshを操作します。メイン画面・下部パネルでは `Compact / Comfortable` 密度も選べます。
+2. グラフ上の `?` の左にある歯車ボタン でレーン配置・Reflog・Densityを選びます。Refreshはグラフのヘッダーから操作できます。
 3. commit または operation を選ぶと詳細が開きます（左サイドバーでは吹き出し表示）。
 4. 初期表示は 30 commit です。下へスクロールすると残りが少なくなった時点で追加されます（`Load more` も利用できます）。
 
@@ -391,6 +391,14 @@ VSIXからインストールする場合は、Command Paletteの `Extensions: In
 下部パネルでは「ターミナル」「出力」などと並ぶ `Git Lines` タブ、左サイドバーではアクティビティバーの専用アイコンから表示します。どの表示先でも同じグラフ・Reflog・詳細情報を利用できます。Command Paletteの `Git Lines: Open in Editor` / `Git Lines: Open in Panel` / `Git Lines: Open in Sidebar` から表示先を直接指定することもできます。
 
 グラフは読み取り専用です。checkout、branch 作成、merge、rebase、push など Git を変更する操作は提供しません。
+
+## 表示設定
+
+グラフ上の **「?」の左にある歯車ボタン**、または `Git Lines: Settings` から設定できます。変更は保存され、次回起動時と開いている各表示に反映されます。通常はユーザー設定へ保存し、ワークスペース側の指定がある場合は保存先を表示します。Densityはメイン画面・下部パネルに適用し、左サイドバーは専用の行間隔を維持します。
+
+レーン配置は **従来の配置**（初期値）と **デフォルト列を左端に固定** から選べます。固定モードは他ブランチの列を保護し、作成元がreflogで確認できるfeatureのコミットはfast-forward後もdefaultの列へ移しません。Reflog OFFでも、この保護のために記録を内部利用します。過去の作成ブランチを完全に復元する機能ではなく、情報が不足する区間は従来の識別を維持します。
+
+defaultはローカルに保存されたremote HEADから判定します。未判定の場合は設定内の **固定対象** から選択できます。この指定はrepositoryごとにVS Code内へ保存され、Gitの設定は変更しません。
 
 ## Development
 
@@ -417,6 +425,7 @@ code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 
 | Setting | Default | 内容 |
 | --- | --- | --- |
+| `branchGraph.layoutMode` | `legacy` | 従来の配置 / default列固定（`default-fixed`） |
 | `branchGraph.showReflog` | `true` | PREVIOUS / overlay など reflog 依存の表示 |
 | `branchGraph.density` | `compact` | 行密度（`comfortable` / `compact`） |
 | `branchGraph.initialCommitCount` | `30` | 最初に読み込む commit 数 |

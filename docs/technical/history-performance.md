@@ -6,6 +6,8 @@ The Git Lines output channel emits `perf` records per graph request. Git records
 
 ## Reuse and invalidation
 
+Graph settings are persisted through `GraphSettingsService` in VS Code configuration, with existing folder/workspace overrides respected. Manual fixed targets use repository-keyed workspaceState. Every view subscribes to effective setting changes; Density and placement reuse the snapshot. A fixed view with Reflog display OFF reads only protection reflogs when needed, retaining them across presentation-only changes. Fresh Git reads invalidate that evidence. Layout states are bounded and separated by mode/target; fixed output lanes never feed the legacy allocator. If settings change during a fresh Git read, the queued update rechecks Git rather than ending with an older cached snapshot.
+
 - Density changes reuse the snapshot and preserve Detail. They rebuild presentation without Git reads. Reflog changes still read the required data.
 - Each session owns its GitClient caches. No persistent disk cache is introduced.
 - Page reuse requires identical repository metadata, refs, worktree HEADs and shallow boundaries. A prospective next page uses previous immutable tip OIDs and `--skip`; validation runs alongside it. If identity changes, discard that page and read from the current tip. Normal refs/status/operation checks remain fresh.
@@ -16,6 +18,14 @@ The Git Lines output channel emits `perf` records per graph request. Git records
 - Uncached Reflogs are fetched by at most four workers. Results are stored by the original ref index and flattened in that order, preserving the sequential classifier input even when processes complete out of order. An unavailable log contributes no entries without cancelling other workers. There is no new history count limit.
 - Manual refresh clears all caches, including when requested during a read. Watcher events during reads coalesce into a subsequent full state check; a pending data update takes precedence over a presentation-only update. Dispose prevents subsequent queued work and logging.
 - Automatic refresh combines recursive Git-directory monitoring (including the common directory for linked worktrees) with the built-in VS Code Git API's repository state events for working-tree edits. Directory watches survive atomic index/ref replacement and detect operation files created after opening the graph. Object files and lock-file notifications are ignored. Both notification sources share a 350 ms debounce; no polling is added. GitRunner sets `GIT_OPTIONAL_LOCKS=0` so read-only status requests do not refresh the index and trigger another graph read. If built-in Git is disabled or does not discover the repository, working-tree notifications are unavailable; metadata monitoring and manual refresh remain independent fallbacks.
+
+## Fixed placement verification on 2026-09-14
+
+The implementation passed 429 tests, type checks and both builds. A comparison of 92 repository snapshots across Reflog ON/OFF and three density/presentation geometries (552 layouts) preserved the legacy output exactly. Fixed placement changed the FF fixtures 21–23 and criss-cross fixture 113; no parent/operation data, row or newly introduced sampled node/ring intersections changed. The reported test repository retained its existing branch columns.
+
+Native VS Code checks in an isolated profile covered the Settings launcher, saving fixed mode, restoring it after Reload Window, all three graph locations and the sidebar Detail popover. Unit/integration checks cover synchronized settings and source-branch protection after FF and branch deletion, including another linked worktree's HEAD log. This is not an exhaustive GUI proof for every fixture.
+
+Twenty warm in-memory layout runs measured medians of legacy/fixed: test (43 commits) 1.73/1.47 ms, many-commits (65 commits) 0.36/0.41 ms, multi-commit FF (6 commits) 0.06/0.10 ms. These exclude Git reads and GUI rendering and are not evidence of faster first opening.
 
 ## Phase 1–2 measurement on 2026-09-12
 

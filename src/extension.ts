@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { openGraph } from './commands/openGraph.js';
 import { GraphPanel } from './webview/graphPanel.js';
 import { GraphViewProvider } from './webview/graphViewProvider.js';
+import { openSettings } from './commands/openSettings.js';
 
 export function activate(context: vscode.ExtensionContext): void {
   const panel = new GraphViewProvider(context);
@@ -20,6 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     panel,
     sidebar,
+    vscode.commands.registerCommand('branchGraph.settings', () => openSettings(context)),
     launcher,
     vscode.workspace.onDidChangeWorkspaceFolders(updateLauncher),
     vscode.window.registerWebviewViewProvider(GraphViewProvider.viewId, panel, { webviewOptions: { retainContextWhenHidden: true } }),

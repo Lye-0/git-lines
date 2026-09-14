@@ -69,7 +69,7 @@ export function App() {
   const detailRefBadges = useMemo(() => resolveDetailRefBadges(detailNode, graph?.layout.tracks ?? []), [graph, detailNode]);
   const detailRouteName = routeNameForNode(detailNode, graph?.layout.tracks ?? []);
   const detailHeadState = selectedNode?.headState;
-  const toolbar = <Toolbar graph={graph} loading={loading} filter={filter} onFilter={setFilter} onRefresh={() => vscode.postMessage({ type: 'refresh' })} onLoadMore={handleLoadMore} onReflog={(enabled) => vscode.postMessage({ type: 'toggleReflog', enabled })} onDensity={(density) => vscode.postMessage({ type: 'setDensity', density })} />;
+  const toolbar = <Toolbar graph={graph} loading={loading} filter={filter} onFilter={setFilter} onRefresh={() => vscode.postMessage({ type: 'refresh' })} onLoadMore={handleLoadMore} onSettings={() => vscode.postMessage({ type: 'openSettings' })} />;
   const closeDetail = () => { selectionRef.current = undefined; setDetail(null); setDetailEvent(undefined); setSelected(undefined); setSelectedWorkingTree(undefined); setSelectedEvent(undefined); };
   const detailContent = <DetailPanel detail={detail ?? undefined} event={detailEvent} overlayRelation={selectedOverlay} workingTree={selectedWorkingNode?.workingTree} operation={selectedWorkingNode?.operation} sourceCommits={workingSourceCommits} linkedWorktrees={detailNode?.linkedWorktrees} title={detailNode?.subject} routeName={detailRouteName} headState={detailHeadState} refBadges={detailRefBadges} onClose={closeDetail} />;
   return <main className={sidebar ? 'app-shell sidebar-mode' : 'app-shell'} onClickCapture={(event) => {
