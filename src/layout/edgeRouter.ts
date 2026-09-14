@@ -428,10 +428,10 @@ function findBranchRenameVisualSplits(nodes: GraphNode[], edges: GraphEdge[]): {
   return { byWorkingId, byAnnotationId };
 }
 
-/** FF is a ref annotation on the matching checkout connector, not a second branch. */
-function findFastForwardWorkingAnnotations(nodes: GraphNode[], edges: GraphEdge[]): Map<string, BranchRenameVisualSplit> {
+/** FF annotates an existing checkout or later destination-branch parent edge. */
+function findFastForwardAnnotations(nodes: GraphNode[], edges: GraphEdge[]): Map<string, { event: GraphNode; connector: GraphEdge }> {
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const result = new Map<string, BranchRenameVisualSplit>();
+  const result = new Map<string, { event: GraphNode; connector: GraphEdge }>();
   for (const annotation of edges) {
     if (annotation.annotation !== 'ref-event') continue;
     const event = byId.get(annotation.toNodeId);
@@ -448,19 +448,43 @@ function findFastForwardWorkingAnnotations(nodes: GraphNode[], edges: GraphEdge[
         && normalizeRefName(working.workingTree.branch) === normalizeRefName(targetRef)
         && (working.row ?? 0) < (event.row ?? 0) && (event.row ?? 0) < (head.row ?? 0);
     });
-    if (matches.length === 1) result.set(annotation.id, { event, workingEdge: matches[0] });
+    if (matches.length === 1) result.set(annotation.id, { event, connector: matches[0] });
+    else if (matches.length === 0) {
+      const parents = edges.filter((edge) => {
+        const child = byId.get(edge.fromNodeId);
+        return edge.type === 'parent' && edge.toNodeId === headId
+          && child?.kind === 'commit' && child.trackId && child.trackId === event.trackId
+          && child.commit?.parentOids[0] === head.oid
+          && (child.row ?? 0) < (event.row ?? 0) && (event.row ?? 0) < (head.row ?? 0);
+      });
+      if (parents.length === 1) result.set(annotation.id, { event, connector: parents[0] });
+    }
   }
   return result;
 }
 
-export function placeFastForwardEventsOnWorkingTreeCurves(nodes: GraphNode[], edges: GraphEdge[], options: EdgeRouterOptions = {}): GraphNode[] {
-  const annotations = findFastForwardWorkingAnnotations(nodes, edges);
+export function placeFastForwardEventsOnCurves(nodes: GraphNode[], edges: GraphEdge[], options: EdgeRouterOptions = {}): GraphNode[] {
+  const annotations = findFastForwardAnnotations(nodes, edges);
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const byEvent = new Map([...annotations.values()].map((item) => [item.event.id, item]));
   return nodes.map((node) => {
     const annotation = byEvent.get(node.id);
     if (!annotation) return node;
-    const working = byId.get(annotation.workingEdge.fromNodeId)!, head = byId.get(annotation.workingEdge.toNodeId)!;
+    const working = byId.get(annotation.connector.fromNodeId)!, head = byId.get(annotation.connector.toNodeId)!;
+    if (annotation.connector.type === 'parent') {
+      // Use the actual routed path, including long-edge corridors and node
+      // avoidance, rather than assuming the parent is one simple Bezier.
+      const d = longParentPath(nodes, working, head, options) ?? curvePath(routedParentCurve(nodes, working, head, options));
+      const numbers = d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi)!.map(Number);
+      let start = { x: numbers[0], y: numbers[1] };
+      const y = pointForNode(node, options).y;
+      for (let i = 2; i + 5 < numbers.length; i += 6) {
+        const curve = { p0: start, p1: { x: numbers[i], y: numbers[i + 1] }, p2: { x: numbers[i + 2], y: numbers[i + 3] }, p3: { x: numbers[i + 4], y: numbers[i + 5] } };
+        if (y >= curve.p0.y && y <= curve.p3.y) return { ...node, visualX: cubicPoint(curve, parameterAtY(curve, y)).x };
+        start = curve.p3;
+      }
+      return node;
+    }
     const curve = workingTreeCurve(nodes, working, head, pointForNode(working, options), pointForNode(head, options), options.laneWidth ?? 34);
     return { ...node, visualX: cubicPoint(curve, parameterAtY(curve, pointForNode(node, options).y)).x };
   });
@@ -563,7 +587,7 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const rebaseSplits = findRebaseVisualSplits(nodes, edges);
   const branchRenameSplits = findBranchRenameVisualSplits(nodes, edges);
-  const fastForwardAnnotations = findFastForwardWorkingAnnotations(nodes, edges);
+  const fastForwardAnnotations = findFastForwardAnnotations(nodes, edges);
   return edges.flatMap<EdgePath>((edge) => {
     // The diamond is painted over the one intact checkout curve. This also
     // supports multiple FF annotations without duplicating its connector.

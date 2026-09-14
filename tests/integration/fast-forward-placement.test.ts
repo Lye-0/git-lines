@@ -50,9 +50,12 @@ it.each([false, true])('protects FF source routes and connects FF annotations in
             expect(b.y).toBeCloseTo((w.y + a.y) / 2, 5);
             continue;
           }
-          const d = layout.edgePaths!.find((p) => p.id === edge.id)!.d;
-          expect(d.startsWith(`M ${a.x} ${a.y}`)).toBe(true);
-          expect(d.endsWith(`${b.x} ${b.y}`)).toBe(true);
+          expect(layout.edgePaths!.some((p) => p.id === edge.id)).toBe(false);
+          const parent = layout.edges.find((e) => e.type === 'parent' && e.toNodeId === edge.fromNodeId && layout.nodes.find((n) => n.id === e.fromNodeId)?.oid === mainCommit)!;
+          expect(layout.edgePaths!.filter((p) => p.id === parent.id)).toHaveLength(1);
+          const child = pointForNode(layout.nodes.find((n) => n.id === parent.fromNodeId)!, options);
+          expect(b.x).toBeCloseTo((child.x + a.x) / 2, 5);
+          expect(b.y).toBeCloseTo((child.y + a.y) / 2, 5);
         }
         // Cached placement must retain the same source ownership on refresh.
         const again = createGraphLayout(facts, { ...options, previousNodeLanes: new Map(layout.nodes.map((n) => [n.id, n.lane!])), previousLanes: new Map(layout.tracks.map((t) => [t.id, t.lane])) });

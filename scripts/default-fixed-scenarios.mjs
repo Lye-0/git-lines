@@ -130,9 +130,9 @@ try {
         const options = { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, rowHeight, laneWidth, protectionReflogs };
         const standard = createGraphLayout(facts, options);
         const fixed = createGraphLayout(facts, { ...options, fixedDefault: target, protectionReflogs });
-        if (showReflog && ['ff', 'deleted'].includes(scenario.kind)) for (const layout of [standard, fixed]) {
+        if (showReflog && ['ff', 'deleted', 'continued'].includes(scenario.kind)) for (const layout of [standard, fixed]) {
           const ff = layout.nodes.find((n) => n.kind === 'fast-forward-event');
-          assert(ff && Number.isFinite(ff.visualX), `${id}: FF diamond on checkout curve`);
+          assert(ff && Number.isFinite(ff.visualX), `${id}: FF diamond on existing curve`);
           const annotation = layout.edges.find((e) => e.annotation === 'ref-event' && e.toNodeId === ff.id);
           assert(annotation && !layout.edgePaths.some((p) => p.id === annotation.id), `${id}: no duplicate FF connector`);
         }
