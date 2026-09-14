@@ -6,6 +6,8 @@ The Git Lines output channel emits `perf` records per graph request. Git records
 
 ## Reuse and invalidation
 
+Source-branch placement resolves lineage from the protection reflogs already cached for both modes. It adds no Git commands or history expansion. Explicit primary settings are distinguished from automatically selected refs at the session boundary. Production validation passed 445 tests, 168 focused layouts and the 1,104-layout saved-snapshot comparison; see `docs/design/source-branch-layout-verification.md` for dataset scope and limitations.
+
 Graph settings are persisted through `GraphSettingsService` in VS Code configuration, with existing folder/workspace overrides respected. Manual fixed targets use repository-keyed workspaceState. Every view subscribes to effective setting changes; Density and placement reuse the snapshot. Both modes read protection reflogs independently of Reflog visibility, reusing snapshot reflogs when present and retaining the evidence across presentation-only changes. Standard needs this evidence to preserve FF source routes; no commit expansion is added. Fresh Git reads invalidate that evidence. Layout states are bounded and separated by mode/target; fixed output lanes never feed the legacy allocator. If settings change during a fresh Git read, the queued update rechecks Git rather than ending with an older cached snapshot.
 
 - Density changes reuse the snapshot and preserve Detail. They rebuild presentation without Git reads. Reflog changes still read the required data.

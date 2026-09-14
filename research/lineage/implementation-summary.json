@@ -1,0 +1,22 @@
+{
+  "baselineCommit": "22ccb2ff8b7885f262427c8924b7f1e35cdd9fe5",
+  "production": true,
+  "focusedCases": 168,
+  "focusedFailures": 0,
+  "matrixCases": 1104,
+  "visibleChanges": [
+    "113-criss-cross-merge",
+    "14-nested-branches",
+    "28-multiple-merges"
+  ],
+  "semanticOrRowFailures": 0,
+  "introducedCollisions": 0,
+  "paginationChecks": 30,
+  "paginationShifts": 0,
+  "evidenceChecks": 18,
+  "evidenceFailures": 0,
+  "existingTests": {
+    "passed": 445,
+    "total": 445
+  }
+}

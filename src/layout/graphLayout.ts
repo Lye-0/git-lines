@@ -9,6 +9,7 @@ import { fastForwardLayout } from './fastForwardLayout.js';
 import { placeFastForwardEventsOnCurves } from './edgeRouter.js';
 import type { DefaultBranchTarget } from '../model/defaultBranchResolver.js';
 import type { ReflogEntry } from '../git/gitTypes.js';
+import { branchLineage, sourcePrimaryBranch } from '../model/branchLineage.js';
 
 export interface GraphLayoutOptions {
   visibleCommitCount: number;
@@ -25,10 +26,13 @@ export interface GraphLayoutOptions {
 
 export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOptions): GraphLayout {
   const rows = computeRowLayout(facts.nodes, facts.edges, options.previousRows);
+  const lineage = branchLineage(options.protectionReflogs ?? []);
   const legacyLanes = computeLaneLayout({ ...facts, nodes: rows.nodes }, {
     previousLanes: options.previousLanes,
     previousNodeLanes: options.previousNodeLanes,
-    primaryBranch: options.primaryBranch,
+    primaryBranch: sourcePrimaryBranch(facts.refs, facts.primaryBranch, lineage, options.primaryBranch),
+    lineage,
+    protectionReflogs: options.protectionReflogs,
   });
   const protectedLanes = fastForwardLayout(legacyLanes, facts, options.protectionReflogs ?? []);
   const lanes = options.fixedDefault

@@ -137,6 +137,28 @@ beforeEach(() => {
 afterEach(() => { for (const panel of panels) panel.dispose(); });
 
 describe('graph launch locations', () => {
+  it('lets automatic primary selection follow the source of the current branch', async () => {
+    const data = snapshot();
+    data.refs = [
+      { fullName: 'refs/heads/z-root', shortName: 'z-root', type: 'local', oid: oid(3) },
+      { fullName: 'refs/heads/a-child', shortName: 'a-child', type: 'local', oid: oid(2) },
+    ];
+    data.workingTrees[0].branch = 'a-child'; data.workingTrees[0].headOid = oid(2);
+    data.historyEvents = [];
+    mock.readSnapshot.mockResolvedValue(data);
+    mock.readBranchProtection.mockResolvedValue([
+      { refName: 'refs/heads/a-child', selector: 'refs/heads/a-child@{0}', newOid: oid(1), timestamp: 1, subject: 'branch: Created from z-root' },
+    ]);
+    const surface = webview(), session = new GraphViewSession(context(), webviewOf(surface), 'C:/a');
+    await surface.incoming.fire({ type: 'ready' });
+    const message = surface.messages.find((m) => m.type === 'graph');
+    expect(message?.type).toBe('graph');
+    if (message?.type === 'graph') {
+      expect(message.layout.nodes.find((n) => n.oid === oid(3) && n.kind === 'commit')?.lane).toBe(0);
+      expect(message.layout.nodes.find((n) => n.oid === oid(2) && n.kind === 'commit')?.lane).toBeGreaterThan(0);
+    }
+    session.dispose();
+  });
   it('opens settings for the displayed repository without a repository picker or Git snapshot read', async () => {
     const ctx = context(), surface = webview();
     const session = new GraphViewSession(ctx, webviewOf(surface), 'C:/a');

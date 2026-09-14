@@ -30,7 +30,9 @@ Even intact reflogs cannot always prove the source branch name. Creating `child 
 
 ## Scope
 
-This is a user constraint and an evidence limitation, not a claim that the experimental lineage allocator has been adopted. Explicit `Created from <branch>` records can provide stronger evidence. Commit origin and branch creation context are distinct; a shared/FF tip is not unique ownership.
+The policy has since been adopted in typed production modules `branchLineage.ts` and `sourceBranchLayout.ts`. The session passes only the user's explicit primary setting as an override, so auto-selected child refs do not bypass source resolution. Production validation passed 445 tests plus the same focused/matrix checks; the original research evidence below remains a historical pre-adoption result.
+
+This is a user constraint and an evidence limitation. The original experimental allocator remains available for historical comparisons. Explicit `Created from <branch>` records can provide stronger evidence. Commit origin and branch creation context are distinct; a shared/FF tip is not unique ownership.
 
 ## Evidence
 

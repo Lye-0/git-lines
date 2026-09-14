@@ -264,6 +264,7 @@ function primaryBranch(snapshot: RepositorySnapshot, configured?: string | null)
   if (defaultRemote?.targetRef) {
     const target = defaultRemote.targetRef.replace(/^refs\/remotes\/[^/]+\//, '');
     if (snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === target)) return target;
+    if (snapshot.refs.some((ref) => ref.fullName === defaultRemote.targetRef && ref.type === 'remote')) return normalizeRefName(defaultRemote.targetRef);
   }
   for (const candidate of ['main', 'master']) {
     if (snapshot.refs.some((ref) => ref.type === 'local' && normalizeRefName(ref.fullName) === candidate)) return candidate;

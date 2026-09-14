@@ -396,7 +396,7 @@ The graph is read-only. It does not provide Git mutations such as checkout, bran
 
 Use the **gear button to the left of ?** in the graph, or run `Git Lines: Settings`. Changes are saved, restored on the next launch, and applied to open views. Settings normally use user scope; existing workspace overrides are respected and the save scope is shown. Density applies to the editor and bottom panel; the sidebar retains its dedicated spacing.
 
-Choose **Standard** (the default) or **Default Fixed**. Fixed placement protects other branch columns: feature commits whose origin is established by reflog evidence stay outside the default column after a fast-forward. This protection uses reflog records internally even when Reflog display is OFF. It does not reconstruct every historical branch of origin; existing route identities are retained where evidence is insufficient.
+Choose **Standard** (the default) or **Default Fixed**. Both modes keep evidence-backed source and child branch histories in separate columns. Standard keeps the source to the left before a merge and when it receives the child; Default Fixed places the default column leftmost while preserving route identities. Reflog records are used internally even when their display is off. Ambiguous branch origins are not guessed.
 
 The target is resolved from locally stored remote HEAD metadata. If unresolved, choose a **Fixed target** in Settings. This override is stored per repository inside VS Code and does not modify Git configuration.
 

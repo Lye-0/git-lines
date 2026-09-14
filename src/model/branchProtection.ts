@@ -9,7 +9,7 @@ export function branchCommitOrigins(entries: ReflogEntry[], commits: GitCommit[]
     if (!known.has(oid)) return;
     const refs = claims.get(oid) ?? new Set<string>(); refs.add(ref); claims.set(oid, refs);
   };
-  const creation = (subject: string) => /^commit(?: \((?:initial|amend)\))?: /.test(subject);
+  const creation = (subject: string) => /^commit(?: \((?:initial|amend)\))?: /.test(subject) || /^merge .*: Merge made by /.test(subject);
   const branchRef = (name: string): string | undefined => /[~^:?*\[\s]|\.\.|@\{|\\/.test(name) || /^(?:[0-9a-f]{7,64}|HEAD|refs\/remotes\/.*|origin\/.*)$/.test(name)
     ? undefined : name.startsWith('refs/heads/') ? name : `refs/heads/${name}`;
   for (const entry of entries) {

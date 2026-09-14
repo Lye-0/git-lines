@@ -5,14 +5,16 @@ import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
 import { build } from 'esbuild';
 import { transformCandidate, lineageRelations, lineageTrackParents } from './prototype.mjs';
+import { baselineCommit, baselineSource } from './baseline.mjs';
 
 const root = process.cwd();
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'git-lines-lineage-audit-'));
 const entry = `export {GitClient} from './src/git/gitClient.ts'; export {buildGraphFacts} from './src/model/graphBuilder.ts'; export {createGraphLayout} from './src/layout/graphLayout.ts'; export {resolveDefaultBranch} from './src/model/defaultBranchResolver.ts'; export {pointForNode} from './src/layout/edgeRouter.ts'; export {nodeRingGeometry} from './src/layout/nodeGeometry.ts';`;
+const production = process.argv.includes('--production');
 for (const name of ['baseline', 'candidate']) await build({ stdin: { contents: entry, resolveDir: root }, outfile: path.join(temp, `${name}.cjs`), bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent',
-  plugins: name === 'baseline' ? [] : [{ name: 'prototype', setup(build) { build.onLoad({ filter: /(?:graphBuilder|graphLayout|laneLayout|branchProtection)\.ts$/ }, async ({ path: file }) => ({ contents: transformCandidate(fs.readFileSync(file, 'utf8'), file.replaceAll('\\', '/')), loader: 'ts' })); } }] });
+  plugins: production && name === 'candidate' ? [] : [{ name: 'frozen-baseline', setup(build) { build.onLoad({ filter: /(?:graphBuilder|graphLayout|laneLayout|branchProtection)\.ts$/ }, async ({ path: file }) => ({ contents: name === 'baseline' ? baselineSource(file) : transformCandidate(baselineSource(file), file.replaceAll('\\', '/')), loader: 'ts' })); } }] });
 const require = createRequire(import.meta.url), base = require(path.join(temp, 'baseline.cjs')), next = require(path.join(temp, 'candidate.cjs'));
-const report = { baselineCommit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), temp, focused: [], matrix: [], pagination: [], evidence: [], errors: [] };
+const report = { baselineCommit, production, temp, focused: [], matrix: [], pagination: [], evidence: [], errors: [] };
 const client = new base.GitClient();
 const generated = [];
 function repo(name, initial = 'main') {
@@ -157,7 +159,7 @@ for (const [name, dir] of [['test','C:/Users/kawau/dev/test'],['nested',nested.d
   }
 }
 
-const cached = process.argv[2] ?? fs.readFileSync(path.join(os.tmpdir(), 'git-lines-lane-review-path.txt'), 'utf8').trim();
+const cached = process.argv.slice(2).find((arg) => !arg.startsWith('--')) ?? fs.readFileSync(path.join(os.tmpdir(), 'git-lines-lane-review-path.txt'), 'utf8').trim();
 for (const file of fs.readdirSync(cached).filter((name) => name.endsWith('.snapshot.json'))) {
   const snapshot = JSON.parse(fs.readFileSync(path.join(cached, file), 'utf8'));
   for (const showReflog of [false, true]) for (const [rowHeight, laneWidth] of [[28, 22], [30, 34], [38, 34]]) for (const mode of ['standard', 'fixed']) {
@@ -171,7 +173,7 @@ for (const file of fs.readdirSync(cached).filter((name) => name.endsWith('.snaps
       pathsChanged: ['edgePaths', 'refMovementPaths', 'historyRelationPaths', 'rebaseRelationPaths', 'cherryPickGroupPaths', 'rewriteCollapsePaths'].filter((field) => json(a[field]) !== json(b[field])) });
   }
 }
-fs.writeFileSync('research/lineage/results.json', JSON.stringify(report, null, 2) + '\n');
+fs.writeFileSync(production ? 'research/lineage/implementation-results.json' : 'research/lineage/results.json', JSON.stringify(report, null, 2) + '\n');
 console.log('MATRIX', json({ cases: report.matrix.length, changedRepositories: [...new Set(report.matrix.filter((r) => r.changed).map((r) => r.name))], semanticOrRows: report.matrix.filter((r) => r.semanticChanges.length || r.rowChanges).length }));
 console.log('Artifacts:', temp);
 const failures = {

@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
-// A remote default without a local counterpart is a real Auto-mode difference.
+// Regression: a remote-only source stays left in both modes.
 // Existing fixtures and Git configuration outside this new repo are untouched.
 const root = path.resolve(process.argv[2] ?? '../test');
 const id = '148-default-remote-only';
@@ -73,28 +73,28 @@ try {
       const options = { visibleCommitCount: 100, hasMore: false, rowHeight, laneWidth, protectionReflogs };
       const standard = createGraphLayout(facts, options);
       const fixed = createGraphLayout(facts, { ...options, fixedDefault: target });
-      const defaultNodes = snapshot.commits.filter((c) => /^D[12]:/.test(c.subject));
+      const defaultNodes = snapshot.commits.filter((c) => /^D[012]:/.test(c.subject));
       const featureNodes = snapshot.commits.filter((c) => /^F[12]:/.test(c.subject));
-      assert.equal(defaultNodes.length, 2); assert.equal(featureNodes.length, 2);
+      assert.equal(defaultNodes.length, 3); assert.equal(featureNodes.length, 2);
       const positions = [];
       for (const commit of [...defaultNodes, ...featureNodes]) {
         const before = standard.nodes.find((n) => n.kind === 'commit' && n.oid === commit.oid);
         const after = fixed.nodes.find((n) => n.kind === 'commit' && n.oid === commit.oid);
-        if (commit.subject.startsWith('D')) { assert(before.lane > 0); assert.equal(after.lane, 0); }
-        else { assert.equal(before.lane, 0); assert(after.lane > 0); }
+        if (commit.subject.startsWith('D')) { assert.equal(before.lane, 0); assert.equal(after.lane, 0); }
+        else { assert(before.lane > 0); assert(after.lane > 0); }
         assert.equal(after.trackId, before.trackId, 'Route identity must survive mode switching');
         positions.push({ subject: commit.subject, standardLane: before.lane, fixedLane: after.lane });
       }
-      assert.equal(standard.nodes.find((n) => n.kind === 'working-tree').lane, 0);
+      assert(standard.nodes.find((n) => n.kind === 'working-tree').lane > 0);
       assert(fixed.nodes.find((n) => n.kind === 'working-tree').lane > 0);
       assert.deepEqual(standard.edges, fixed.edges);
       assert.deepEqual(standard.nodes.map((n) => [n.id, n.row]), fixed.nodes.map((n) => [n.id, n.row]));
       results.push({ showReflog, host, positions });
-      console.log(`PASS ${host} Reflog=${showReflog}: default right -> left; feature left -> right`);
+      console.log(`PASS ${host} Reflog=${showReflog}: both modes: default left; feature right`);
     }
   }
 } finally { if (fs.existsSync(bundle)) fs.unlinkSync(bundle); fs.rmdirSync(temporary); }
-const text = `# 148: モードの表示差を確認\n\nローカルにはfeatureのみがあり、defaultのmainはorigin/mainとして取得済みのシナリオです。origin/HEADはmainを指します。remoteはローカルのbare repositoryで、外部通信はありません。\n\n## 操作\n\n1. repos/${id} をVS Codeで開き、Git Linesを表示。\n2. Settings → Default Branch = Auto。\n3. Layout = Standard と Default Fixed を切り替える。\n\n| 確認箇所 | Standard | Default Fixed |\n|---|---|---|\n| D1・D2 / origin/main（default） | 右列 | 左端 |\n| F1・F2 / feature | 左端 | 右列 |\n| Working Tree（feature） | 左端 | 右列 |\n\nStandardはローカルのmainがないため現在のfeatureを基準にします。Default Fixedはremoteのdefaultであるorigin/mainを左端へ固定します。作成元のtrack、コミットの親子関係、行順は変わりません。mainという名前のローカルbranchは、このケースでは意図的に存在しません。\n\n両Reflog状態×3表示寸法の6条件で、現在のコードによる実際の列移動を検証済みです。branchGraph.primaryBranchを個別指定している場合は既定値（null）に戻して比較してください。\n\n## 起動\n\n\`\`\`powershell\ncode --new-window --extensionDevelopmentPath="${project}" "${repo}"\n\`\`\`\n\n## 再検証\n\nGit Linesのルートから:\n\n\`\`\`powershell\nnode scripts/default-fixed-difference-scenario.mjs "${root}" --verify\n\`\`\`\n\n既存の140〜147と独立した追加セットです。既存setup/resetはrepos配下を消すため、このシナリオも消えます。作成コマンドは同名出力が存在すると停止し、上書き・削除しません。\n`;
+const text = `# 148: remoteのみの分岐元を維持\n\nローカルにはfeatureのみがあり、defaultのmainはorigin/mainとして取得済みのシナリオです。origin/HEADはmainを指します。remoteはローカルのbare repositoryで、外部通信はありません。\n\n## 操作\n\n1. repos/${id} をVS Codeで開き、Git Linesを表示。\n2. Settings → Default Branch = Auto。\n3. Layout = Standard と Default Fixed を切り替える。\n\n| 確認箇所 | Standard | Default Fixed |\n|---|---|---|\n| D0・D1・D2 / origin/main（default） | 左端 | 左端 |\n| F1・F2 / feature | 右列 | 右列 |\n| Working Tree（feature） | 右列 | 右列 |\n\n両モードとも分岐元のmainを左端に保ち、共有の根元D0をfeatureへ移しません。このシナリオはモード差ではなく、remoteだけになっても分岐元を維持する回帰確認用です。作成元のtrack、コミットの親子関係、行順は変わりません。mainという名前のローカルbranchは、このケースでは意図的に存在しません。\n\n両Reflog状態×3表示寸法の6条件で、両モードの列位置と所属を検証済みです。branchGraph.primaryBranchを個別指定している場合は既定値（null）に戻して比較してください。\n\n## 起動\n\n\`\`\`powershell\ncode --new-window --extensionDevelopmentPath="${project}" "${repo}"\n\`\`\`\n\n## 再検証\n\nGit Linesのルートから:\n\n\`\`\`powershell\nnode scripts/default-fixed-difference-scenario.mjs "${root}" --verify\n\`\`\`\n\n既存の140〜147と独立した追加セットです。既存setup/resetはrepos配下を消すため、このシナリオも消えます。作成コマンドは同名出力が存在すると停止し、上書き・削除しません。\n`;
 fs.mkdirSync(path.dirname(guide), { recursive: true });
 fs.writeFileSync(path.join(repo, 'SCENARIO.md'), text);
 fs.writeFileSync(guide, text);

@@ -184,7 +184,7 @@ export class GraphViewSession implements vscode.Disposable {
       const layout = createGraphLayout(facts, {
         visibleCommitCount: next.visibleCommitCount,
         hasMore: next.hasMore,
-        primaryBranch: facts.primaryBranch,
+        primaryBranch: primaryBranch ?? undefined,
         previousRows: isAppend ? layoutState.rows : undefined,
         previousLanes: !fixedDefault && (isAppend || reuseSnapshot) ? layoutState.lanes : undefined,
         previousNodeLanes: !fixedDefault && (isAppend || reuseSnapshot) ? layoutState.nodeLanes : undefined,

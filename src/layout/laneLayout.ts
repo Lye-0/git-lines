@@ -1,6 +1,9 @@
 import type { GitCommit, GitRef, HistoryEvent } from '../git/gitTypes.js';
 import type { GraphFactModel, GraphNode, GraphTrack, HistoricalRouteKind } from '../model/graphModel.js';
 import { branchFamilyForRef, normalizeRefName } from '../model/refDisplay.js';
+import type { ReflogEntry } from '../git/gitTypes.js';
+import type { BranchLineage } from '../model/branchLineage.js';
+import { minimumSourceLane, orderSegmentsBySource, restoreSourceBranchClaims, sourceTrackParents } from './sourceBranchLayout.js';
 import {
   assignLiveFamilyColors,
   branchPaletteColor,
@@ -9,6 +12,8 @@ import {
 } from '../utils/color.js';
 
 export interface LaneLayoutOptions {
+  lineage?: BranchLineage[];
+  protectionReflogs?: ReflogEntry[];
   previousLanes?: Map<string, number>;
   previousNodeLanes?: Map<string, number>;
   primaryBranch?: string;
@@ -23,6 +28,7 @@ export interface BranchSegment {
 }
 
 export interface SegmentLaneOptions {
+  sourceParents?: ReadonlyMap<string, string>;
   primaryTrackId?: string;
   previousLanes?: Map<string, number>;
   previousNodeLanes?: Map<string, number>;
@@ -82,7 +88,7 @@ export function assignBranchSegmentLanes(segments: BranchSegment[], options: Seg
       || a.id.localeCompare(b.id);
   });
   const isAvailable = (lane: number, segment: BranchSegment): boolean => !(laneSegments.get(lane) ?? []).some((other) => overlaps(other, segment));
-  for (const segment of ordered) {
+  for (const segment of orderSegmentsBySource(ordered, options.sourceParents, options.primaryTrackId)) {
     if (segment.trackId === options.primaryTrackId) {
       result.set(segment.id, 0);
       continue;
@@ -90,6 +96,7 @@ export function assignBranchSegmentLanes(segments: BranchSegment[], options: Seg
     const previousNodeLane = segment.nodeIds?.map((nodeId) => previousNodeLanes?.get(nodeId)).find((lane): lane is number => lane !== undefined && lane >= 1);
     const previousLane = previousNodeLane ?? (!previousNodeLanes ? previous.get(segment.trackId) : undefined);
     let lane = previousLane !== undefined && previousLane >= 1 && isAvailable(previousLane, segment) ? previousLane : 1;
+    lane = Math.max(lane, minimumSourceLane(segment, segments, result, options.sourceParents));
     while (!isAvailable(lane, segment)) lane += 1;
     result.set(segment.id, lane);
     laneSegments.set(lane, [...(laneSegments.get(lane) ?? []), segment]);
@@ -597,6 +604,8 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
     return historicalEventTrackForNode(node)
       ?? eventTrackForRef(node.targetRef ?? node.event.refName);
   };
+  const sourceParents = sourceTrackParents(candidates, options.lineage ?? []);
+  restoreSourceBranchClaims(trackByOid, candidates, facts.commits, options.protectionReflogs ?? [], sourceParents);
   const initialAssignments = facts.nodes.map((node, index) => {
     let trackId: string | undefined;
     // A clean working tree on a newly-created branch has the same OID as the
@@ -620,6 +629,7 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   const segments = buildBranchSegments(initialAssignments, facts.edges);
   const segmentLanes = assignBranchSegmentLanes(segments, {
     primaryTrackId: primaryCandidate?.id,
+    sourceParents,
     previousLanes: previous,
     previousNodeLanes: options.previousNodeLanes,
   });
