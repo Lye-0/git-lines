@@ -428,6 +428,44 @@ function findBranchRenameVisualSplits(nodes: GraphNode[], edges: GraphEdge[]): {
   return { byWorkingId, byAnnotationId };
 }
 
+/** FF is a ref annotation on the matching checkout connector, not a second branch. */
+function findFastForwardWorkingAnnotations(nodes: GraphNode[], edges: GraphEdge[]): Map<string, BranchRenameVisualSplit> {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const result = new Map<string, BranchRenameVisualSplit>();
+  for (const annotation of edges) {
+    if (annotation.annotation !== 'ref-event') continue;
+    const event = byId.get(annotation.toNodeId);
+    if (event?.kind !== 'fast-forward-event') continue;
+    const targetRef = event.targetRef ?? event.event?.refName;
+    if (!targetRef) continue;
+    const headId = event.anchorCommitId ?? annotation.fromNodeId;
+    const head = byId.get(headId);
+    if (!head) continue;
+    const matches = edges.filter((edge) => {
+      const working = byId.get(edge.fromNodeId);
+      return edge.type === 'working-tree' && edge.toNodeId === headId
+        && working?.kind === 'working-tree' && working.workingTree?.branch
+        && normalizeRefName(working.workingTree.branch) === normalizeRefName(targetRef)
+        && (working.row ?? 0) < (event.row ?? 0) && (event.row ?? 0) < (head.row ?? 0);
+    });
+    if (matches.length === 1) result.set(annotation.id, { event, workingEdge: matches[0] });
+  }
+  return result;
+}
+
+export function placeFastForwardEventsOnWorkingTreeCurves(nodes: GraphNode[], edges: GraphEdge[], options: EdgeRouterOptions = {}): GraphNode[] {
+  const annotations = findFastForwardWorkingAnnotations(nodes, edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const byEvent = new Map([...annotations.values()].map((item) => [item.event.id, item]));
+  return nodes.map((node) => {
+    const annotation = byEvent.get(node.id);
+    if (!annotation) return node;
+    const working = byId.get(annotation.workingEdge.fromNodeId)!, head = byId.get(annotation.workingEdge.toNodeId)!;
+    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, options), pointForNode(head, options), options.laneWidth ?? 34);
+    return { ...node, visualX: cubicPoint(curve, parameterAtY(curve, pointForNode(node, options).y)).x };
+  });
+}
+
 /**
  * Places completed Rebase event glyphs on the existing lowest-range parent
  * curve. The lane remains the event's live branch lane for identity/color;
@@ -525,7 +563,11 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const rebaseSplits = findRebaseVisualSplits(nodes, edges);
   const branchRenameSplits = findBranchRenameVisualSplits(nodes, edges);
+  const fastForwardAnnotations = findFastForwardWorkingAnnotations(nodes, edges);
   return edges.flatMap<EdgePath>((edge) => {
+    // The diamond is painted over the one intact checkout curve. This also
+    // supports multiple FF annotations without duplicating its connector.
+    if (fastForwardAnnotations.has(edge.id)) return [];
     const parentSplit = rebaseSplits.byParentId.get(edge.id);
     if (parentSplit) return [];
 

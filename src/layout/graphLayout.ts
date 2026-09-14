@@ -6,6 +6,7 @@ import { placeBranchRenameEventsOnWorkingTreeCurves, placeRebaseEventsOnParentCu
 import { insertOperationAnnotationRows } from './operationRows.js';
 import { defaultFixedLayout } from './defaultFixedLayout.js';
 import { fastForwardLayout } from './fastForwardLayout.js';
+import { placeFastForwardEventsOnWorkingTreeCurves } from './edgeRouter.js';
 import type { DefaultBranchTarget } from '../model/defaultBranchResolver.js';
 import type { ReflogEntry } from '../git/gitTypes.js';
 
@@ -43,7 +44,7 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   const operationRows = insertOperationAnnotationRows(laidOutNodes, allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations, cherryPickGroupRelations, rewriteCollapseRelations }));
   const annotationRows = new Map(operationRows.rows.map((row) => [row.relationId, row.row]));
   const routedNodes = placeRebaseEventsOnParentCurves(
-    placeBranchRenameEventsOnWorkingTreeCurves(operationRows.nodes, facts.edges, { rowHeight, laneWidth }),
+    placeFastForwardEventsOnWorkingTreeCurves(placeBranchRenameEventsOnWorkingTreeCurves(operationRows.nodes, facts.edges, { rowHeight, laneWidth }), facts.edges, { rowHeight, laneWidth }),
     facts.edges,
     { rowHeight, laneWidth },
   );

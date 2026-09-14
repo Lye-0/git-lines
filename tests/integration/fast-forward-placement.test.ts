@@ -40,6 +40,16 @@ it.each([false, true])('protects FF source routes and connects FF annotations in
         for (const edge of ffEdges) {
           const a = pointForNode(layout.nodes.find((n) => n.id === edge.fromNodeId)!, options);
           const b = pointForNode(layout.nodes.find((n) => n.id === edge.toNodeId)!, options);
+          if (phase !== 'main-continues') {
+            // Shared-tip FF annotates the checkout curve instead of forking it.
+            expect(layout.edgePaths!.some((p) => p.id === edge.id)).toBe(false);
+            const checkout = layout.edges.find((e) => e.type === 'working-tree' && e.toNodeId === edge.fromNodeId)!;
+            expect(layout.edgePaths!.filter((p) => p.id === checkout.id)).toHaveLength(1);
+            const w = pointForNode(working, options);
+            expect(b.x).toBeCloseTo((w.x + a.x) / 2, 5);
+            expect(b.y).toBeCloseTo((w.y + a.y) / 2, 5);
+            continue;
+          }
           const d = layout.edgePaths!.find((p) => p.id === edge.id)!.d;
           expect(d.startsWith(`M ${a.x} ${a.y}`)).toBe(true);
           expect(d.endsWith(`${b.x} ${b.y}`)).toBe(true);
