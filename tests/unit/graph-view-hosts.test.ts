@@ -147,6 +147,11 @@ describe('graph launch locations', () => {
     expect(panels).toHaveLength(0);
     expect(mock.readSnapshot).not.toHaveBeenCalled();
     expect(graphSettings(ctx).read('C:/a').density).toBe('comfortable');
+    expect(mock.pick.mock.calls[0][1].title).toBe('Git Lines — Settings');
+    expect(mock.pick.mock.calls[1][0].map((item: { label: string }) => item.label)).toEqual([
+      '$(check) Compact', '$(blank) Comfortable',
+    ]);
+    expect(mock.pick.mock.calls[2][0][2].description).toBe('Comfortable');
     session.dispose(); graphSettings(ctx).dispose();
   });
   it('cancels without opening a host or reading Git', async () => {
