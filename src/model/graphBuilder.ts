@@ -2,6 +2,7 @@ import type { GitCommit, HistoryEvent, OperationState, RepositorySnapshot, Worki
 import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind, HistoryRelation } from './graphModel.js';
 import { buildRefMovementRelations, ghostRefBadgesByOid, isCompleteRefMovement, isRefMovementEvent } from './refMovement.js';
 import { buildCherryPickGroups } from './cherryPickGroupRelation.js';
+import { branchIntegrations } from './branchIntegration.js';
 import { buildRebaseRelations, isCompleteRebaseOverlay } from './rebaseRelation.js';
 import { buildRewordRelations } from './rewordRelation.js';
 import { buildRewriteCollapseRelations, isCompleteRewriteCollapseOverlay, transientOidsForRewriteCollapse } from './rewriteCollapseRelation.js';
@@ -466,6 +467,7 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   return {
     nodes,
     edges,
+    branchIntegrations: branchIntegrations(events, commits, snapshot.reflogs),
     refs: snapshot.refs,
     commits,
     workingTrees: snapshot.workingTrees,

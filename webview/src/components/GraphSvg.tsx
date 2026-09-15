@@ -155,6 +155,15 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
       </linearGradient>)}
     </defs>}
     <g className="graph-edges">{visiblePaths.map(renderEdge)}</g>
+    <g className="graph-branch-integrations">
+      {(layout.branchIntegrationPaths ?? []).map((path) => {
+        const event = byId.get(path.eventId);
+        return event ? <path key={`${path.eventId}:${path.role}`} d={path.d} className="edge"
+          data-branch-flow={path.role} stroke={colorResolver.colorForNode(event)} pointerEvents="none">
+          <title>{path.role === 'continuation' ? 'Receiving branch continuation (reflog)' : 'Fast-forward branch intake (reflog)'}</title>
+        </path> : null;
+      })}
+    </g>
     <g className="graph-rebase-group-outlines">{[...rebaseGroupOutlines, ...cherryPickGroupOutlines, ...rewriteCollapseOutlines].map((outline) => (
       <path key={outline.id} className={`rebase-group-outline rebase-group-outline-${outline.role}`} d={outline.d} pointerEvents="none" />
     ))}</g>

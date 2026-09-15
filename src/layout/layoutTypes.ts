@@ -1,6 +1,8 @@
 import type { CherryPickGroupRelation, GraphEdge, GraphNode, GraphTrack, HistoryRelation, RebaseRelation, RefMovementRelation, RewriteCollapseRelation } from '../model/graphModel.js';
 
 export interface GraphLayout {
+  branchIntegrations?: import('../model/branchIntegration.js').BranchIntegration[];
+  branchIntegrationPaths?: import('./branchIntegrationLayout.js').BranchIntegrationPath[];
   nodes: GraphNode[];
   edges: GraphEdge[];
   tracks: GraphTrack[];

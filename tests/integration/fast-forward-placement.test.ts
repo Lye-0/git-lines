@@ -41,12 +41,14 @@ it.each([false, true])('protects FF source routes and connects FF annotations in
           const a = pointForNode(layout.nodes.find((n) => n.id === edge.fromNodeId)!, options);
           const b = pointForNode(layout.nodes.find((n) => n.id === edge.toNodeId)!, options);
           if (phase !== 'main-continues') {
-            // Shared-tip FF annotates the checkout curve instead of forking it.
+            // Proven branch intake stays on the receiver lane, and the checkout
+            // reaches its real target through that existing FF junction.
             expect(layout.edgePaths!.some((p) => p.id === edge.id)).toBe(false);
             const checkout = layout.edges.find((e) => e.type === 'working-tree' && e.toNodeId === edge.fromNodeId)!;
             expect(layout.edgePaths!.filter((p) => p.id === checkout.id)).toHaveLength(1);
             const w = pointForNode(working, options);
-            expect(b.x).toBeCloseTo((w.x + a.x) / 2, 5);
+            expect(b.x).toBeCloseTo(w.x, 5);
+            expect(layout.branchIntegrationPaths?.filter(p => p.eventId === edge.toNodeId)).toHaveLength(2);
             expect(b.y).toBeCloseTo((w.y + a.y) / 2, 5);
             continue;
           }
@@ -54,7 +56,8 @@ it.each([false, true])('protects FF source routes and connects FF annotations in
           const parent = layout.edges.find((e) => e.type === 'parent' && e.toNodeId === edge.fromNodeId && layout.nodes.find((n) => n.id === e.fromNodeId)?.oid === mainCommit)!;
           expect(layout.edgePaths!.filter((p) => p.id === parent.id)).toHaveLength(1);
           const child = pointForNode(layout.nodes.find((n) => n.id === parent.fromNodeId)!, options);
-          expect(b.x).toBeCloseTo((child.x + a.x) / 2, 5);
+          expect(b.x).toBeCloseTo(child.x, 5);
+          expect(layout.branchIntegrationPaths?.filter(p => p.eventId === edge.toNodeId)).toHaveLength(2);
           expect(b.y).toBeCloseTo((child.y + a.y) / 2, 5);
         }
         // Cached placement must retain the same source ownership on refresh.

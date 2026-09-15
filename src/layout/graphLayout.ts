@@ -10,6 +10,7 @@ import { placeFastForwardEventsOnCurves } from './edgeRouter.js';
 import type { DefaultBranchTarget } from '../model/defaultBranchResolver.js';
 import type { GitCommit, ReflogEntry } from '../git/gitTypes.js';
 import { branchLineage, sourcePrimaryBranch } from '../model/branchLineage.js';
+import { integrationEventIds, routeBranchIntegrations } from './branchIntegrationLayout.js';
 
 export interface GraphLayoutOptions {
   routeEvidenceCommits?: GitCommit[];
@@ -49,14 +50,19 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   const rewriteCollapseRelations = facts.rewriteCollapseRelations ?? [];
   const operationRows = insertOperationAnnotationRows(laidOutNodes, allOverlayRelations({ historyRelations, refMovementRelations, rebaseRelations, cherryPickGroupRelations, rewriteCollapseRelations }));
   const annotationRows = new Map(operationRows.rows.map((row) => [row.relationId, row.row]));
+  const integrations = facts.branchIntegrations ?? [];
+  const junctions = integrationEventIds(operationRows.nodes, integrations);
+  const annotationEdges = facts.edges.filter(edge => !(edge.annotation === 'ref-event' && junctions.has(edge.toNodeId)));
   const routedNodes = placeRebaseEventsOnParentCurves(
-    placeFastForwardEventsOnCurves(placeBranchRenameEventsOnWorkingTreeCurves(operationRows.nodes, facts.edges, { rowHeight, laneWidth }), facts.edges, { rowHeight, laneWidth }),
+    placeFastForwardEventsOnCurves(placeBranchRenameEventsOnWorkingTreeCurves(operationRows.nodes, facts.edges, { rowHeight, laneWidth }), annotationEdges, { rowHeight, laneWidth }),
     facts.edges,
     { rowHeight, laneWidth },
   );
   const rebaseOverlay = routeRebaseRelations(routedNodes, rebaseRelations, { rowHeight, laneWidth, annotationRows });
   const cherryPickOverlay = routeCherryPickGroups(routedNodes, cherryPickGroupRelations, { rowHeight, laneWidth, annotationRows });
   const collapseOverlay = routeRewriteCollapseRelations(routedNodes, rewriteCollapseRelations, { rowHeight, laneWidth, annotationRows });
+  const branchFlow = routeBranchIntegrations(routedNodes, facts.edges, integrations,
+    routeEdges(routedNodes, annotationEdges, { rowHeight, laneWidth }), { rowHeight, laneWidth });
   return {
     nodes: routedNodes,
     edges: facts.edges,
@@ -65,7 +71,9 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
     hasMore: options.hasMore,
     rowHeight,
     laneWidth,
-    edgePaths: routeEdges(routedNodes, facts.edges, { rowHeight, laneWidth }),
+    edgePaths: branchFlow.edgePaths,
+    branchIntegrations: integrations,
+    branchIntegrationPaths: branchFlow.paths,
     historyRelations,
     historyRelationPaths: routeHistoryRelations(routedNodes, historyRelations, { rowHeight, laneWidth, annotationRows }),
     refMovementRelations,

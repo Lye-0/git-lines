@@ -62,6 +62,14 @@
 - files: `src/layout/laneLayout.ts`, `tests/unit/layout.test.ts`, `webview/src/components/routePresentation.ts` …
 - memory: `agent-knowledge/entries/2026-09-14-primary-spine-ref-stop-a07aa3.md`
 
+### Proven FF intake needs receiver continuity as well as source independence
+- id: `rm-20260915-ff-intake-continuation`
+- type: `decision`
+- maturity: `candidate`
+- tags: `fast-forward`, `branch-continuation`, `evidence`
+- files: `src/model/branchIntegration.ts`, `src/layout/branchIntegrationLayout.ts`, `tests/integration/branch-integration.test.ts` …
+- memory: `agent-knowledge/entries/2026-09-15-ff-intake-continuation.md`
+
 ### Preserving edges alone does not preserve a branch route at a shared tip
 - id: `rm-20260915-shared-tip-route-continuity`
 - type: `failure`

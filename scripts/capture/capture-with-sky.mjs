@@ -47,8 +47,9 @@ export async function captureCases(sky, window, runDir, { start = 0, end, resume
     };
     // CSS zoom and native scrollbars can make scrollWidth-clientWidth differ
     // from the browser's actual clamped endpoint. Measure that endpoint.
-    const endpoint = await position(1e9, 1e9);
-    await position();
+    const overflow = first.scrollWidth > first.width || first.scrollHeight > first.height;
+    const endpoint = overflow ? await position(1e9, 1e9) : first;
+    if (overflow) await position();
     const tops = stops(endpoint.top + first.height, first.height);
     const lefts = stops(endpoint.left + first.width, first.width);
     if (tops.length * lefts.length > 100) throw new Error('More than 100 tiles: review capture bounds');
