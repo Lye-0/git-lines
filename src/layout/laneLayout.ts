@@ -1,6 +1,7 @@
 import type { GitCommit, GitRef, HistoryEvent } from '../git/gitTypes.js';
 import type { GraphFactModel, GraphNode, GraphTrack, HistoricalRouteKind } from '../model/graphModel.js';
 import { branchFamilyForRef, normalizeRefName } from '../model/refDisplay.js';
+import { sharedTipRouteContinuity } from '../model/sharedTipRouteContinuity.js';
 import type { ReflogEntry } from '../git/gitTypes.js';
 import type { BranchLineage } from '../model/branchLineage.js';
 import { minimumSourceLane, orderSegmentsBySource, restoreSourceBranchClaims, sourceTrackParents } from './sourceBranchLayout.js';
@@ -12,6 +13,7 @@ import {
 } from '../utils/color.js';
 
 export interface LaneLayoutOptions {
+  routeEvidenceCommits?: GitCommit[];
   lineage?: BranchLineage[];
   protectionReflogs?: ReflogEntry[];
   previousLanes?: Map<string, number>;
@@ -606,6 +608,10 @@ export function computeLaneLayout(facts: GraphFactModel, options: LaneLayoutOpti
   };
   const sourceParents = sourceTrackParents(candidates, options.lineage ?? []);
   restoreSourceBranchClaims(trackByOid, candidates, facts.commits, options.protectionReflogs ?? [], sourceParents);
+  for (const [oid, ref] of sharedTipRouteContinuity(options.routeEvidenceCommits ?? facts.commits, facts.refs, options.protectionReflogs ?? [])) {
+    const track = refTrack.get(ref);
+    if (track) trackByOid.set(oid, track);
+  }
   const initialAssignments = facts.nodes.map((node, index) => {
     let trackId: string | undefined;
     // A clean working tree on a newly-created branch has the same OID as the

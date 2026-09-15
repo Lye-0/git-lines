@@ -36,6 +36,10 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 ## Rowとlaneの不変条件
 
+同じ先端を指す複数のlocal refでは、`sharedTipRouteContinuity`が「作成元」とは別に表示経路の継続を判定する。現在のref更新の直前OIDに、そのbranchでの作成記録があり、新先端からそのOIDまでの第1親区間が完全に確認でき、途中に他branchや競合する作成記録がない場合だけ、区間と起点を同じtrackに保つ。第2親、共有の根元、証拠不足の区間は取り込まない。これは空subjectのupdate-refをcommit作成記録に変換する処理ではない。113ではA1/M1/A2がfeature-aとなり、mainのbadgeは実際の参照先A2、Working Treeはmainの列からA2へ接続する。mainの架空のcommit/parent edgeを作らない。
+
+そのWorking Tree線が別列の無関係なcommitを横切る場合は、既存のnode/selection-ring回避処理で曲線を調整する。同じ曲線をFF/renameの位置計算にも用い、注釈だけが線から離れないようにする。
+
 `branchLineage`はbranch作成記録から分岐元を識別する。`Created from <branch>`を優先し、HEAD指定では同じOID・時刻のcheckoutと候補の一意性を確認する。候補が複数、相反する作成元、循環したbranch名関係では左右制約を追加しない。local defaultがなくてもremote HEADの参照先を基準候補とする。明示されたprimaryBranch設定を除き、現在のbranchの証明された分岐元を遡って基準を選ぶ。
 
 lane割当ては、既存の第1親停止と経路識別を残しつつ、証明された親子内のcommit作成元とmerge作成元を補正してから行う。未マージおよび子を親へ取り込んだ履歴では親segmentを子より左に配置する。親を子へ取り込む場合も、そのmerge commitは作成された子側の履歴として扱い、後続FFのref移動だけで親の作成commitへ変更しない。main以外・入れ子も対象。既にlane 0が確定する基準trackを待つためだけに他segmentを入れ替えず、Rebaseの過去経路との不要な左右交換を防ぐ。

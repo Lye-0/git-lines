@@ -8,10 +8,11 @@ import { defaultFixedLayout } from './defaultFixedLayout.js';
 import { fastForwardLayout } from './fastForwardLayout.js';
 import { placeFastForwardEventsOnCurves } from './edgeRouter.js';
 import type { DefaultBranchTarget } from '../model/defaultBranchResolver.js';
-import type { ReflogEntry } from '../git/gitTypes.js';
+import type { GitCommit, ReflogEntry } from '../git/gitTypes.js';
 import { branchLineage, sourcePrimaryBranch } from '../model/branchLineage.js';
 
 export interface GraphLayoutOptions {
+  routeEvidenceCommits?: GitCommit[];
   visibleCommitCount: number;
   hasMore: boolean;
   primaryBranch?: string;
@@ -33,6 +34,7 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
     primaryBranch: sourcePrimaryBranch(facts.refs, facts.primaryBranch, lineage, options.primaryBranch),
     lineage,
     protectionReflogs: options.protectionReflogs,
+    routeEvidenceCommits: options.routeEvidenceCommits,
   });
   const protectedLanes = fastForwardLayout(legacyLanes, facts, options.protectionReflogs ?? []);
   const lanes = options.fixedDefault

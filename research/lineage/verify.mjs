@@ -11,10 +11,11 @@ const root = process.cwd();
 const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'git-lines-lineage-audit-'));
 const entry = `export {GitClient} from './src/git/gitClient.ts'; export {buildGraphFacts} from './src/model/graphBuilder.ts'; export {createGraphLayout} from './src/layout/graphLayout.ts'; export {resolveDefaultBranch} from './src/model/defaultBranchResolver.ts'; export {pointForNode} from './src/layout/edgeRouter.ts'; export {nodeRingGeometry} from './src/layout/nodeGeometry.ts';`;
 const production = process.argv.includes('--production');
+const comparisonBase = process.argv.find((arg) => arg.startsWith('--baseline='))?.slice('--baseline='.length) ?? baselineCommit;
 for (const name of ['baseline', 'candidate']) await build({ stdin: { contents: entry, resolveDir: root }, outfile: path.join(temp, `${name}.cjs`), bundle: true, platform: 'node', format: 'cjs', logLevel: 'silent',
-  plugins: production && name === 'candidate' ? [] : [{ name: 'frozen-baseline', setup(build) { build.onLoad({ filter: /(?:graphBuilder|graphLayout|laneLayout|branchProtection)\.ts$/ }, async ({ path: file }) => ({ contents: name === 'baseline' ? baselineSource(file) : transformCandidate(baselineSource(file), file.replaceAll('\\', '/')), loader: 'ts' })); } }] });
+  plugins: production && name === 'candidate' ? [] : [{ name: 'frozen-baseline', setup(build) { build.onLoad({ filter: /(?:gitClient|graphBuilder|graphLayout|laneLayout|branchProtection|edgeRouter)\.ts$/ }, async ({ path: file }) => ({ contents: name === 'baseline' ? baselineSource(file, comparisonBase) : transformCandidate(baselineSource(file, comparisonBase), file.replaceAll('\\', '/')), loader: 'ts' })); } }] });
 const require = createRequire(import.meta.url), base = require(path.join(temp, 'baseline.cjs')), next = require(path.join(temp, 'candidate.cjs'));
-const report = { baselineCommit, production, temp, focused: [], matrix: [], pagination: [], evidence: [], errors: [] };
+const report = { baselineCommit: comparisonBase, production, temp, focused: [], matrix: [], pagination: [], evidence: [], errors: [] };
 const client = new base.GitClient();
 const generated = [];
 function repo(name, initial = 'main') {
@@ -73,6 +74,11 @@ await save(slash, 'slash-parent-child', [[s0, 'release/base'], [s1, 'feature/top
 
 const actual148 = await new base.GitClient().readSnapshot('C:/Users/kawau/dev/test/repos/148-default-remote-only', 100, true);
 generated.push({ name: 'actual-148', snapshot: actual148, logs: await client.readBranchProtection(actual148), ownership: actual148.commits.map((c) => [c.oid, c.subject.startsWith('F') ? 'feature' : 'main']), leftPairs: [[actual148.commits.find((c) => c.subject.startsWith('D2')).oid, actual148.commits.find((c) => c.subject.startsWith('F2')).oid]], workingOwner: 'feature' });
+if (production) {
+  const reader = new base.GitClient();
+  const snapshot = await reader.readSnapshot('C:/Users/kawau/dev/test/repos/113-criss-cross-merge', 100, true);
+  generated.push({ name: 'actual-113-continuity', snapshot, logs: await reader.readBranchProtection(snapshot), ownership: snapshot.commits.map((c) => [c.oid, /(?:A[12]|M1)$/.test(c.subject) ? 'feature-a' : /(?:B[12]|M2)$/.test(c.subject) ? 'feature-b' : 'main']), leftPairs: [], workingOwner: 'main' });
+}
 
 const semanticFields = ['edges', 'historyRelations', 'refMovementRelations', 'rebaseRelations', 'cherryPickGroupRelations', 'rewriteCollapseRelations', 'operationAnnotationRows'];
 const json = JSON.stringify;
@@ -112,7 +118,7 @@ function check(layout, item) {
 }
 for (const item of generated) for (const showReflog of [false, true]) for (const [host, rowHeight, laneWidth] of [['sidebar', 28, 22], ['compact', 30, 34], ['comfortable', 38, 34]]) for (const mode of ['standard', 'fixed']) {
   const target = base.resolveDefaultBranch(item.snapshot.refs) ?? (() => { const ref = item.snapshot.refs.find((r) => r.fullName === 'refs/heads/main'); return ref && { refName: ref.fullName, branch: 'main', oid: ref.oid, source: 'manual' }; })();
-  const options = { visibleCommitCount: 100, hasMore: false, rowHeight, laneWidth, protectionReflogs: item.logs, fixedDefault: mode === 'fixed' ? target : undefined };
+  const options = { visibleCommitCount: 100, hasMore: false, rowHeight, laneWidth, protectionReflogs: item.logs, routeEvidenceCommits: item.snapshot.commits, fixedDefault: mode === 'fixed' ? target : undefined };
   const a = base.createGraphLayout(base.buildGraphFacts(item.snapshot, { showReflog }), options);
   const b = next.createGraphLayout(next.buildGraphFacts(item.snapshot, { showReflog }), options);
   report.focused.push({ name: item.name, mode, host, showReflog, baseline: check(a, item), candidate: check(b, item), semanticChanges: semanticFields.filter((field) => json(a[field]) !== json(b[field])), rowChanges: json(a.nodes.map((n) => [n.id, n.row])) !== json(b.nodes.map((n) => [n.id, n.row])) });
@@ -143,13 +149,15 @@ for (const actualParent of ['main','sibling']) {
 const sameEvidence = json(ambiguous[0].refs) === json(ambiguous[1].refs) && json(ambiguous[0].logs) === json(ambiguous[1].logs);
 report.evidence.push({name:'creation-before-vs-after-switch',sameEvidence,actualParents:ambiguous.map((a)=>a.actualParent),unchanged:ambiguous.every((a)=>!lineageRelations(a.logs).some((r)=>r.child==='child'))});
 
-for (const [name, dir] of [['test','C:/Users/kawau/dev/test'],['nested',nested.dir],['148','C:/Users/kawau/dev/test/repos/148-default-remote-only']]) {
+for (const [name, dir] of [['test','C:/Users/kawau/dev/test'],['nested',nested.dir],['148','C:/Users/kawau/dev/test/repos/148-default-remote-only'],...(production ? [['113','C:/Users/kawau/dev/test/repos/113-criss-cross-merge']] : [])]) {
   const reader = new base.GitClient();
+  const evidenceReader = new next.GitClient();
   for (const mode of ['standard','fixed']) {
     let previousA,previousB;
     for (const count of [2,4,8,16,50]) {
       const snapshot = await reader.readSnapshot(dir,count,true), logs = await reader.readBranchProtection(snapshot);
-      const options = {visibleCommitCount:snapshot.visibleCommitCount,hasMore:snapshot.hasMore,protectionReflogs:logs,fixedDefault:mode==='fixed'?base.resolveDefaultBranch(snapshot.refs):undefined};
+      const local = snapshot.refs.find((r)=>r.fullName==='refs/heads/main');
+      const options = {visibleCommitCount:snapshot.visibleCommitCount,hasMore:snapshot.hasMore,protectionReflogs:logs,routeEvidenceCommits:production ? await evidenceReader.readRouteContinuityEvidence(snapshot,logs) : snapshot.commits,fixedDefault:mode==='fixed'?(base.resolveDefaultBranch(snapshot.refs) ?? (local ? {refName:local.fullName,branch:'main',oid:local.oid,source:'manual'} : undefined)):undefined};
       const withPrevious = (prev) => ({...options,previousRows:prev&&new Map(prev.nodes.map((n)=>[n.id,n.row])),previousLanes:prev&&new Map(prev.tracks.map((t)=>[t.id,t.lane])),previousNodeLanes:prev&&new Map(prev.nodes.map((n)=>[n.id,n.lane]))});
       const a=base.createGraphLayout(base.buildGraphFacts(snapshot),withPrevious(previousA)), b=next.createGraphLayout(next.buildGraphFacts(snapshot),withPrevious(previousB));
       const shifts=(layout,prev)=>layout.nodes.filter((n)=>n.kind==='commit'&&prev?.nodes.some((p)=>p.id===n.id&&(p.row!==n.row||p.lane!==n.lane||p.trackId!==n.trackId))).map((n)=>n.subject);
@@ -163,7 +171,7 @@ const cached = process.argv.slice(2).find((arg) => !arg.startsWith('--')) ?? fs.
 for (const file of fs.readdirSync(cached).filter((name) => name.endsWith('.snapshot.json'))) {
   const snapshot = JSON.parse(fs.readFileSync(path.join(cached, file), 'utf8'));
   for (const showReflog of [false, true]) for (const [rowHeight, laneWidth] of [[28, 22], [30, 34], [38, 34]]) for (const mode of ['standard', 'fixed']) {
-    const options = { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, rowHeight, laneWidth, protectionReflogs: snapshot.reflogs, fixedDefault: mode === 'fixed' ? base.resolveDefaultBranch(snapshot.refs) : undefined };
+    const options = { visibleCommitCount: snapshot.visibleCommitCount, hasMore: snapshot.hasMore, rowHeight, laneWidth, protectionReflogs: snapshot.reflogs, routeEvidenceCommits: snapshot.commits, fixedDefault: mode === 'fixed' ? base.resolveDefaultBranch(snapshot.refs) : undefined };
     const a = base.createGraphLayout(base.buildGraphFacts(snapshot, { showReflog }), options);
     const b = next.createGraphLayout(next.buildGraphFacts(snapshot, { showReflog }), options);
     const fields = semanticFields.filter((field) => json(a[field]) !== json(b[field]));

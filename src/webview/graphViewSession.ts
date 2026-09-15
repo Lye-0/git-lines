@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { GitClient } from '../git/gitClient.js';
-import type { HistoryEvent, RepositorySnapshot, ReflogEntry } from '../git/gitTypes.js';
+import type { GitCommit, HistoryEvent, RepositorySnapshot, ReflogEntry } from '../git/gitTypes.js';
 import { buildGraphFacts } from '../model/graphBuilder.js';
 import { createGraphLayout } from '../layout/graphLayout.js';
 import { LayoutState } from '../layout/layoutState.js';
@@ -21,6 +21,7 @@ export class GraphViewSession implements vscode.Disposable {
   private settingsValue: GraphSettings;
   private settingsRevision = 0;
   private protectionLogs?: ReflogEntry[];
+  private routeEvidence?: GitCommit[];
   private readonly output: vscode.OutputChannel;
   private snapshot?: RepositorySnapshot;
   private commitLimit: number;
@@ -154,10 +155,11 @@ export class GraphViewSession implements vscode.Disposable {
         return;
       }
       this.snapshot = next;
-      if (!reuseSnapshot) this.protectionLogs = undefined;
+      if (!reuseSnapshot) { this.protectionLogs = undefined; this.routeEvidence = undefined; }
       const fixedDefault = settingsValue.layoutMode === 'default-fixed' ? resolveDefaultBranch(next.refs, settingsValue.fixedBranch) : undefined;
       // Both modes preserve FF source routes, independently of Reflog visibility.
       this.protectionLogs ??= await this.client.readBranchProtection(next);
+      this.routeEvidence ??= await this.client.readRouteContinuityEvidence(next, this.protectionLogs);
       if (this.disposed || settingsRevision !== this.settingsRevision) return;
       if (!this.watcher) {
         this.watcher = new RepositoryWatcher(next.repository.gitDir, {
@@ -190,6 +192,7 @@ export class GraphViewSession implements vscode.Disposable {
         previousNodeLanes: !fixedDefault && (isAppend || reuseSnapshot) ? layoutState.nodeLanes : undefined,
         fixedDefault,
         protectionReflogs: this.protectionLogs,
+        routeEvidenceCommits: this.routeEvidence,
         rowHeight: this.presentation === 'sidebar' ? 28 : this.density === 'compact' ? 30 : 38,
         laneWidth: this.presentation === 'sidebar' ? 22 : undefined,
       });

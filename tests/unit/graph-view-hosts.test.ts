@@ -11,6 +11,7 @@ const mock = vi.hoisted(() => ({
   layoutMode: 'legacy',
   readSnapshot: vi.fn(), readCommitDetail: vi.fn(), clearCache: vi.fn(),
   readBranchProtection: vi.fn(),
+  readRouteContinuityEvidence: vi.fn(),
   pick: vi.fn(), info: vi.fn(), execute: vi.fn(),
   watchers: [] as Array<{ dispose: ReturnType<typeof vi.fn>; onChange: (reason: string) => void }>,
 }));
@@ -82,6 +83,7 @@ vi.mock('../../src/git/gitClient.js', () => ({ GitClient: class {
   readCommitDetail = mock.readCommitDetail;
   clearCache = mock.clearCache;
   readBranchProtection = mock.readBranchProtection;
+  readRouteContinuityEvidence = mock.readRouteContinuityEvidence;
 } }));
 vi.mock('../../src/repository/repositoryWatcher.js', () => ({ RepositoryWatcher: class {
   dispose = vi.fn();
@@ -133,6 +135,7 @@ beforeEach(() => {
   mock.execute.mockResolvedValue(undefined);
   mock.readSnapshot.mockImplementation(async (root: string) => snapshot(root));
   mock.readBranchProtection.mockResolvedValue([]);
+  mock.readRouteContinuityEvidence.mockImplementation(async (snapshot: RepositorySnapshot) => snapshot.commits);
 });
 afterEach(() => { for (const panel of panels) panel.dispose(); });
 

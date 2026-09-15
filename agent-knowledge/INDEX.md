@@ -62,6 +62,14 @@
 - files: `src/layout/laneLayout.ts`, `tests/unit/layout.test.ts`, `webview/src/components/routePresentation.ts` …
 - memory: `agent-knowledge/entries/2026-09-14-primary-spine-ref-stop-a07aa3.md`
 
+### Preserving edges alone does not preserve a branch route at a shared tip
+- id: `rm-20260915-shared-tip-route-continuity`
+- type: `failure`
+- maturity: `candidate`
+- tags: `shared-tip`, `continuity`, `pagination`
+- files: `src/model/sharedTipRouteContinuity.ts`, `src/layout/laneLayout.ts`, `src/git/gitClient.ts` …
+- memory: `agent-knowledge/entries/2026-09-15-shared-tip-route-continuity.md`
+
 ### Equal reflog evidence can hide different branch-creation contexts
 - id: `rm-20260915-source-branch-lineage-ambiguity`
 - type: `constraint`

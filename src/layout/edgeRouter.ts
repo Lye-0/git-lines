@@ -485,7 +485,7 @@ export function placeFastForwardEventsOnCurves(nodes: GraphNode[], edges: GraphE
       }
       return node;
     }
-    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, options), pointForNode(head, options), options.laneWidth ?? 34);
+    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, options), pointForNode(head, options), options.laneWidth ?? 34, options);
     return { ...node, visualX: cubicPoint(curve, parameterAtY(curve, pointForNode(node, options).y)).x };
   });
 }
@@ -532,7 +532,7 @@ export function placeBranchRenameEventsOnWorkingTreeCurves(nodes: GraphNode[], e
     const working = byId.get(split.workingEdge.fromNodeId);
     const head = byId.get(split.workingEdge.toNodeId);
     if (!working || !head) return node;
-    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, { rowHeight, laneWidth, leftPadding: options.leftPadding }), pointForNode(head, { rowHeight, laneWidth, leftPadding: options.leftPadding }), laneWidth);
+    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, { rowHeight, laneWidth, leftPadding: options.leftPadding }), pointForNode(head, { rowHeight, laneWidth, leftPadding: options.leftPadding }), laneWidth, options);
     const eventPoint = pointForNode(node, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const point = cubicPoint(curve, parameterAtY(curve, eventPoint.y));
     return { ...node, visualX: point.x };
@@ -552,7 +552,7 @@ function hasIntermediateNodeOnLane(nodes: GraphNode[], from: GraphNode, to: Grap
     && (node.row ?? 0) < lastRow);
 }
 
-function workingTreeCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: Point, b: Point, laneWidth: number): CubicCurve {
+function workingTreeCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: Point, b: Point, laneWidth: number, options: EdgeRouterOptions): CubicCurve {
   const delta = Math.min(32, Math.max(8, Math.abs(b.y - a.y) * 0.16));
   // A remote-ahead chain can place several commits between the Working Tree
   // row and the checked-out local HEAD on the same branch lane.  Keep the
@@ -569,16 +569,17 @@ function workingTreeCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, a:
       p3: b,
     };
   }
-  return {
+  const curve: CubicCurve = {
     p0: a,
     p1: { x: a.x, y: a.y + delta },
     p2: { x: b.x, y: b.y - delta },
     p3: b,
   };
+  return from.lane === to.lane ? curve : routedParentCurve(nodes, from, to, options, curve);
 }
 
-function routeWorkingTreeEdge(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: { x: number; y: number }, b: { x: number; y: number }, laneWidth: number): string {
-  return curvePath(workingTreeCurve(nodes, from, to, a, b, laneWidth));
+function routeWorkingTreeEdge(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: { x: number; y: number }, b: { x: number; y: number }, laneWidth: number, options: EdgeRouterOptions): string {
+  return curvePath(workingTreeCurve(nodes, from, to, a, b, laneWidth, options));
 }
 
 export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: EdgeRouterOptions = {}): EdgePath[] {
@@ -643,6 +644,7 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
         pointForNode(working, { rowHeight, laneWidth, leftPadding: options.leftPadding }),
         pointForNode(head, { rowHeight, laneWidth, leftPadding: options.leftPadding }),
         laneWidth,
+        options,
       );
       const eventPoint = pointForNode(branchRenameSplit.event, { rowHeight, laneWidth, leftPadding: options.leftPadding });
       const parameter = parameterAtY(curve, eventPoint.y);
@@ -691,7 +693,7 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
       return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
     }
     if (edge.type === 'working-tree') {
-      const d = routeWorkingTreeEdge(nodes, from, to, a, b, laneWidth);
+      const d = routeWorkingTreeEdge(nodes, from, to, a, b, laneWidth, options);
       return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
     }
     if (edge.type === 'parent') {
