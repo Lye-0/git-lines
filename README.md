@@ -8,7 +8,7 @@ VS Code向けの読み取り専用Gitグラフです。現在のDAGを安定し�
   <img src="docs/images/readme/main/hero.png" alt="Git Linesのメイングラフ。安定したレーン上のブランチ履歴とWorking Tree" width="860">
 </p>
 
-推測で履歴を補完しません。証拠が足りない操作は描かず、現在のDAGだけを残します。
+推測で履歴を補完しません。証拠が足りない操作は描かず、実際のDAGと証拠のあるブランチ経路を表示します。
 
 ## What is Git Lines?
 
@@ -19,6 +19,7 @@ Amend・Cherry-pick・Rebase などの操作は、reflog や commit 本文など
 ## Features
 
 - ブランチの流れが崩れにくい Git graph
+- 証拠のあるFF取り込みで、取り込み先の継続と取り込み元ブランチの独立・合流を表示
 - Working Tree と進行中 operation の統合
 - 証拠がある操作だけの Operation Overlay
 - Reflog 由来の PREVIOUS / 履歴ルート
@@ -78,7 +79,7 @@ Reflog が有効なら、PREVIOUS、historical route、reflog-only の履歴を�
 
 ### Reflog OFF
 
-Reflog をオフにすると、操作マーク・操作詳細・過去のコミットを非表示にします。ブランチの配置・継続・合流には取得できる履歴情報を引き続き利用し、必要な証拠がない関係は推測しません。FFの合流はマークや専用行を置かず、線だけで残します。
+Reflog をオフにすると、操作マーク・操作詳細・reflogだけから参照される過去のコミット・過去のref位置を非表示にします。現在の履歴に含まれるコミットは残ります。ブランチの配置・継続・合流には取得できる履歴情報を引き続き利用し、必要な証拠がない関係は推測しません。FFの合流はマークや専用行を置かず、線だけで残します。
 
 <p align="center">
   <img src="docs/images/readme/main/reflog-off.png" alt="Reflogオフ時の操作・過去履歴の非表示例" width="720">
@@ -112,7 +113,7 @@ Operation Detail では操作種別と Evidence に加え、Cherry-pick なら M
 ```text
 Reliable evidence     → Dedicated Operation Overlay
 Partial / ambiguous   → Safe fallback（generic event または Current DAG）
-No reliable evidence  → Current DAG only
+No reliable evidence  → No inferred operation
 ```
 
 Git Lines は、commit の類似度や「こうなったはず」という推測だけでは歴史操作を描きません。証明できる範囲だけを overlay にし、それ以外はいまの DAG を優先します。
@@ -138,6 +139,7 @@ Git Lines は、commit の類似度や「こうなったはず」という推測
 
 | Operation / State | Support | Visualization |
 | --- | --- | --- |
+| Fast-forward merge | ✅ | 証拠のあるブランチ継続・合流。Reflog ONでは◇ FFも表示 |
 | Amend | ✅ | Commit rewrite |
 | Cherry-pick | ✅ | Exact relation / 連続時は visual group |
 | Revert | ✅ | Cancellation relation |
@@ -155,7 +157,7 @@ Git Lines は、commit の類似度や「こうなったはず」という推測
 | In-progress operations | ✅ | Working Tree 行へ統合 |
 | Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
 | ORIG_HEAD | ✅ | 通常の commit / special ref |
-| Reflog OFF | ✅ | 操作・過去履歴を非表示。証拠のあるブランチ経路は維持 |
+| Reflog OFF | ✅ | 操作・reflog-only履歴を非表示。証拠のあるブランチ経路は維持 |
 
 ## Supported DAG Topologies
 
@@ -173,6 +175,8 @@ Git Lines は Operation Overlay とは別に、Git object の実際の parent �
 これらには専用 Operation Overlay を追加せず、実際の parent relation そのものを描画します。
 
 ## Git Operations
+
+**Fast-forward（FF）**：取り込み操作と取り込み元ブランチの由来を確認できる場合、取り込み元ブランチのcommitを独立した列に残し、取り込み先の継続線へつなぎます。新しいmerge commitは作らず、実parentや現在のref位置も変えません。取り込み元ブランチを削除した後も、証拠と必要なcommitが残る限り経路を表示しますが、削除済みのrefラベルは復活させません。
 
 <details>
 <summary><strong>Cherry-pick</strong></summary>
@@ -396,9 +400,9 @@ VSIXからインストールする場合は、Command Paletteの `Extensions: In
 
 グラフ上の **「?」の左にある歯車ボタン**、または `Git Lines: Settings` から設定できます。変更は保存され、次回起動時と開いている各表示に反映されます。通常はユーザー設定へ保存し、ワークスペース側の指定がある場合は保存先を表示します。Densityはメイン画面・下部パネルに適用し、左サイドバーは専用の行間隔を維持します。
 
-レーン配置は **Standard**（初期値）と **Default Fixed**（default列を左端に固定）から選べます。両モードとも、証拠から確認できる分岐元と子ブランチの履歴を独立した列に保ちます。Standardは未マージ時と子から親へ取り込んだ場合に親を左へ配置し、Default Fixedは所属を保ったままdefault列を最左へ固定します。Reflog OFFでも識別のために記録を内部利用し、分岐元が曖昧な区間は推測で並べ替えません。
+レーン配置は **Standard**（初期値）と **Default Fixed**（default列を左端に固定）から選べます。両モードとも、証拠から確認できる分岐元と子ブランチの履歴を独立した列に保ちます。Standardは未マージ時と子から親へ取り込んだ場合に親を左へ配置します。逆に親を子へ取り込んだ場合、その配置は保証しません。Default Fixedは所属を保ったままdefault列を最左へ固定します。Reflog OFFでも識別のために記録を内部利用し、分岐元が曖昧な区間は推測で並べ替えません。
 
-defaultはローカルに保存されたremote HEADから判定します。未判定の場合は設定内の **固定対象** から選択できます。この指定はrepositoryごとにVS Code内へ保存され、Gitの設定は変更しません。
+defaultはローカルに保存されたremote HEADから判定します。未判定の場合は設定内の **Fixed target** から選択できます。この指定はrepositoryごとにVS Code内へ保存され、Gitの設定は変更しません。
 
 ## Development
 

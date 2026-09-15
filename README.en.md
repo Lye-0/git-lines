@@ -19,6 +19,7 @@ Operations such as Amend, Cherry-pick, and Rebase appear in a separate overlay l
 ## Features
 
 - Git graph with stable branch lanes
+- Proven fast-forward merges preserve receiving-branch continuity and the source branch’s separate route
 - Working Tree and in-progress operations on one timeline
 - Operation Overlays backed by evidence
 - Reflog-based PREVIOUS commits and historical routes
@@ -78,7 +79,7 @@ In-progress Git operations are integrated into the Working Tree row, rather than
 
 ### Reflog OFF
 
-Turning Reflog off hides operation marks, operation details, and past commits. Available history evidence still supports branch layout, continuation, and intake. Unproven relationships are never guessed. Proven FF intake remains as lines, without an event mark or annotation row.
+Turning Reflog off hides operation marks, operation details, reflog-only past commits, and historical ref positions. Commits in the current history remain visible. Available history evidence still supports branch layout, continuation, and intake. Unproven relationships are never guessed. Proven FF intake remains as lines, without an event mark or annotation row.
 
 <p align="center">
   <img src="docs/images/readme/main/reflog-off.png" alt="Git Lines: reflog off" width="720">
@@ -112,7 +113,7 @@ Operation Detail shows the operation type, Evidence, and only the information ac
 ```text
 Reliable evidence     → Dedicated Operation Overlay
 Partial / ambiguous   → Safe fallback (generic event or Current DAG)
-No reliable evidence  → Current DAG only
+No reliable evidence  → No inferred operation
 ```
 
 Git Lines does not infer past operations solely from commit similarity or assumptions about what happened. It overlays only what can be proven and otherwise prioritizes the current DAG.
@@ -138,6 +139,7 @@ Only implemented and verified behavior is listed here.
 
 | Operation / State | Support | Visualization |
 | --- | --- | --- |
+| Fast-forward merge | ✅ | Proven branch continuation and intake; ◇ FF with Reflog ON |
 | Amend | ✅ | Commit rewrite |
 | Cherry-pick | ✅ | Exact relation / visual group for consecutive relations |
 | Revert | ✅ | Cancellation relation |
@@ -155,7 +157,7 @@ Only implemented and verified behavior is listed here.
 | In-progress operations | ✅ | Integrated into the Working Tree row |
 | Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
 | ORIG_HEAD | ✅ | Normal commit / special ref |
-| Reflog OFF | ✅ | Hide operations and past commits; retain proven branch flow |
+| Reflog OFF | ✅ | Hide operations and reflog-only history; retain proven branch flow |
 
 ## Supported DAG Topologies
 
@@ -173,6 +175,8 @@ Independently of Operation Overlays, Git Lines draws the actual parent relations
 These topologies use actual parent relationships, without dedicated Operation Overlays.
 
 ## Git Operations
+
+**Fast-forward (FF):** When the merge and source branch’s origin are established, source commits remain in a separate column connected to the receiving branch’s continuation line. No merge commit is created, and actual parents and current ref positions stay unchanged. After the source branch is deleted, its route remains while the evidence and required commits are available; deleted ref labels are not restored.
 
 <details>
 <summary><strong>Cherry-pick</strong></summary>
@@ -396,7 +400,7 @@ The graph is read-only. It does not provide Git mutations such as checkout, bran
 
 Use the **gear button to the left of ?** in the graph, or run `Git Lines: Settings`. Changes are saved, restored on the next launch, and applied to open views. Settings normally use user scope; existing workspace overrides are respected and the save scope is shown. Density applies to the editor and bottom panel; the sidebar retains its dedicated spacing.
 
-Choose **Standard** (the default) or **Default Fixed**. Both modes keep evidence-backed source and child branch histories in separate columns. Standard keeps the source to the left before a merge and when it receives the child; Default Fixed places the default column leftmost while preserving route identities. Reflog records are used internally even when their display is off. Ambiguous branch origins are not guessed.
+Choose **Standard** (the default) or **Default Fixed**. Both modes keep evidence-backed source and child branch histories in separate columns. Standard keeps the source to the left before a merge and when it receives the child. If the source is merged into the child, that placement is not guaranteed. Default Fixed places the default column leftmost while preserving route identities. Reflog records are used internally even when their display is off. Ambiguous branch origins are not guessed.
 
 The target is resolved from locally stored remote HEAD metadata. If unresolved, choose a **Fixed target** in Settings. This override is stored per repository inside VS Code and does not modify Git configuration.
 
@@ -426,7 +430,7 @@ code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 | Setting | Default | Description |
 | --- | --- | --- |
 | `branchGraph.layoutMode` | `legacy` | Legacy placement or fixed default column (`default-fixed`) |
-| `branchGraph.showReflog` | `true` | Operation marks and past commits; evidence still supports branch flow |
+| `branchGraph.showReflog` | `true` | Operation marks and reflog-only history; evidence still supports branch flow |
 | `branchGraph.density` | `compact` | Row density (`comfortable` / `compact`) |
 | `branchGraph.initialCommitCount` | `30` | Initial number of commits to load |
 | `branchGraph.loadMoreCount` | `10` | Number of commits to load per page |
