@@ -78,7 +78,7 @@ In-progress Git operations are integrated into the Working Tree row, rather than
 
 ### Reflog OFF
 
-Turning Reflog off removes overlays, PREVIOUS commits, and reflog-dependent classifications, leaving the Current DAG. Operations are not reconstructed from commit messages.
+Turning Reflog off hides operation marks, operation details, and past commits. Available history evidence still supports branch layout, continuation, and intake. Unproven relationships are never guessed. Proven FF intake remains as lines, without an event mark or annotation row.
 
 <p align="center">
   <img src="docs/images/readme/main/reflog-off.png" alt="Git Lines: reflog off" width="720">
@@ -155,7 +155,7 @@ Only implemented and verified behavior is listed here.
 | In-progress operations | ✅ | Integrated into the Working Tree row |
 | Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
 | ORIG_HEAD | ✅ | Normal commit / special ref |
-| Reflog OFF | ✅ | Current DAG only |
+| Reflog OFF | ✅ | Hide operations and past commits; retain proven branch flow |
 
 ## Supported DAG Topologies
 
@@ -426,7 +426,7 @@ code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 | Setting | Default | Description |
 | --- | --- | --- |
 | `branchGraph.layoutMode` | `legacy` | Legacy placement or fixed default column (`default-fixed`) |
-| `branchGraph.showReflog` | `true` | Reflog-dependent content such as PREVIOUS commits and overlays |
+| `branchGraph.showReflog` | `true` | Operation marks and past commits; evidence still supports branch flow |
 | `branchGraph.density` | `compact` | Row density (`comfortable` / `compact`) |
 | `branchGraph.initialCommitCount` | `30` | Initial number of commits to load |
 | `branchGraph.loadMoreCount` | `10` | Number of commits to load per page |

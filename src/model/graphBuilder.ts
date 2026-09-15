@@ -1,14 +1,17 @@
-import type { GitCommit, HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState } from '../git/gitTypes.js';
+import type { GitCommit, HistoryEvent, OperationState, RepositorySnapshot, WorkingTreeState, ReflogEntry } from '../git/gitTypes.js';
 import type { GraphEdge, GraphFactModel, GraphNode, GraphSyncState, HistoricalRouteKind, HistoryRelation } from './graphModel.js';
 import { buildRefMovementRelations, ghostRefBadgesByOid, isCompleteRefMovement, isRefMovementEvent } from './refMovement.js';
 import { buildCherryPickGroups } from './cherryPickGroupRelation.js';
 import { branchIntegrations } from './branchIntegration.js';
+import { resolveHistoryEvents } from './historyEventResolver.js';
 import { buildRebaseRelations, isCompleteRebaseOverlay } from './rebaseRelation.js';
 import { buildRewordRelations } from './rewordRelation.js';
 import { buildRewriteCollapseRelations, isCompleteRewriteCollapseOverlay, transientOidsForRewriteCollapse } from './rewriteCollapseRelation.js';
 import { isUserFacingRef, normalizeRefName, specialRefBadge, toGraphRefBadge, uniqueGraphRefBadges } from './refDisplay.js';
 
 export interface GraphBuilderOptions {
+  /** Existing lane-protection evidence; does not make historical objects visible. */
+  branchEvidence?: ReflogEntry[];
   showReflog?: boolean;
   primaryBranch?: string | null;
 }
@@ -467,7 +470,9 @@ export function buildGraphFacts(snapshot: RepositorySnapshot, options: GraphBuil
   return {
     nodes,
     edges,
-    branchIntegrations: branchIntegrations(events, commits, snapshot.reflogs),
+    branchIntegrations: branchIntegrations(options.showReflog === false
+      ? resolveHistoryEvents((options.branchEvidence ?? snapshot.reflogs).filter(log => /^merge \S+: Fast-forward$/i.test(log.subject)), commits)
+      : events, commits, options.showReflog === false ? options.branchEvidence ?? snapshot.reflogs : snapshot.reflogs),
     refs: snapshot.refs,
     commits,
     workingTrees: snapshot.workingTrees,

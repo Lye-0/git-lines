@@ -21,6 +21,7 @@ function GraphLegend() {
       <div><span className="legend-line legend-line-parent" /> Parent relationship</div>
       <div><span className="legend-line legend-line-operation" /> Working / operation</div>
       <div><span className="legend-line legend-line-event" /> Ref move</div>
+      <div>Reflog Off hides operations and past commits. Proven branch flow stays.</div>
     </div>
   </details>;
 }

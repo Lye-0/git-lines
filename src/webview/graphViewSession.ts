@@ -174,7 +174,7 @@ export class GraphViewSession implements vscode.Disposable {
       }
       const primaryBranch = vscode.workspace.getConfiguration('branchGraph').get<string | null>('primaryBranch', null);
       const factsStart = performance.now();
-      const facts = buildGraphFacts(next, { showReflog: this.showReflog, primaryBranch });
+      const facts = buildGraphFacts(next, { showReflog: this.showReflog, primaryBranch, branchEvidence: this.protectionLogs });
       this.output.appendLine(`perf request=${requestId} factsMs=${(performance.now() - factsStart).toFixed(1)}`);
       this.visibleEvents = new Map(facts.events.map((event) => [event.id, event]));
       const layoutStart = performance.now();

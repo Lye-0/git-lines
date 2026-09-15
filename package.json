@@ -94,7 +94,7 @@
         "branchGraph.showReflog": {
           "type": "boolean",
           "default": true,
-          "description": "Show previous-route commits and ref movement events when Git still retains them."
+          "description": "Show operation marks and past commits. Available history evidence still supports branch layout and intake when hidden."
         },
         "branchGraph.density": {
           "type": "string",

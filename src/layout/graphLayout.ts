@@ -62,7 +62,7 @@ export function createGraphLayout(facts: GraphFactModel, options: GraphLayoutOpt
   const cherryPickOverlay = routeCherryPickGroups(routedNodes, cherryPickGroupRelations, { rowHeight, laneWidth, annotationRows });
   const collapseOverlay = routeRewriteCollapseRelations(routedNodes, rewriteCollapseRelations, { rowHeight, laneWidth, annotationRows });
   const branchFlow = routeBranchIntegrations(routedNodes, facts.edges, integrations,
-    routeEdges(routedNodes, annotationEdges, { rowHeight, laneWidth }), { rowHeight, laneWidth });
+    routeEdges(routedNodes, annotationEdges, { rowHeight, laneWidth }), { rowHeight, laneWidth }, lanes.tracks);
   return {
     nodes: routedNodes,
     edges: facts.edges,

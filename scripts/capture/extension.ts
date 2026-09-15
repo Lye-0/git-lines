@@ -5,7 +5,7 @@ import path from 'node:path';
 import { GraphViewSession } from '../../src/webview/graphViewSession.js';
 import { graphSettings } from '../../src/settings/graphSettings.js';
 
-interface CaptureCase { name: string; root: string; mode: 'legacy' | 'default-fixed'; fixedBranch?: string }
+interface CaptureCase { name: string; root: string; mode: 'legacy' | 'default-fixed'; fixedBranch?: string; showReflog?: boolean }
 export function activate(context: vscode.ExtensionContext): void {
   const runDir = path.dirname(context.extensionPath);
   const cases: CaptureCase[] = JSON.parse(fs.readFileSync(path.join(runDir, 'cases.json'), 'utf8'));
@@ -25,8 +25,9 @@ export function activate(context: vscode.ExtensionContext): void {
       current?.dispose();
       const config = vscode.workspace.getConfiguration('branchGraph');
       await config.update('layoutMode', item.mode, vscode.ConfigurationTarget.Global);
+      if (item.showReflog !== undefined) await config.update('showReflog', item.showReflog, vscode.ConfigurationTarget.Global);
       await graphSettings(context).setFixedBranch(item.root, item.fixedBranch);
-      const label = `${item.name} — ${item.mode === 'legacy' ? 'Standard' : 'Default Fixed'}`;
+      const label = `${item.name} — ${item.mode === 'legacy' ? 'Standard' : 'Default Fixed'}${item.showReflog === undefined ? '' : ` · Reflog ${item.showReflog ? 'On' : 'Off'}`}`;
       current = vscode.window.createWebviewPanel('gitLinesCapture', label, vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
       const panel = current;
       panel.webview.onDidReceiveMessage(message => {

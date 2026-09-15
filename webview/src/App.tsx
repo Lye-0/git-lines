@@ -44,12 +44,15 @@ export function App() {
     const listener = (event: MessageEvent) => {
       const message = event.data as ExtensionToWebviewMessage;
       if (message.type === 'graph') {
-        if (sidebarRef.current) { selectionRef.current = undefined; setSelected(undefined); setSelectedWorkingTree(undefined); setSelectedEvent(undefined); setDetail(null); setDetailEvent(undefined); }
+        const selection = selectionRef.current;
+        const vanished = selection && !message.layout.nodes.some(node => node.id === selection || node.oid === selection)
+          && !allOverlayRelations(message.layout).some(relation => relation.id === selection);
+        if (sidebarRef.current || vanished) { selectionRef.current = undefined; setSelected(undefined); setSelectedWorkingTree(undefined); setSelectedEvent(undefined); setDetail(null); setDetailEvent(undefined); }
         receivedAt.current = performance.now(); setGraph(message); setError(undefined);
       }
       if (message.type === 'loading') setLoading(Boolean(message.loading));
       if (message.type === 'error') setError({ title: message.title, detail: message.detail });
-      if (message.type === 'detail') { if (sidebarRef.current && (message.detail || message.event) && (message.detail?.oid ?? message.event?.id) !== selectionRef.current) return; setDetail(message.detail); setDetailEvent(message.event ?? undefined); }
+      if (message.type === 'detail') { if ((message.detail || message.event) && (message.detail?.oid ?? message.event?.id) !== selectionRef.current) return; setDetail(message.detail); setDetailEvent(message.event ?? undefined); }
     };
     window.addEventListener('message', listener);
     vscode.postMessage({ type: 'ready' } satisfies WebviewToExtensionMessage);

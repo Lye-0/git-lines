@@ -52,7 +52,7 @@ lane割当ては、既存の第1親停止と経路識別を残しつつ、証明
 
 固定モードではbranch reflogのcommit作成記録、または連続した同一HEAD reflogのcheckout→commitから作成元を確認する。defaultへ取り込まれた別branchの作成commitを、そのbranchのtrackへ保護する。削除済みbranchは記録に基づく表示trackを作るが、存在しないref badgeを追加しない。FF/ref移動や到達関係だけではsource範囲を割り当てない。HEADのselector/OID断絶、rebaseなど未知の遷移ではcheckout状態の引継ぎを止める。証拠が不足する区間は従来の識別を保持する。
 
-固定モードのReflog OFFは歴史表示をOFFにしたまま、`readBranchProtection`で作成元判定用のreflogだけを取得する。この経路では補助commit objectの取得や履歴範囲の拡張は行わない。最終laneから既存routerで全経路を計算し、固定後のlaneを従来allocatorのprevious情報へ戻さない。
+固定モードのReflog OFFは歴史表示をOFFにしたまま、`readBranchProtection`で作成元・証拠のあるFF継続／合流の判定用reflogを取得する。この経路では補助commit objectの取得や履歴範囲の拡張は行わない。最終laneから既存routerで全経路を計算し、固定後のlaneを従来allocatorのprevious情報へ戻さない。
 
 固定モードの保護用読込は、他の利用可能なlinked worktreeのHEAD logも最大4並列で取得する。HEAD logはworktreeごとに分け、checkoutの移動先から後続commitを追う方法と、移動元から直前の連続commitを辿る方法を使う。作成直後のcheckout記録がないworktreeでも、そのbranchから離れた記録があれば作成元を確認できる。
 
@@ -112,7 +112,7 @@ Sidebarだけlane間隔を22px（通常表示は34px）にする。本文の開�
 
 ### Ref-only ref operation timeline
 
-force update、generic ref move、およびfrom/toの片方が未ロードなReset / Branch moveは、従来どおり`refOnly` eventまたはHistory Event fallbackとして扱う。ExactなReset / Branch moveはevent rowへ置かず`RefMovementRelation`へ移行する。Working TreeとHEADの`working-tree` edgeは分割しない。後方Resetの除外範囲と件数、mode名はGitが明示した場合だけ保持し、index/worktreeからは推測しない。Reflog OFFではRef Movement overlay、ghost badge、fallback event rowを除き、通常のDAGへ戻す。
+force update、generic ref move、およびfrom/toの片方が未ロードなReset / Branch moveは、従来どおり`refOnly` eventまたはHistory Event fallbackとして扱う。ExactなReset / Branch moveはevent rowへ置かず`RefMovementRelation`へ移行する。Working TreeとHEADの`working-tree` edgeは分割しない。後方Resetの除外範囲と件数、mode名はGitが明示した場合だけ保持し、index/worktreeからは推測しない。Reflog OFFではRef Movement overlay、ghost badge、fallback event rowを除き、現在のDAGを表示する。証拠のあるブランチ継続・合流は別の表示経路として維持する。
 
 ### Commit Relation and Ref Movement
 
@@ -222,4 +222,11 @@ Gitは`spawn`へ引数配列を渡し、shell文字列連結を行わない。We
 
 ### Evidence-backed FF branch continuation
 
-`BranchIntegration` is separate from the commit DAG. With Reflog display on, an explicit local-branch merge FF, matching target old/new log, complete linear imported range and unique source-creation evidence establish an intake. Its existing FF diamond stays on the receiving track. `branchIntegrationPaths` connect that junction to the receiving branch's old commit and to the imported tip. Existing checkout/first-parent connectors may be routed through the same junction without changing their factual endpoints. No commit, parent or current ref is manufactured. Missing/ambiguous evidence declines this layer without changing established source-route protection. Pull synchronization and unnamed ref moves do not create this layer. See `docs/design/ff-branch-integration-verification.md` for verified scope and exclusions.
+`BranchIntegration` is separate from the commit DAG. Regardless of Reflog display, an explicit local-branch merge FF, matching target old/new log, complete linear imported range and unique source-creation evidence establish an intake. With Reflog on, its existing FF diamond stays on the receiving track. `branchIntegrationPaths` connect that junction to the receiving branch's old commit and to the imported tip. Existing checkout/first-parent connectors may be routed through the same junction without changing their factual endpoints. No commit, parent or current ref is manufactured. Missing/ambiguous evidence declines this layer without changing established source-route protection. Pull synchronization and unnamed ref moves do not create this layer. See `docs/design/ff-branch-integration-verification.md` for verified scope and exclusions.
+
+
+Reflog OFF separates evidence from operation presentation. GraphViewSession reuses its existing `readBranchProtection` result as `branchEvidence`; the builder resolves only explicit merge-FF candidates against the currently visible commits and applies the same intake requirements. It does not add an extra Git read, expand commit loading, or expose those candidates as events. Fresh reads replace the evidence; Refresh clears the client cache. Thus cold OFF and ON→OFF agree, and evidence expiration removes the path on a fresh read.
+
+With OFF, no FF node or Annotation Row is allocated. After visible rows are compacted, routing uses a local, non-rendered junction half a row above the imported tip on the receiving track. Existing bounded curves provide receiver continuity, source intake, and the connection toward the later receiver commit or Working Tree. The junction is absent from `layout.nodes`, has no glyph/hit area/tooltip/detail, and does not alter parent arrays or current ref positions. Missing visible endpoints or incompatible receiving/source tracks decline the path. Other Operation Overlays, historical-only commits and ghost refs remain hidden. Both lane-placement modes retain their existing independent algorithms.
+
+Verification: `tests/integration/reflog-off-branch-flow.test.ts` covers cold OFF, toggles, real component rendering, deleted source refs and evidence expiration in disposable repositories; `tests/unit/graph-view-hosts.test.ts` covers refresh/repository changes and hidden-event selection. See `docs/design/reflog-off-branch-flow-verification.md` for the current GUI and regression results.

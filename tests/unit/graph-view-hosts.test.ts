@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as vscode from 'vscode';
-import type { RepositorySnapshot } from '../../src/git/gitTypes.js';
+import type { RepositorySnapshot, ReflogEntry } from '../../src/git/gitTypes.js';
+import { resolveHistoryEvents } from '../../src/model/historyEventResolver.js';
 import type { ExtensionToWebviewMessage, WebviewToExtensionMessage } from '../../src/webview/messageProtocol.js';
 
 const mock = vi.hoisted(() => ({
@@ -138,6 +139,50 @@ beforeEach(() => {
   mock.readRouteContinuityEvidence.mockImplementation(async (snapshot: RepositorySnapshot) => snapshot.commits);
 });
 afterEach(() => { for (const panel of panels) panel.dispose(); });
+
+it('uses fresh OFF evidence across toggles, refresh and repository changes, with no selectable hidden FF', async () => {
+  mock.showReflog = false;
+  const data = snapshot(); data.commits[0].parentOids = [oid(2)];
+  data.refs.push({ fullName: 'refs/heads/feature', shortName: 'feature', type: 'local', oid: oid(3) });
+  let logs: ReflogEntry[] = [
+    { refName: 'refs/heads/main', selector: 'refs/heads/main@{0}', previousOid: oid(1), newOid: oid(3), subject: 'merge feature: Fast-forward', timestamp: 4 },
+    { refName: 'refs/heads/main', selector: 'refs/heads/main@{1}', newOid: oid(1), subject: 'commit (initial): base', timestamp: 1 },
+    { refName: 'refs/heads/feature', selector: 'refs/heads/feature@{0}', previousOid: oid(2), newOid: oid(3), subject: 'commit: two', timestamp: 3 },
+    { refName: 'refs/heads/feature', selector: 'refs/heads/feature@{1}', previousOid: oid(1), newOid: oid(2), subject: 'commit: one', timestamp: 2 },
+    { refName: 'refs/heads/feature', selector: 'refs/heads/feature@{2}', newOid: oid(1), subject: 'branch: Created from main', timestamp: 1 },
+  ];
+  mock.readSnapshot.mockImplementation(async (root: string, _limit: number, visible: boolean) => root === 'C:/a'
+    ? { ...data, reflogs: visible ? logs : [], historyEvents: visible ? resolveHistoryEvents(logs, data.commits) : [] } : snapshot(root));
+  mock.readBranchProtection.mockImplementation(async (s: RepositorySnapshot) => s.repository.root === 'C:/a' ? logs : []);
+  const ctx = context(); GraphPanel.open(ctx, 'C:/a');
+  const surface = panels.at(-1)!.webview;
+  const latest = () => surface.messages.filter(m => m.type === 'graph').at(-1)!;
+  await surface.incoming.fire({ type: 'ready' });
+  const cold = latest().layout;
+  expect(cold.branchIntegrationPaths).toHaveLength(2);
+  expect(cold.nodes.some(n => n.event)).toBe(false);
+  await graphSettings(ctx).save('showReflog', true, 'C:/a');
+  await vi.waitFor(() => expect(latest().reflogEnabled).toBe(true));
+  const eventId = latest().layout.nodes.find(n => n.kind === 'fast-forward-event')!.id;
+  await surface.incoming.fire({ type: 'selectEvent', id: eventId });
+  expect(surface.messages.at(-1)).toMatchObject({ type: 'detail', event: { id: eventId } });
+  await graphSettings(ctx).save('showReflog', false, 'C:/a');
+  await vi.waitFor(() => expect(latest().reflogEnabled).toBe(false));
+  expect(latest().layout).toEqual(cold);
+  expect(surface.messages).toContainEqual({ type: 'detail', detail: null, event: null });
+  const count = surface.messages.length;
+  await surface.incoming.fire({ type: 'selectEvent', id: eventId });
+  expect(surface.messages).toHaveLength(count);
+  logs = [];
+  await GraphPanel.current!.refresh();
+  expect(latest().layout.branchIntegrationPaths).toEqual([]);
+  expect(mock.clearCache).toHaveBeenCalled();
+  GraphPanel.open(ctx, 'C:/b');
+  const other = panels.at(-1)!.webview;
+  await other.incoming.fire({ type: 'ready' });
+  expect(other.messages.filter(m => m.type === 'graph').at(-1)!.layout.branchIntegrationPaths).toEqual([]);
+  expect(surface.incoming.size).toBe(0);
+});
 
 describe('graph launch locations', () => {
   it('lets automatic primary selection follow the source of the current branch', async () => {

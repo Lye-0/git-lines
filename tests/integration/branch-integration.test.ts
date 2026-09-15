@@ -38,8 +38,19 @@ it.each([1, 3].flatMap(count => [false, true].flatMap(deleted => [false, true].m
         for (const oid of imported) expect(routeNameForNode(layout.nodes.find(n => n.kind === 'commit' && n.oid === oid), layout.tracks)).toBe('topic/a');
         const tipNode = layout.nodes.find(n => n.kind === 'commit' && n.oid === tip)!;
         expect(tipNode.refBadges?.some(r => r.fullName === 'refs/heads/topic/a') ?? false).toBe(!deleted);
-        expect(layout.branchIntegrationPaths).toHaveLength(showReflog ? 2 : 0);
-        if (!showReflog) continue;
+        expect(layout.branchIntegrationPaths).toHaveLength(2);
+        if (!showReflog) {
+          expect(layout.nodes.some(n => n.kind === 'fast-forward-event' || n.event)).toBe(false);
+          expect(layout.operationAnnotationRows).toEqual([]);
+          expect(layout.nodes.map(n => n.row).sort((a,b) => a! - b!)).toEqual(Array.from({ length: layout.nodes.length }, (_, i) => i));
+          const intake = layout.branchIntegrationPaths!.find(p => p.role === 'intake')!;
+          expect(layout.nodes.some(n => n.id === intake.fromNodeId)).toBe(false);
+          const numbers = intake.d.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+          const from = layout.nodes.find(n => n.id === intake.colorNodeId)!;
+          expect(numbers[0]).toBe(pointForNode(from, {rowHeight,laneWidth}).x);
+          expect(numbers[1]).toBe(pointForNode(tipNode, {rowHeight,laneWidth}).y - rowHeight / 2);
+          continue;
+        }
         const event = layout.nodes.find(n => n.kind === 'fast-forward-event')!;
         const baseNode = layout.nodes.find(n => n.kind === 'commit' && n.oid === base)!;
         expect(event.lane).toBe(baseNode.lane);

@@ -78,10 +78,10 @@ Reflog が有効なら、PREVIOUS、historical route、reflog-only の履歴を�
 
 ### Reflog OFF
 
-Reflog をオフにすると overlay、PREVIOUS、reflog 依存の分類を外し、Current DAG だけへ戻します。commit message から操作を復元しません。
+Reflog をオフにすると、操作マーク・操作詳細・過去のコミットを非表示にします。ブランチの配置・継続・合流には取得できる履歴情報を引き続き利用し、必要な証拠がない関係は推測しません。FFの合流はマークや専用行を置かず、線だけで残します。
 
 <p align="center">
-  <img src="docs/images/readme/main/reflog-off.png" alt="Reflogオフ時のCurrent DAG表示" width="720">
+  <img src="docs/images/readme/main/reflog-off.png" alt="Reflogオフ時の操作・過去履歴の非表示例" width="720">
 </p>
 
 Reset / Branch move など ref の移動は、下の各操作 accordion で具体例を見られます。
@@ -155,7 +155,7 @@ Git Lines は、commit の類似度や「こうなったはず」という推測
 | In-progress operations | ✅ | Working Tree 行へ統合 |
 | Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
 | ORIG_HEAD | ✅ | 通常の commit / special ref |
-| Reflog OFF | ✅ | Current DAG へ縮退 |
+| Reflog OFF | ✅ | 操作・過去履歴を非表示。証拠のあるブランチ経路は維持 |
 
 ## Supported DAG Topologies
 
@@ -426,7 +426,7 @@ code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 | Setting | Default | 内容 |
 | --- | --- | --- |
 | `branchGraph.layoutMode` | `legacy` | 従来の配置 / default列固定（`default-fixed`） |
-| `branchGraph.showReflog` | `true` | PREVIOUS / overlay など reflog 依存の表示 |
+| `branchGraph.showReflog` | `true` | 操作マーク・過去コミットの表示。ブランチ経路の証拠利用は維持 |
 | `branchGraph.density` | `compact` | 行密度（`comfortable` / `compact`） |
 | `branchGraph.initialCommitCount` | `30` | 最初に読み込む commit 数 |
 | `branchGraph.loadMoreCount` | `10` | 追加読み込み件数 |

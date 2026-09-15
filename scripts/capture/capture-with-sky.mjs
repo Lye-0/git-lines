@@ -25,7 +25,7 @@ export async function captureCases(sky, window, runDir, { start = 0, end, resume
   for (let index = start; index < Math.min(end ?? cases.length, cases.length); index++) {
     const item = cases[index];
     const existing = await readJson(path.join(runDir, 'images', `${index}.json`));
-    if (resume && existing?.complete && existing.name === item.name && existing.mode === item.mode) { results.push(existing); continue; }
+    if (resume && existing?.complete && existing.name === item.name && existing.mode === item.mode && existing.showReflog === item.showReflog) { results.push(existing); continue; }
     const started = Date.now();
     await send({ index });
     let status;

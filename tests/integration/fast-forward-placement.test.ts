@@ -20,7 +20,7 @@ it.each([false, true])('protects FF source routes and connects FF annotations in
       const client = new GitClient();
       const snapshot = await client.readSnapshot(f.root, 30, showReflog);
       const protectionReflogs = await client.readBranchProtection(snapshot);
-      const facts = buildGraphFacts(snapshot, { showReflog });
+      const facts = buildGraphFacts(snapshot, { showReflog, branchEvidence: protectionReflogs });
       for (const fixed of [false, true]) for (const [rowHeight, laneWidth] of [[28, 22], [30, 34], [38, 34]]) {
         const options = { visibleCommitCount: 30, hasMore: false, rowHeight, laneWidth, protectionReflogs,
           fixedDefault: fixed ? { refName: 'refs/heads/main', branch: 'main', oid: mainCommit ?? second, source: 'manual' as const } : undefined };

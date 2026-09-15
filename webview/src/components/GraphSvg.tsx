@@ -158,9 +158,10 @@ export function GraphSvg({ layout, width, height, selected, selectedWorkingTree,
     <g className="graph-branch-integrations">
       {(layout.branchIntegrationPaths ?? []).map((path) => {
         const event = byId.get(path.eventId);
-        return event ? <path key={`${path.eventId}:${path.role}`} d={path.d} className="edge"
-          data-branch-flow={path.role} stroke={colorResolver.colorForNode(event)} pointerEvents="none">
-          <title>{path.role === 'continuation' ? 'Receiving branch continuation (reflog)' : 'Fast-forward branch intake (reflog)'}</title>
+        const colorNode = event ?? byId.get(path.colorNodeId ?? '');
+        return colorNode ? <path key={`${path.eventId}:${path.role}`} d={path.d} className="edge"
+          data-branch-flow={path.role} stroke={colorResolver.colorForNode(colorNode)} pointerEvents="none" aria-hidden={!event || undefined}>
+          {event && <title>{path.role === 'continuation' ? 'Receiving branch continuation (reflog)' : 'Fast-forward branch intake (reflog)'}</title>}
         </path> : null;
       })}
     </g>
