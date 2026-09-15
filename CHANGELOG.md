@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0
+
+- Add saved graph settings beside the help button, including Standard and Default Fixed lane modes, Reflog, and Density.
+- Keep the selected default branch leftmost in Default Fixed mode while preserving evidence-backed branch identities and independent source histories.
+- Show receiving-branch continuation and source-branch intake for proven fast-forward merges without changing commit parents or current refs.
+- Retain proven branch flow with Reflog off, while hiding operation marks, annotation rows, historical-only commits, and ghost refs.
+- Improve branch routing and clear stale operation selections when their display is hidden or refreshed.
+- Update Japanese, English, and Marketplace documentation to explain the current display behavior.
+
 ## 1.0.3
 
 - Add Japanese and English README language links, with Japanese as the GitHub default.
