@@ -78,10 +78,10 @@ Reflog が有効なら、PREVIOUS、historical route、reflog-only の履歴を�
 
 ### Reflog OFF
 
-Reflog をオフにすると overlay、PREVIOUS、reflog 依存の分類を外し、Current DAG だけへ戻します。commit message から操作を復元しません。
+Reflog をオフにすると、操作マーク・操作詳細・過去のコミットを非表示にします。ブランチの配置・継続・合流には取得できる履歴情報を引き続き利用し、必要な証拠がない関係は推測しません。FFの合流はマークや専用行を置かず、線だけで残します。
 
 <p align="center">
-  <img src="docs/images/readme/main/reflog-off.png" alt="Reflogオフ時のCurrent DAG表示" width="720">
+  <img src="docs/images/readme/main/reflog-off.png" alt="Reflogオフ時の操作・過去履歴の非表示例" width="720">
 </p>
 
 Reset / Branch move など ref の移動は、下の各操作 accordion で具体例を見られます。
@@ -155,7 +155,7 @@ Git Lines は、commit の類似度や「こうなったはず」という推測
 | In-progress operations | ✅ | Working Tree 行へ統合 |
 | Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
 | ORIG_HEAD | ✅ | 通常の commit / special ref |
-| Reflog OFF | ✅ | Current DAG へ縮退 |
+| Reflog OFF | ✅ | 操作・過去履歴を非表示。証拠のあるブランチ経路は維持 |
 
 ## Supported DAG Topologies
 
@@ -382,7 +382,7 @@ orphan branch は、既存履歴とは独立した root を持つ通常 branch �
 VS Code 1.90以降と、PATHから実行できるGitが必要です。Git repositoryのfolderを開き、Workspace Trustを有効にして利用します。Remote Workspaceでは、その接続先にGitが必要です。仮想workspace（Git CLIで読めるファイルがない環境）は対象外です。
 
 1. ステータスバーの `Git Lines`、または Command Palette の `Git Lines: Open` から、`Open in Editor`（メイン画面）／`Open in Panel`（下部パネル）／`Open in Sidebar`（左サイドバー）を選びます。複数folderを開いている場合は続けてrepositoryを選びます。
-2. ヘッダーで Reflog の表示やRefreshを操作します。メイン画面・下部パネルでは `Compact / Comfortable` 密度も選べます。
+2. グラフ上の `?` の左にある歯車ボタン でレーン配置・Reflog・Densityを選びます。Refreshはグラフのヘッダーから操作できます。
 3. commit または operation を選ぶと詳細が開きます（左サイドバーでは吹き出し表示）。
 4. 初期表示は 30 commit です。下へスクロールすると残りが少なくなった時点で追加されます（`Load more` も利用できます）。
 
@@ -391,6 +391,14 @@ VSIXからインストールする場合は、Command Paletteの `Extensions: In
 下部パネルでは「ターミナル」「出力」などと並ぶ `Git Lines` タブ、左サイドバーではアクティビティバーの専用アイコンから表示します。どの表示先でも同じグラフ・Reflog・詳細情報を利用できます。Command Paletteの `Git Lines: Open in Editor` / `Git Lines: Open in Panel` / `Git Lines: Open in Sidebar` から表示先を直接指定することもできます。
 
 グラフは読み取り専用です。checkout、branch 作成、merge、rebase、push など Git を変更する操作は提供しません。
+
+## 表示設定
+
+グラフ上の **「?」の左にある歯車ボタン**、または `Git Lines: Settings` から設定できます。変更は保存され、次回起動時と開いている各表示に反映されます。通常はユーザー設定へ保存し、ワークスペース側の指定がある場合は保存先を表示します。Densityはメイン画面・下部パネルに適用し、左サイドバーは専用の行間隔を維持します。
+
+レーン配置は **Standard**（初期値）と **Default Fixed**（default列を左端に固定）から選べます。両モードとも、証拠から確認できる分岐元と子ブランチの履歴を独立した列に保ちます。Standardは未マージ時と子から親へ取り込んだ場合に親を左へ配置し、Default Fixedは所属を保ったままdefault列を最左へ固定します。Reflog OFFでも識別のために記録を内部利用し、分岐元が曖昧な区間は推測で並べ替えません。
+
+defaultはローカルに保存されたremote HEADから判定します。未判定の場合は設定内の **固定対象** から選択できます。この指定はrepositoryごとにVS Code内へ保存され、Gitの設定は変更しません。
 
 ## Development
 
@@ -417,7 +425,8 @@ code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 
 | Setting | Default | 内容 |
 | --- | --- | --- |
-| `branchGraph.showReflog` | `true` | PREVIOUS / overlay など reflog 依存の表示 |
+| `branchGraph.layoutMode` | `legacy` | 従来の配置 / default列固定（`default-fixed`） |
+| `branchGraph.showReflog` | `true` | 操作マーク・過去コミットの表示。ブランチ経路の証拠利用は維持 |
 | `branchGraph.density` | `compact` | 行密度（`comfortable` / `compact`） |
 | `branchGraph.initialCommitCount` | `30` | 最初に読み込む commit 数 |
 | `branchGraph.loadMoreCount` | `10` | 追加読み込み件数 |

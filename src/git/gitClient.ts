@@ -23,6 +23,8 @@ import { parseNameStatus, parseNumstat, sumNumstat } from './parsers/diffParser.
 import { parseWorktreePorcelain } from './parsers/worktreeParser.js';
 import type { ParsedWorktree } from './parsers/worktreeParser.js';
 import { resolveHistoryEvents } from '../model/historyEventResolver.js';
+import { sharedTipRouteAnchors } from '../model/sharedTipRouteContinuity.js';
+import { branchCommitOrigins } from '../model/branchProtection.js';
 
 export interface GitClientOptions {
   runner?: GitRunner;
@@ -146,6 +148,66 @@ export class GitClient {
       hasMore,
       visibleCommitCount,
     };
+  }
+
+  /** Fixed placement needs creation evidence even when historical display is
+   * disabled. Do not expand commit history or resolve operation objects here. */
+  public async readBranchProtection(snapshot: RepositorySnapshot): Promise<ReflogEntry[]> {
+    const entries = snapshot.reflogs.length ? snapshot.reflogs : await this.readReflogs(snapshot.repository, snapshot.refs);
+    const others = snapshot.workingTrees.filter((tree) => !tree.inaccessible && tree.currentWorktree !== true && tree.path !== snapshot.repository.root);
+    const extra: ReflogEntry[][] = new Array(others.length);
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, others.length) }, async () => {
+      while (next < others.length) {
+        const index = next++, tree = others[index];
+        try {
+          const output = await this.runner.runChecked(['reflog', 'show', '--format=' + reflogFormat, 'HEAD'], { cwd: tree.path, timeoutMs: this.timeoutMs });
+          extra[index] = parseReflogRecords(output, `worktree:${tree.worktreeId}/HEAD`);
+        } catch { extra[index] = []; }
+      }
+    }));
+    return [...entries, ...extra.flat()];
+  }
+
+  /** Bounded route metadata only; never expands the visible graph page. */
+  public async readRouteContinuityEvidence(snapshot: RepositorySnapshot, logs: ReflogEntry[]): Promise<GitCommit[]> {
+    const known = new Map(snapshot.commits.map((c) => [c.oid, c]));
+    let origins = branchCommitOrigins(logs, snapshot.commits);
+    let reader: ObjectReader | undefined;
+    let remaining = 64;
+    const getReader = () => reader ??= this.runner.openObjectReader({ cwd: snapshot.repository.root, timeoutMs: this.timeoutMs });
+    try {
+      // Reflog OFF snapshots may not contain even the proven earlier tip.
+      // Fetch only these candidate anchors, within the same object budget.
+      const local = snapshot.refs.filter((ref) => ref.type === 'local' && ref.oid);
+      for (const ref of local) {
+        if (origins.has(ref.oid!) || !local.some((other) => other.fullName !== ref.fullName && other.oid === ref.oid)) continue;
+        const previous = logs.find((entry) => entry.refName === ref.fullName && /@\{0\}$/.test(entry.selector) && entry.newOid === ref.oid)?.previousOid;
+        if (!previous || previous === ref.oid || known.has(previous)) continue;
+        if (remaining-- <= 0) break;
+        const [commit] = await this.readCommitObjectBatch(snapshot.repository.root, [previous], getReader);
+        if (commit) known.set(commit.oid, commit);
+      }
+      origins = branchCommitOrigins(logs, [...known.values()]);
+      for (const { tip, anchor, refName } of sharedTipRouteAnchors([...known.values()], snapshot.refs, logs)) {
+        // Directly-created shared tips already have stronger ownership evidence.
+        if (origins.has(tip)) continue;
+        let current: string | undefined = tip;
+        const visited = new Set<string>();
+        while (current && current !== anchor && visited.size < 256 && !visited.has(current)) {
+          visited.add(current);
+          if (origins.has(current) && origins.get(current) !== refName) break;
+          if (!known.has(current)) {
+            if (remaining-- <= 0) break;
+            const [commit] = await this.readCommitObjectBatch(snapshot.repository.root, [current], getReader);
+            if (!commit) break;
+            known.set(commit.oid, commit);
+          }
+          current = known.get(current)?.parentOids[0];
+        }
+      }
+    } finally { await reader?.close(); }
+    return [...known.values()];
   }
 
   public async readCommitDetail(root: string, oid: string): Promise<GitCommitDetail> {
@@ -278,7 +340,7 @@ export class GitClient {
     }
   }
 
-  private async readRefs(root: string): Promise<GitRef[]> {
+  public async readRefs(root: string): Promise<GitRef[]> {
     const output = await this.runner.runChecked(['for-each-ref', '--sort=refname', `--format=${refFormat}`], {
       cwd: root,
       timeoutMs: this.timeoutMs,

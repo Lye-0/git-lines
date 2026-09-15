@@ -234,6 +234,7 @@ export interface GraphTrack {
 }
 
 export interface GraphFactModel {
+  branchIntegrations?: import('./branchIntegration.js').BranchIntegration[];
   nodes: GraphNode[];
   edges: GraphEdge[];
   refs: GitRef[];

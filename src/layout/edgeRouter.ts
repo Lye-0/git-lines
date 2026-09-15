@@ -428,6 +428,68 @@ function findBranchRenameVisualSplits(nodes: GraphNode[], edges: GraphEdge[]): {
   return { byWorkingId, byAnnotationId };
 }
 
+/** FF annotates an existing checkout or later destination-branch parent edge. */
+function findFastForwardAnnotations(nodes: GraphNode[], edges: GraphEdge[]): Map<string, { event: GraphNode; connector: GraphEdge }> {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const result = new Map<string, { event: GraphNode; connector: GraphEdge }>();
+  for (const annotation of edges) {
+    if (annotation.annotation !== 'ref-event') continue;
+    const event = byId.get(annotation.toNodeId);
+    if (event?.kind !== 'fast-forward-event') continue;
+    const targetRef = event.targetRef ?? event.event?.refName;
+    if (!targetRef) continue;
+    const headId = event.anchorCommitId ?? annotation.fromNodeId;
+    const head = byId.get(headId);
+    if (!head) continue;
+    const matches = edges.filter((edge) => {
+      const working = byId.get(edge.fromNodeId);
+      return edge.type === 'working-tree' && edge.toNodeId === headId
+        && working?.kind === 'working-tree' && working.workingTree?.branch
+        && normalizeRefName(working.workingTree.branch) === normalizeRefName(targetRef)
+        && (working.row ?? 0) < (event.row ?? 0) && (event.row ?? 0) < (head.row ?? 0);
+    });
+    if (matches.length === 1) result.set(annotation.id, { event, connector: matches[0] });
+    else if (matches.length === 0) {
+      const parents = edges.filter((edge) => {
+        const child = byId.get(edge.fromNodeId);
+        return edge.type === 'parent' && edge.toNodeId === headId
+          && child?.kind === 'commit' && child.trackId && child.trackId === event.trackId
+          && child.commit?.parentOids[0] === head.oid
+          && (child.row ?? 0) < (event.row ?? 0) && (event.row ?? 0) < (head.row ?? 0);
+      });
+      if (parents.length === 1) result.set(annotation.id, { event, connector: parents[0] });
+    }
+  }
+  return result;
+}
+
+export function placeFastForwardEventsOnCurves(nodes: GraphNode[], edges: GraphEdge[], options: EdgeRouterOptions = {}): GraphNode[] {
+  const annotations = findFastForwardAnnotations(nodes, edges);
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const byEvent = new Map([...annotations.values()].map((item) => [item.event.id, item]));
+  return nodes.map((node) => {
+    const annotation = byEvent.get(node.id);
+    if (!annotation) return node;
+    const working = byId.get(annotation.connector.fromNodeId)!, head = byId.get(annotation.connector.toNodeId)!;
+    if (annotation.connector.type === 'parent') {
+      // Use the actual routed path, including long-edge corridors and node
+      // avoidance, rather than assuming the parent is one simple Bezier.
+      const d = longParentPath(nodes, working, head, options) ?? curvePath(routedParentCurve(nodes, working, head, options));
+      const numbers = d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi)!.map(Number);
+      let start = { x: numbers[0], y: numbers[1] };
+      const y = pointForNode(node, options).y;
+      for (let i = 2; i + 5 < numbers.length; i += 6) {
+        const curve = { p0: start, p1: { x: numbers[i], y: numbers[i + 1] }, p2: { x: numbers[i + 2], y: numbers[i + 3] }, p3: { x: numbers[i + 4], y: numbers[i + 5] } };
+        if (y >= curve.p0.y && y <= curve.p3.y) return { ...node, visualX: cubicPoint(curve, parameterAtY(curve, y)).x };
+        start = curve.p3;
+      }
+      return node;
+    }
+    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, options), pointForNode(head, options), options.laneWidth ?? 34, options);
+    return { ...node, visualX: cubicPoint(curve, parameterAtY(curve, pointForNode(node, options).y)).x };
+  });
+}
+
 /**
  * Places completed Rebase event glyphs on the existing lowest-range parent
  * curve. The lane remains the event's live branch lane for identity/color;
@@ -470,7 +532,7 @@ export function placeBranchRenameEventsOnWorkingTreeCurves(nodes: GraphNode[], e
     const working = byId.get(split.workingEdge.fromNodeId);
     const head = byId.get(split.workingEdge.toNodeId);
     if (!working || !head) return node;
-    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, { rowHeight, laneWidth, leftPadding: options.leftPadding }), pointForNode(head, { rowHeight, laneWidth, leftPadding: options.leftPadding }), laneWidth);
+    const curve = workingTreeCurve(nodes, working, head, pointForNode(working, { rowHeight, laneWidth, leftPadding: options.leftPadding }), pointForNode(head, { rowHeight, laneWidth, leftPadding: options.leftPadding }), laneWidth, options);
     const eventPoint = pointForNode(node, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const point = cubicPoint(curve, parameterAtY(curve, eventPoint.y));
     return { ...node, visualX: point.x };
@@ -490,7 +552,7 @@ function hasIntermediateNodeOnLane(nodes: GraphNode[], from: GraphNode, to: Grap
     && (node.row ?? 0) < lastRow);
 }
 
-function workingTreeCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: Point, b: Point, laneWidth: number): CubicCurve {
+function workingTreeCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: Point, b: Point, laneWidth: number, options: EdgeRouterOptions): CubicCurve {
   const delta = Math.min(32, Math.max(8, Math.abs(b.y - a.y) * 0.16));
   // A remote-ahead chain can place several commits between the Working Tree
   // row and the checked-out local HEAD on the same branch lane.  Keep the
@@ -507,16 +569,17 @@ function workingTreeCurve(nodes: GraphNode[], from: GraphNode, to: GraphNode, a:
       p3: b,
     };
   }
-  return {
+  const curve: CubicCurve = {
     p0: a,
     p1: { x: a.x, y: a.y + delta },
     p2: { x: b.x, y: b.y - delta },
     p3: b,
   };
+  return from.lane === to.lane ? curve : routedParentCurve(nodes, from, to, options, curve);
 }
 
-function routeWorkingTreeEdge(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: { x: number; y: number }, b: { x: number; y: number }, laneWidth: number): string {
-  return curvePath(workingTreeCurve(nodes, from, to, a, b, laneWidth));
+function routeWorkingTreeEdge(nodes: GraphNode[], from: GraphNode, to: GraphNode, a: { x: number; y: number }, b: { x: number; y: number }, laneWidth: number, options: EdgeRouterOptions): string {
+  return curvePath(workingTreeCurve(nodes, from, to, a, b, laneWidth, options));
 }
 
 export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: EdgeRouterOptions = {}): EdgePath[] {
@@ -525,7 +588,11 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const rebaseSplits = findRebaseVisualSplits(nodes, edges);
   const branchRenameSplits = findBranchRenameVisualSplits(nodes, edges);
+  const fastForwardAnnotations = findFastForwardAnnotations(nodes, edges);
   return edges.flatMap<EdgePath>((edge) => {
+    // The diamond is painted over the one intact checkout curve. This also
+    // supports multiple FF annotations without duplicating its connector.
+    if (fastForwardAnnotations.has(edge.id)) return [];
     const parentSplit = rebaseSplits.byParentId.get(edge.id);
     if (parentSplit) return [];
 
@@ -577,6 +644,7 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
         pointForNode(working, { rowHeight, laneWidth, leftPadding: options.leftPadding }),
         pointForNode(head, { rowHeight, laneWidth, leftPadding: options.leftPadding }),
         laneWidth,
+        options,
       );
       const eventPoint = pointForNode(branchRenameSplit.event, { rowHeight, laneWidth, leftPadding: options.leftPadding });
       const parameter = parameterAtY(curve, eventPoint.y);
@@ -614,6 +682,9 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
     const a = pointForNode(from, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     const b = pointForNode(to, { rowHeight, laneWidth, leftPadding: options.leftPadding });
     if (edge.annotation === 'ref-event') {
+      if (a.x !== b.x && (from.kind === 'fast-forward-event' || to.kind === 'fast-forward-event')) {
+        return [{ id: edge.id, type: edge.type, d: curvePath(parentCurve(a, b)), label: edge.label, annotation: edge.annotation }];
+      }
       // Keep the connector vertical on the target lane.  In the usual case
       // the destination commit is on that lane too; when lane claiming puts a
       // shared commit elsewhere, this still avoids a branch-like horizontal
@@ -622,7 +693,7 @@ export function routeEdges(nodes: GraphNode[], edges: GraphEdge[], options: Edge
       return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
     }
     if (edge.type === 'working-tree') {
-      const d = routeWorkingTreeEdge(nodes, from, to, a, b, laneWidth);
+      const d = routeWorkingTreeEdge(nodes, from, to, a, b, laneWidth, options);
       return [{ id: edge.id, type: edge.type, d, label: edge.label, annotation: edge.annotation }];
     }
     if (edge.type === 'parent') {

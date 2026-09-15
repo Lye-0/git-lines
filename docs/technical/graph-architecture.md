@@ -36,6 +36,26 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 
 ## Rowとlaneの不変条件
 
+同じ先端を指す複数のlocal refでは、`sharedTipRouteContinuity`が「作成元」とは別に表示経路の継続を判定する。現在のref更新の直前OIDに、そのbranchでの作成記録があり、新先端からそのOIDまでの第1親区間が完全に確認でき、途中に他branchや競合する作成記録がない場合だけ、区間と起点を同じtrackに保つ。第2親、共有の根元、証拠不足の区間は取り込まない。これは空subjectのupdate-refをcommit作成記録に変換する処理ではない。113ではA1/M1/A2がfeature-aとなり、mainのbadgeは実際の参照先A2、Working Treeはmainの列からA2へ接続する。mainの架空のcommit/parent edgeを作らない。
+
+そのWorking Tree線が別列の無関係なcommitを横切る場合は、既存のnode/selection-ring回避処理で曲線を調整する。同じ曲線をFF/renameの位置計算にも用い、注釈だけが線から離れないようにする。
+
+`branchLineage`はbranch作成記録から分岐元を識別する。`Created from <branch>`を優先し、HEAD指定では同じOID・時刻のcheckoutと候補の一意性を確認する。候補が複数、相反する作成元、循環したbranch名関係では左右制約を追加しない。local defaultがなくてもremote HEADの参照先を基準候補とする。明示されたprimaryBranch設定を除き、現在のbranchの証明された分岐元を遡って基準を選ぶ。
+
+lane割当ては、既存の第1親停止と経路識別を残しつつ、証明された親子内のcommit作成元とmerge作成元を補正してから行う。未マージおよび子を親へ取り込んだ履歴では親segmentを子より左に配置する。親を子へ取り込む場合も、そのmerge commitは作成された子側の履歴として扱い、後続FFのref移動だけで親の作成commitへ変更しない。main以外・入れ子も対象。既にlane 0が確定する基準trackを待つためだけに他segmentを入れ替えず、Rebaseの過去経路との不要な左右交換を防ぐ。
+
+`branchGraph.layoutMode`の初期値は`legacy`（Standard）。両モードとも従来のlane allocatorの後に`fastForwardLayout`を適用する。branch reflogのFast-forward記録と到達関係で取り込み範囲を確認し、その中でcommit作成元の証拠があるnodeのみ元branchの独立trackに保護する。既に元branchに割り当てられたnode、証拠のないnode、FF以外の履歴にはこの補正を適用しない。保護trackは親子edgeの区間も含めて他列との衝突を避ける。`Branch / Route`も保護後のtrack名を使う。
+
+`default-fixed`は共通のFF保護後に`defaultFixedLayout`で配置する。defaultはremote HEADまたはrepository単位の手動指定から解決し、解決不能ならStandard配置を維持する。defaultに割り当てられた列を0へ固定し、他trackは1以降に保持する。FFの注釈行が同じbranchのWorking Tree→HEAD接続区間内、またはFF後の同じbranchのcommitから取り込み先へ向かう第1親edgeの区間内にある場合、菱形のvisualXをその曲線上に置き、独立したref-event線を描かない。既存線を一本だけ維持する。親子線では長距離corridorやnode回避を含む実際の描画path上の座標を使う。対応する接続線がない場合だけ、実際の両端へ接続する単独注釈を使う。複数FF注釈でも接続線を重複させず、branch名・lane・Gitの親子関係は変更しない。
+
+設定の入口は全表示先のToolbarの`?`左側にある歯車ボタン。`openSettings` messageはsessionのrepositoryRootを渡すため、複数folderでも表示中のrepositoryの設定を直接開く。ステータスバーは表示先選択専用とし、Command Paletteの`Git Lines: Settings`も利用できる。
+
+固定モードではbranch reflogのcommit作成記録、または連続した同一HEAD reflogのcheckout→commitから作成元を確認する。defaultへ取り込まれた別branchの作成commitを、そのbranchのtrackへ保護する。削除済みbranchは記録に基づく表示trackを作るが、存在しないref badgeを追加しない。FF/ref移動や到達関係だけではsource範囲を割り当てない。HEADのselector/OID断絶、rebaseなど未知の遷移ではcheckout状態の引継ぎを止める。証拠が不足する区間は従来の識別を保持する。
+
+固定モードのReflog OFFは歴史表示をOFFにしたまま、`readBranchProtection`で作成元・証拠のあるFF継続／合流の判定用reflogを取得する。この経路では補助commit objectの取得や履歴範囲の拡張は行わない。最終laneから既存routerで全経路を計算し、固定後のlaneを従来allocatorのprevious情報へ戻さない。
+
+固定モードの保護用読込は、他の利用可能なlinked worktreeのHEAD logも最大4並列で取得する。HEAD logはworktreeごとに分け、checkoutの移動先から後続commitを追う方法と、移動元から直前の連続commitを辿る方法を使う。作成直後のcheckout記録がないworktreeでも、そのbranchから離れた記録があれば作成元を確認できる。
+
 CompactのSVG中心は行高の半分（30px行は15px、sidebarの28px行は14px）とし、HTML行の中心へ揃える。Comfortableは従来の18px offsetを維持する。node・edge端点・Operation AnnotationのY座標は`graphRowCenterY`を共有する。
 
 DAG parent edgeはAnnotation Row挿入後の最終node座標で回避判定する。`src/layout/nodeGeometry.ts`の共通mark / selection ring外形に余白を加え、端点以外のcurrent / historical commitと干渉するBezierだけを横方向へ調整する。曲線の再帰分割による包絡判定を使い、端点、Y方向の制御点、lane、parent順序、色、Operation Overlayは維持する。選択前からring分を確保するため、選択操作で経路は変化しない。
@@ -92,7 +112,7 @@ Sidebarだけlane間隔を22px（通常表示は34px）にする。本文の開�
 
 ### Ref-only ref operation timeline
 
-force update、generic ref move、およびfrom/toの片方が未ロードなReset / Branch moveは、従来どおり`refOnly` eventまたはHistory Event fallbackとして扱う。ExactなReset / Branch moveはevent rowへ置かず`RefMovementRelation`へ移行する。Working TreeとHEADの`working-tree` edgeは分割しない。後方Resetの除外範囲と件数、mode名はGitが明示した場合だけ保持し、index/worktreeからは推測しない。Reflog OFFではRef Movement overlay、ghost badge、fallback event rowを除き、通常のDAGへ戻す。
+force update、generic ref move、およびfrom/toの片方が未ロードなReset / Branch moveは、従来どおり`refOnly` eventまたはHistory Event fallbackとして扱う。ExactなReset / Branch moveはevent rowへ置かず`RefMovementRelation`へ移行する。Working TreeとHEADの`working-tree` edgeは分割しない。後方Resetの除外範囲と件数、mode名はGitが明示した場合だけ保持し、index/worktreeからは推測しない。Reflog OFFではRef Movement overlay、ghost badge、fallback event rowを除き、現在のDAGを表示する。証拠のあるブランチ継続・合流は別の表示経路として維持する。
 
 ### Commit Relation and Ref Movement
 
@@ -199,3 +219,14 @@ Gitは`spawn`へ引数配列を渡し、shell文字列連結を行わない。We
 - `tests/unit/overlay-detail-presentation.test.ts` — Cherry-pick Exact Mappings、Rebaseの独立したOld order / New order
 - `tests/unit/graph-builder.test.ts` — ref dedup、tag、常時Working Tree、remote-ahead時の実HEAD接続、2/3-parent edge、destination/boundary/targetRef付きRef Event、Amend / Exact Cherry-pick / Exact Revert overlay、Reset / Branch moveのRef Movement、完了Rebase overlayとPREVIOUS
 - `tests/integration/git-client.test.ts` — 実Git CLIのin-progress operation、branch rename、完了Cherry-pick/RevertのExact Overlayとsource不明時の既存event、single/multi-commit Rebase overlay、実MergeでHistory Eventを作らないこと、long feature merge、未commitbranch、first commit、Reset / Branch move overlayと後続ResetでHistoricalへ移る旧tip
+
+### Evidence-backed FF branch continuation
+
+`BranchIntegration` is separate from the commit DAG. Regardless of Reflog display, an explicit local-branch merge FF, matching target old/new log, complete linear imported range and unique source-creation evidence establish an intake. With Reflog on, its existing FF diamond stays on the receiving track. `branchIntegrationPaths` connect that junction to the receiving branch's old commit and to the imported tip. Existing checkout/first-parent connectors may be routed through the same junction without changing their factual endpoints. No commit, parent or current ref is manufactured. Missing/ambiguous evidence declines this layer without changing established source-route protection. Pull synchronization and unnamed ref moves do not create this layer. See `docs/design/ff-branch-integration-verification.md` for verified scope and exclusions.
+
+
+Reflog OFF separates evidence from operation presentation. GraphViewSession reuses its existing `readBranchProtection` result as `branchEvidence`; the builder resolves only explicit merge-FF candidates against the currently visible commits and applies the same intake requirements. It does not add an extra Git read, expand commit loading, or expose those candidates as events. Fresh reads replace the evidence; Refresh clears the client cache. Thus cold OFF and ON→OFF agree, and evidence expiration removes the path on a fresh read.
+
+With OFF, no FF node or Annotation Row is allocated. After visible rows are compacted, routing uses a local, non-rendered junction half a row above the imported tip on the receiving track. Existing bounded curves provide receiver continuity, source intake, and the connection toward the later receiver commit or Working Tree. The junction is absent from `layout.nodes`, has no glyph/hit area/tooltip/detail, and does not alter parent arrays or current ref positions. Missing visible endpoints or incompatible receiving/source tracks decline the path. Other Operation Overlays, historical-only commits and ghost refs remain hidden. Both lane-placement modes retain their existing independent algorithms.
+
+Verification: `tests/integration/reflog-off-branch-flow.test.ts` covers cold OFF, toggles, real component rendering, deleted source refs and evidence expiration in disposable repositories; `tests/unit/graph-view-hosts.test.ts` covers refresh/repository changes and hidden-event selection. See `docs/design/reflog-off-branch-flow-verification.md` for the current GUI and regression results.

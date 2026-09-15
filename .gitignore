@@ -145,3 +145,4 @@ vite.config.ts.timestamp-*
 # Git Lines package artifacts
 *.vsix
 releases/
+artifacts/

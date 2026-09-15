@@ -78,7 +78,7 @@ In-progress Git operations are integrated into the Working Tree row, rather than
 
 ### Reflog OFF
 
-Turning Reflog off removes overlays, PREVIOUS commits, and reflog-dependent classifications, leaving the Current DAG. Operations are not reconstructed from commit messages.
+Turning Reflog off hides operation marks, operation details, and past commits. Available history evidence still supports branch layout, continuation, and intake. Unproven relationships are never guessed. Proven FF intake remains as lines, without an event mark or annotation row.
 
 <p align="center">
   <img src="docs/images/readme/main/reflog-off.png" alt="Git Lines: reflog off" width="720">
@@ -155,7 +155,7 @@ Only implemented and verified behavior is listed here.
 | In-progress operations | ✅ | Integrated into the Working Tree row |
 | Branch delete / reflog-only | ✅ | Historical / UNREFERENCED |
 | ORIG_HEAD | ✅ | Normal commit / special ref |
-| Reflog OFF | ✅ | Current DAG only |
+| Reflog OFF | ✅ | Hide operations and past commits; retain proven branch flow |
 
 ## Supported DAG Topologies
 
@@ -382,7 +382,7 @@ An orphan branch appears as a normal branch with a root independent of existing 
 Requires VS Code 1.90 or later and Git available on PATH. Open a Git repository folder and enable Workspace Trust. Remote workspaces require Git on the remote host. Virtual workspaces without files accessible to the Git CLI are not supported.
 
 1. Select `Git Lines` in the status bar or `Git Lines: Open` in the Command Palette, then choose `Open in Editor`, `Open in Panel`, or `Open in Sidebar`. With multiple folders open, select a repository next.
-2. Use the header to toggle Reflog or refresh the graph. Editor and bottom-panel views also offer `Compact / Comfortable` density.
+2. Use the gear button to the left of `?` in the graph to choose lane placement, Reflog, and Density. Refresh remains available in the graph header.
 3. Select a commit or operation to open its details (a popover in the sidebar).
 4. The initial view contains 30 commits. Scrolling near the bottom loads more history; `Load more` is also available.
 
@@ -391,6 +391,14 @@ To install a VSIX, run `Extensions: Install from VSIX...` from the Command Palet
 The bottom panel has a `Git Lines` tab alongside Terminal and Output; the sidebar has a dedicated Activity Bar icon. All locations provide the same graph, Reflog, and detail information. You can also choose a location directly using `Git Lines: Open in Editor`, `Git Lines: Open in Panel`, or `Git Lines: Open in Sidebar`.
 
 The graph is read-only. It does not provide Git mutations such as checkout, branch creation, merge, rebase, or push.
+
+## Display settings
+
+Use the **gear button to the left of ?** in the graph, or run `Git Lines: Settings`. Changes are saved, restored on the next launch, and applied to open views. Settings normally use user scope; existing workspace overrides are respected and the save scope is shown. Density applies to the editor and bottom panel; the sidebar retains its dedicated spacing.
+
+Choose **Standard** (the default) or **Default Fixed**. Both modes keep evidence-backed source and child branch histories in separate columns. Standard keeps the source to the left before a merge and when it receives the child; Default Fixed places the default column leftmost while preserving route identities. Reflog records are used internally even when their display is off. Ambiguous branch origins are not guessed.
+
+The target is resolved from locally stored remote HEAD metadata. If unresolved, choose a **Fixed target** in Settings. This override is stored per repository inside VS Code and does not modify Git configuration.
 
 ## Development
 
@@ -417,7 +425,8 @@ code --extensionDevelopmentPath="<path-to-git-lines>" "<path-to-repository>"
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `branchGraph.showReflog` | `true` | Reflog-dependent content such as PREVIOUS commits and overlays |
+| `branchGraph.layoutMode` | `legacy` | Legacy placement or fixed default column (`default-fixed`) |
+| `branchGraph.showReflog` | `true` | Operation marks and past commits; evidence still supports branch flow |
 | `branchGraph.density` | `compact` | Row density (`comfortable` / `compact`) |
 | `branchGraph.initialCommitCount` | `30` | Initial number of commits to load |
 | `branchGraph.loadMoreCount` | `10` | Number of commits to load per page |

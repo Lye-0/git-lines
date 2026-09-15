@@ -1,0 +1,14 @@
+{
+  "baselineCommit": "98cd4e4",
+  "tests": 459,
+  "focusedCases": 180,
+  "focusedFailures": 0,
+  "matrixCases": 1104,
+  "changedRepositories": [
+    "113-criss-cross-merge"
+  ],
+  "semanticOrRowFailures": 0,
+  "introducedParentCollisions": 0,
+  "paginationStages": 40,
+  "paginationShifts": 0
+}

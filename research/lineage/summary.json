@@ -1,0 +1,63 @@
+{
+  "baselineCommit": "22ccb2ff8b7885f262427c8924b7f1e35cdd9fe5",
+  "focusedCases": 168,
+  "focusedFailures": 0,
+  "matrixCases": 1104,
+  "changedRepositories": [
+    "113-criss-cross-merge",
+    "14-nested-branches",
+    "21-fast-forward-merge",
+    "23-fast-forward-multiple",
+    "28-multiple-merges"
+  ],
+  "visibleChanges": [
+    "113-criss-cross-merge",
+    "14-nested-branches",
+    "28-multiple-merges"
+  ],
+  "semanticOrRowFailures": 0,
+  "introducedCollisions": 0,
+  "paginationChecks": 30,
+  "paginationShifts": 0,
+  "evidenceChecks": 18,
+  "evidenceFailures": 0,
+  "ambiguousCase": {
+    "name": "creation-before-vs-after-switch",
+    "sameEvidence": true,
+    "actualParents": [
+      "main",
+      "sibling"
+    ],
+    "unchanged": true
+  },
+  "existingTests": {
+    "passed": 437,
+    "total": 437
+  },
+  "limitations": [
+    "Snapshot matrix reuses the 92 snapshots collected on 2026-09-14; focused histories and 148 were read fresh.",
+    "Collision checks sample parent paths at 120 steps per segment, not a mathematical proof.",
+    "No native VS Code GUI or end-to-end Git/read/render performance measurement.",
+    "Prototype is not part of production code and uses test-time transforms."
+  ],
+  "warmStandardLayoutPerformance": [
+    {
+      "name": "test",
+      "commits": 43,
+      "baselineMedianMs": 1.3523999999999887,
+      "candidateMedianMs": 1.3688999999999965
+    },
+    {
+      "name": "99-kitchen-sink",
+      "commits": 10,
+      "baselineMedianMs": 0.2300999999999931,
+      "candidateMedianMs": 0.27490000000000236
+    },
+    {
+      "name": "14-nested-branches",
+      "commits": 6,
+      "baselineMedianMs": 0.06749999999999545,
+      "candidateMedianMs": 0.09729999999998995
+    }
+  ]
+}

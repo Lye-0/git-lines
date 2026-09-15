@@ -39,6 +39,7 @@
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
+      { "command": "branchGraph.settings", "title": "Git Lines: Settings" },
       { "command": "branchGraph.openSidebar", "title": "Git Lines: Open in Sidebar" },
       {
         "command": "branchGraph.open",
@@ -60,6 +61,19 @@
     "configuration": {
       "title": "Git Lines",
       "properties": {
+        "branchGraph.layoutMode": {
+          "type": "string",
+          "enum": [
+            "legacy",
+            "default-fixed"
+          ],
+          "default": "legacy",
+          "enumDescriptions": [
+            "Preserve the existing branch layout.",
+            "Reserve the leftmost column for the default branch while protecting other branches, using available reflog evidence even when Reflog display is off."
+          ],
+          "description": "Graph lane placement mode."
+        },
         "branchGraph.primaryBranch": {
           "type": ["string", "null"],
           "default": null,
@@ -80,7 +94,7 @@
         "branchGraph.showReflog": {
           "type": "boolean",
           "default": true,
-          "description": "Show previous-route commits and ref movement events when Git still retains them."
+          "description": "Show operation marks and past commits. Available history evidence still supports branch layout and intake when hidden."
         },
         "branchGraph.density": {
           "type": "string",
