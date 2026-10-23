@@ -138,16 +138,16 @@
     "check": "pnpm lint && pnpm test && pnpm build"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "@types/node": "^22.10.0",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@types/vscode": "^1.90.0",
-    "esbuild": "^0.24.0",
-    "@vscode/vsce": "^3.2.2",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.5",
-    "vitest": "^2.1.8"
+    "@vitejs/plugin-react": "^4.7.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@types/vscode": "1.90.0",
+    "esbuild": "^0.28.2",
+    "@vscode/vsce": "^3.9.2",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.5",
+    "vitest": "^4.1.12"
   },
   "dependencies": {
     "react": "^18.3.1",
