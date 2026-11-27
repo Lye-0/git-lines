@@ -17,14 +17,14 @@ button:focus-visible, select:focus-visible, input:focus-visible, .graph-scroll:f
 
 .app-shell { height: 100%; min-height: 100%; display: flex; flex-direction: column; overflow: hidden; container-type: inline-size; background: radial-gradient(circle at 65% -20%, color-mix(in srgb, var(--graph-accent) 7%, transparent), transparent 45%), var(--graph-bg); }
 .empty-content { flex: 1 1 auto; min-height: 0; overflow: auto; }
-.toolbar { min-height: 58px; min-width: 600px; display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 16px; padding: 10px 18px; border-bottom: 1px solid var(--graph-border); background: color-mix(in srgb, var(--graph-surface) 94%, transparent); position: relative; z-index: 5; }
-.brand { display: flex; flex: 1 1 auto; align-items: center; gap: 11px; min-width: 0; }
+.toolbar { min-height: 58px; min-width: 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: nowrap; gap: 16px; padding: 10px 18px; border-bottom: 1px solid var(--graph-border); background: color-mix(in srgb, var(--graph-surface) 94%, transparent); position: relative; z-index: 5; }
+.brand { display: flex; flex: 1 1 auto; align-items: center; gap: 11px; min-width: 120px; }
 .brand-mark { width: 32px; height: 32px; object-fit: contain; flex: 0 0 32px; }
-.brand-text { min-width: 0; }
+.brand-text { flex: 1 1 auto; min-width: 0; }
 h1, h2, p { margin: 0; }
-.brand h1 { font-size: 14px; letter-spacing: .01em; }
+.brand h1 { font-size: 14px; letter-spacing: .01em; white-space: nowrap; }
 .repo-name { display: block; margin-top: 3px; color: var(--graph-muted); font-size: 11px; max-width: min(42vw, 520px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.toolbar-actions { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; gap: 10px; flex-wrap: nowrap; justify-content: flex-end; }
+.toolbar-actions { display: flex; flex: 0 0 auto; min-width: 0; align-items: center; gap: 10px; flex-wrap: nowrap; justify-content: flex-end; }
 .toolbar-actions > :not(.filter-label) { flex-shrink: 0; }
 .filter-label { min-width: 0; flex: 0 1 270px; }
 .filter-label input { width: min(270px, 35vw); min-height: 32px; color: var(--graph-text); background: var(--graph-surface); border: 1px solid var(--graph-border); border-radius: 5px; padding: 5px 9px; }
@@ -245,11 +245,21 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .empty-state { display: grid; place-items: center; align-content: center; gap: 9px; min-height: 50vh; padding: 32px; text-align: center; color: var(--graph-muted); }
 .empty-state h2 { color: var(--graph-text); font-size: 16px; }.empty-state p { max-width: 520px; line-height: 1.6; }.empty-symbol { color: var(--graph-accent); font-size: 38px; }
 
-@container (max-width: 1100px) {
+/* Reduce branding before allowing the search field to shrink. */
+@container (max-width: 760px) {
+  .brand .repo-name { display: none; }
+}
+@container (max-width: 640px) {
+  .brand-text { display: none; }
+  .brand { min-width: 32px; }
+}
+@container (max-width: 540px) {
   .brand { display: none; }
-  .toolbar-actions { width: 100%; flex: 1 1 auto; }
-  .filter-label { flex: 1 1 270px; min-width: 100px; }
-  .filter-label input { width: min(270px, 100%); }
+  .toolbar-actions { flex: 0 1 446px; margin-left: auto; }
+}
+@container (max-width: 400px) {
+  .toolbar { flex-wrap: wrap; gap: 8px; }
+  .toolbar-actions { width: 100%; flex: 1 1 100%; flex-wrap: wrap; }
 }
 @media (max-width: 720px) {
   .content-shell { flex-direction: column; }
@@ -274,7 +284,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .sidebar-mode .content-shell { flex-direction: row; }
 .sidebar-mode .brand, .sidebar-mode .toolbar .select-label { display: none; }
 .sidebar-mode .toolbar { min-width: 0; padding: 6px; gap: 6px; }
-.sidebar-mode .toolbar-actions { gap: 6px; flex-wrap: wrap; width: 100%; }
+.sidebar-mode .toolbar-actions { flex: 1 1 auto; gap: 6px; flex-wrap: wrap; width: 100%; }
 .sidebar-mode .filter-label { flex: 0 1 270px; min-width: 0; max-width: 270px; margin-right: auto; }
 .sidebar-mode .filter-label input { width: 100%; min-width: 0; }
 .sidebar-mode .toolbar-button { min-height: 26px; padding: 3px 7px; }
@@ -324,7 +334,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .density-check { color: var(--graph-accent); min-width: 14px; }
 
 /* Search and its menu share one field; only the input itself accepts typing. */
-.filter-label.filter-control { position: relative; width: min(270px, 35vw); }
+.filter-label.filter-control { position: relative; flex: 0 1 270px; max-width: 270px; width: 270px; }
 .filter-control input[type="search"] { width: 100%; padding-right: 78px; }
 .filter-control input::-webkit-search-cancel-button { display: none; }
 .filter-controls { position: absolute; right: 3px; top: 0; bottom: 0; display: flex; align-items: center; gap: 0; }
@@ -342,7 +352,6 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .filter-option-label { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filter-option small { flex: none; font-size: 10px; color: var(--vscode-descriptionForeground); }
 .filter-reset { width: 100%; min-height: 28px; }
-@container (max-width: 1100px) { .filter-label.filter-control { width: min(270px, 100%); } }
 .sidebar-mode .filter-label.filter-control { width: 100%; }
 
 .filter-option-list { max-height: 135px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--vscode-scrollbarSlider-background, #6668) transparent; }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.1
+
+- Limit the filter field to 270px and prevent sudden width changes at wider toolbar breakpoints.
+- Adapt editor and bottom-panel headers in stages: hide the repository path, then the full Git Lines name, then the icon before shrinking the filter field.
+- Keep the Git Lines name intact instead of truncating it with an ellipsis, and preserve the sidebar toolbar layout.
+
 ## 1.2.0
 
 - Add a filter menu integrated with the search field, with synchronized branch, row type, and worktree selections while preserving free-text search.
