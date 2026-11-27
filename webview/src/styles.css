@@ -297,7 +297,7 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .sidebar-mode .rows .row-subtitle, .sidebar-mode .rows .row-meta { display: none; }
 .sidebar-mode .row-content-main, .sidebar-mode .row-primary, .sidebar-mode .row-text,
 .sidebar-mode .row-heading { min-width: 0; overflow: hidden; }
-.sidebar-mode .subject { max-width: none; flex: 1 1 auto; }
+.sidebar-mode .subject { max-width: none; flex: 0 1 auto; }
 .sidebar-mode .row-kind { font-size: 8px; }
 .sidebar-popover { position: fixed; z-index: 50; left: 8px; right: 8px; min-width: 0; overflow-y: auto;
   border: 1px solid var(--graph-border); border-radius: 8px; background: var(--graph-surface);
@@ -361,3 +361,17 @@ code { font-family: var(--vscode-editor-font-family, ui-monospace); font-size: 1
 .filter-option-list .filter-option { height: 27px; }
 .filter-branch-search { display: block; width: 100%; min-width: 0; min-height: 28px; margin: 3px 0 5px; padding: 4px 7px; color: var(--graph-text); background: var(--graph-surface); border: 1px solid var(--graph-border); border-radius: 4px; }
 .filter-empty { padding: 6px 3px; color: var(--graph-muted); font-size: 11px; }
+
+/* Sidebar refs follow short subjects and claim space before long subjects. */
+.sidebar-mode .row-heading { align-items: center; gap: 4px; }
+.sidebar-ref-badges { position: relative; display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; min-width: 0; overflow: hidden; vertical-align: middle; }
+.sidebar-ref-badges .ref-badge { display: inline-flex; align-items: center; justify-content: center; gap: 3px; height: 18px; max-width: none; padding: 1px 4px; border-radius: 3px; line-height: 14px; font-size: 10px; }
+.sidebar-ref-badges .ref-badge-tag::before { content: none; }
+.sidebar-ref-badges .sidebar-ref-icon-only { position: relative; width: 20px; padding: 1px 3px; }
+.sidebar-ref-icon { flex: none; }
+.sidebar-ref-icon-only.default::after { content: ''; position: absolute; top: 1px; right: 1px; width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+.sidebar-ref-overflow { color: var(--graph-muted); font-variant-numeric: tabular-nums; }
+.sidebar-ref-measure, .sidebar-ref-measure-overflow { position: fixed; left: -100000px; top: 0; visibility: hidden; pointer-events: none; white-space: nowrap; }
+.sidebar-ref-measure { display: inline-flex; align-items: center; gap: 4px; width: max-content; }
+
+.sidebar-mode .sidebar-ref-row > .previous-badge { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

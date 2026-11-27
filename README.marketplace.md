@@ -35,6 +35,8 @@ Choose the editor, bottom panel, or left sidebar from **Git Lines** in the statu
 
 Editor and bottom-panel views default to **Compact** density. History loading and pagination use performance optimizations, with improved long-distance connections and column alignment.
 
+In the sidebar, ref and tag badges take priority over commit messages. When space is limited, local branches use a laptop icon, remotes a cloud, and tags a tag icon; extra refs are grouped as +N. Hover to see their full names.
+
 ### Filters
 
 Use the search-field menu to filter by Branch / Route, Type, or Worktree. Menu selections and typed clauses stay in sync, alongside free-text commit ID and message searches. Search branch candidates, scroll each list, or clear all filters at once. Filtering dims non-matching rows in the loaded history.

@@ -11,7 +11,7 @@ Git Linesは、VS Code Extension HostでGit CLIを読み取り、Gitの事実モ
 - `src/git/` — 引数配列でGit CLIを実行し、log・refs・status・reflog・worktree・pseudo refsを機械可読形式からパースする。
 - `src/repository/` — repository root / git dir / common git dirを検出し、Git metadataをbest-effortで監視する。
 - `src/model/` — `GraphFactModel`を構成する。ここではcommitのparent、ref、reflog、operationなどGitの事実を保持し、laneやpixel座標を事実として扱わない。commit DAGと、Working Tree（必要なら未完了operationを内包）/ Ref Eventの補助ノードを型とedge種別で分離する。
-- `src/layout/` — row、lane、edge routingを決定する。決定論的topological date-order、primary branchのlane 0、append時の既存座標維持を担当する。
+- `src/layout/` — row、lane、edge routingを決定する。決定論的topological date-order、primary branchのlane 0、append時のDAG制約を守った既存座標維持を担当する。
 - `src/webview/` — CSP nonce付きHTML、message protocol、editor / bottom panelのライフサイクルを担当する。`GraphPanel`はeditor tab、`GraphViewProvider`はPanel containerのWebviewViewを所有し、両方とも`GraphViewSession`を通して同じGit読込・layout・message処理を使う。
 - `webview/src/` — React UI。SVGをedge/node layer、HTMLをsubject/badge/detail layerとして使い、dark/high-contrast tokenとkeyboard focusを維持する。
 
@@ -63,7 +63,7 @@ DAG parent edgeはAnnotation Row挿入後の最終node座標で回避判定す�
 通常のparent pathで端点のXが異なり、最終Y距離が8行以上なら、先に縦の直線と上下各0.75行の短い接続曲線を試す。source/targetのXとそれぞれ±半laneの最大6候補を、全segmentの曲線包絡でnode/ringとの非干渉を確認して採用する。安全な候補がなければ従来のBezier回避に戻す。同一X、短い接続、Rebase event挿入の分割path、Working TreeやOperation Overlayにはこの変更を適用しない。`EdgePath.d`は1本のSVG path内に複数のC segmentを持ち得る。lane allocator、node row、parent edgeの本数・順序・色には影響しない。
 
 1. rowは全可視nodeで一意である。
-2. parent nodeはchildより下に置く。timestamp逆転があってもDAG制約を優先する。
+2. parent nodeはchildより下に置く。timestamp逆転があってもDAG制約を優先する。 append時も、再利用した行と新規行を合わせたparent / Working Tree / operationの構造的接続でこの順序を検査する。未読区間が埋まり、先にReflog由来で表示されていた祖先が現在の履歴へ昇格すると、古い行位置が制約と矛盾することがある。その場合に限り、previousRowsとnode.rowを使わず、Ref Eventを含むtimelineを再計算する。正常なappendの行位置は維持し、lane割当の方式やGitのparent / refは変更しない。
 3. ready queueのcommitter date、kind、stable idを用いて同じ入力から同じ順序を得る。
 4. primary branchのfirst-parent chainはlane 0に固定する。mergeの2番目以降のparentは、現在refが残っていなくてもGitのparent関係からmerged side routeとして復元し、feature-only ancestryを別laneへ置く。現在のrefはbranch identityとbadgeの根拠であり、main laneの連続性や削除済みbranchの履歴を決める唯一の根拠にはしない。削除済みside routeはref名を推測せず、明示的な削除reflogがなければ`UNREFERENCED`へフォールバックし、root OIDを内部identityにしたHistorical side laneへ置く。現在のdetached HEADが名前付きrefから分岐している場合は、branch refを新設せず、DAG edgeを自然に接続する内部live routeへ割り当てる。
 5. 非primary laneはbranch identityごとに永久予約せず、parent / Working Tree / operation / Ref Eventの表示線を含む連続したY区間をbranch segmentとして割り当てる。古いmerge side pathから先にtrackを確定し、後続mergeのside pathが同じ履歴へ戻る場合はそのtrackへ遷移させる。segmentのY範囲が重ならない場合は同じlaneを再利用し、merge nodeだけで境界が接するsegmentも同じlaneを共有できる。重なる場合はlane 1から左側の空きlaneを選び、同一segment内のnodeは同じlaneを維持する。

@@ -1,4 +1,5 @@
 import React, { type CSSProperties } from 'react';
+import { SidebarRefBadges } from './SidebarRefBadges';
 import type { GraphNode, GraphTrack } from '../../../src/model/graphModel';
 import { specialRefBadge } from '../../../src/model/refDisplay';
 import { eventLabelForWidth, eventLabelParts, eventMainLabel, eventTooltip, isRefEvent } from './eventPresentation';
@@ -46,7 +47,7 @@ function operationSummary(node: GraphNode): string | undefined {
   return node.operation.detail || (node.operation.sourceOids.length ? `${node.operation.sourceOids.length} source commit${node.operation.sourceOids.length === 1 ? '' : 's'}` : 'Waiting for Git to finish');
 }
 
-export function CommitRow({ contentInset, node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, onSelectWorkingTree, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true, graphSideRefFullNames }: { contentInset?: number; node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; onSelectWorkingTree?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean; graphSideRefFullNames?: Set<string> }) {
+export function CommitRow({ compactSidebar = false, contentInset, node, rowHeight, selected, selectedEvent = false, hidden, onSelect, onSelectEvent, onSelectWorkingTree, tracks = [], eventLabelWidth, eventLabelX = 0, showWorkingTreeStats = true, graphSideRefFullNames }: { compactSidebar?: boolean; contentInset?: number; node: GraphNode; rowHeight: number; selected: boolean; selectedEvent?: boolean; hidden?: boolean; onSelect: (oid: string) => void; onSelectEvent?: (id: string) => void; onSelectWorkingTree?: (id: string) => void; tracks?: GraphTrack[]; eventLabelWidth?: number; eventLabelX?: number; showWorkingTreeStats?: boolean; graphSideRefFullNames?: Set<string> }) {
   const isSelectable = Boolean(node.oid && (node.kind === 'commit' || node.kind === 'reflog-commit'));
   const isSelectableWorkingTree = node.kind === 'working-tree' && Boolean(onSelectWorkingTree);
   const working = workingSummary(node);
@@ -72,7 +73,7 @@ export function CommitRow({ contentInset, node, rowHeight, selected, selectedEve
   const commitMeta = node.commit
     ? commitMetaText(node.commit.oid, routeName, relativeTime(node.commit.committerDate), node.headState)
     : undefined;
-  const ariaLabel = [title, working?.operation ? `+ ${working.operation}` : undefined, subtitle, commitMeta, linkedWorktreeInfo].filter(Boolean).join(', ');
+  const ariaLabel = [title, working?.operation ? `+ ${working.operation}` : undefined, subtitle, commitMeta, linkedWorktreeInfo, compactSidebar ? [...badges, ...ghostBadges].map(b => b.fullName).join(', ') : undefined].filter(Boolean).join(', ');
   const workingStats = node.kind === 'working-tree' && showWorkingTreeStats && node.workingTree && isCurrentWorktree(node.workingTree)
     ? summarizeWorkingTree(node.workingTree)
     : undefined;
@@ -110,13 +111,13 @@ export function CommitRow({ contentInset, node, rowHeight, selected, selectedEve
       <div className="row-primary">
         {kind && <span className="row-kind">{kind}</span>}
         <div className="row-text">
-          <div className="row-heading">
+          <div className={`row-heading${compactSidebar && (badges.length || ghostBadges.length) ? ' sidebar-ref-row' : ''}`}>
             {rowPresentation.previousBadgeLabel && <span className="previous-badge" title="Previous route">{rowPresentation.previousBadgeLabel}</span>}
             {historicalBadgeLabel && <span className="previous-badge" title="Historical route classification">{historicalBadgeLabel}</span>}
             {linkedWorktrees.length > 0 && <span className="linked-worktree-label" title={linkedWorktreeInfo} aria-label={`Linked Worktree${linkedWorktrees.length > 1 ? ` ×${linkedWorktrees.length}` : ''}`}><span>Linked</span><span>Worktree</span></span>}
             <span className={`subject${previousRoute ? ' previous-subject' : ''}`} title={node.subject ?? node.label}>{title}</span>
             {working?.operation && <span className="working-operation" title={working.operation}>{`(+ ${working.operation})`}</span>}
-            {(badges.length > 0 || ghostBadges.length > 0) && <div className="row-meta">
+            {(badges.length > 0 || ghostBadges.length > 0) && (compactSidebar ? <SidebarRefBadges badges={badges} ghosts={ghostBadges} tracks={tracks} /> : <div className="row-meta">
               {badges.map((badge) => {
                 const track = tracks.find((candidate) => candidate.refNames.includes(badge.fullName));
                 const style = { '--badge-color': track?.color } as CSSProperties;
@@ -128,7 +129,7 @@ export function CommitRow({ contentInset, node, rowHeight, selected, selectedEve
                 const style = { '--badge-color': track?.color } as CSSProperties;
                 return <span className={`ref-badge ref-badge-${badge.kind} ref-badge-ghost`} style={style} key={`ghost:${badge.fullName}`} title={`Previous ${badge.name} position`} aria-hidden="true">{badge.name}</span>;
               })}
-            </div>}
+            </div>)}
           </div>
           {subtitle && <span className="row-subtitle" title={subtitle}>{subtitle}</span>}
           {commitMeta && <span className="commit-meta" title={commitMeta}>{commitMeta}</span>}

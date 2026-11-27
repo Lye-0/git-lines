@@ -44,6 +44,14 @@
 - files: `src/git/gitClient.ts`, `src/model/graphBuilder.ts`, `tests/integration/reflog-pagination.test.ts` …
 - memory: `agent-knowledge/entries/2026-09-12-reflog-page-boundary-4bd792.md`
 
+### Promoting reflog ancestors can invalidate cached timeline rows
+- id: `rm-20261128-reflog-row-cache-order`
+- type: `failure`
+- maturity: `candidate`
+- tags: `reflog`, `pagination`, `row-cache`, `topological-order`
+- files: `src/layout/rowLayout.ts`, `src/layout/layoutState.ts`, `tests/unit/row-cache-order.test.ts` …
+- memory: `agent-knowledge/entries/2026-11-28-reflog-row-cache-order-f0c9a2.md`
+
 ## graph-routing
 
 ### Conditionally adopt bounded vertical corridors for long parent edges

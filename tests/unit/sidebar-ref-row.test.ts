@@ -1,0 +1,22 @@
+import { expect, it } from 'vitest';
+import { buildSync } from 'esbuild';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+const source=buildSync({entryPoints:['webview/src/components/CommitRow.tsx'],bundle:true,write:false,platform:'node',format:'cjs',jsx:'automatic',external:['react','react/jsx-runtime']}).outputFiles[0].text;
+const realRequire=createRequire(path.join(process.cwd(),'package.json')),mod={exports:{} as any};
+new Function('require','module','exports',source)(realRequire,mod,mod.exports);
+const all=(x:any):any[]=>!x?[]:Array.isArray(x)?x.flatMap(all):[x,...all(x.props?.children)];
+it('shows sidebar refs after the subject, excluding graph-side endpoints, without changing other views',()=>{
+  const local={kind:'local',name:'main',fullName:'refs/heads/main'},remote={kind:'remote',name:'origin/main',fullName:'refs/remotes/origin/main'},tag={kind:'tag',name:'v1',fullName:'refs/tags/v1'};
+  const ghost={kind:'local',name:'old',fullName:'refs/heads/old'};
+  const props={node:{id:'a',oid:'a',kind:'commit',refIds:[],subject:'message',refBadges:[local,remote,tag],ghostRefBadges:[ghost]},rowHeight:28,selected:false,onSelect:()=>{},tracks:[],graphSideRefFullNames:new Set([remote.fullName])};
+  const sidebar=mod.exports.CommitRow({...props,compactSidebar:true});
+  const badges=all(sidebar).find(x=>x.type?.name==='SidebarRefBadges');
+  expect(badges.props.badges).toEqual([local,tag]);expect(badges.props.ghosts).toEqual([ghost]);
+  const heading=all(sidebar).find(x=>x.props?.className?.split(' ').includes('row-heading'));
+  expect(all(heading).findIndex(x=>x.props?.className==='subject')).toBeLessThan(all(heading).indexOf(badges));
+  const normal=mod.exports.CommitRow(props);expect(all(normal).some(x=>x.type?.name==='SidebarRefBadges')).toBe(false);
+  expect(all(normal).some(x=>x.props?.className==='row-meta')).toBe(true);
+  const empty=mod.exports.CommitRow({...props,compactSidebar:true,node:{...props.node,refBadges:[],ghostRefBadges:[]}});
+  expect(all(empty).some(x=>x.type?.name==='SidebarRefBadges')).toBe(false);
+});

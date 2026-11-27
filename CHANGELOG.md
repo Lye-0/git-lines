@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0
+
+- Show branch refs and tags after sidebar commit messages, prioritizing badges as messages shorten.
+- Switch sidebar ref names to laptop, cloud, and tag icons when space is limited; group extra refs as +N and keep full names in tooltips.
+- Keep ref names until a long message would have less than an 80px preview, and delay sidebar horizontal scrolling by reducing the minimum message area from 120px to 96px.
+- Fix reversed commit ordering and looping parent connections when additional history promotes reflog-only ancestors into the current DAG.
+- Recalculate cached timeline rows only when they violate structural relationships, preserving normal pagination stability in both layout modes.
+- Update Japanese, English, and Marketplace README descriptions for sidebar refs.
+
 ## 1.2.1
 
 - Limit the filter field to 270px and prevent sudden width changes at wider toolbar breakpoints.

@@ -79,6 +79,18 @@ export function computeRowLayout(nodes: GraphNode[], edges: GraphEdge[], previou
     result.set(node.id, nextRow++);
   }
 
+  // A reflog-only ancestor can already have a row when a later page fills
+  // the unread path leading to it. Keeping that row can put the newly loaded
+  // child below its parent. Reuse coordinates only while the complete current
+  // structural DAG still points downwards. Reflow the timeline (including ref
+  // events) without either source of cached rows when this contract breaks.
+  const invalidReuse = existing.size > 0 && constrained.some((edge) => {
+    const childRow = result.get(edge.fromNodeId);
+    const parentRow = result.get(edge.toNodeId);
+    return childRow !== undefined && parentRow !== undefined && childRow >= parentRow;
+  });
+  if (invalidReuse) return computeRowLayout(nodes.map((node) => ({ ...node, row: undefined })), edges);
+
   // Ref events are not part of the structural topological sort, but they are
   // real timeline rows.  Commit-producing events are inserted at their
   // semantic boundary. Ref-only moves are a separate operation timeline after
