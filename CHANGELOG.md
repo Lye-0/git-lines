@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.2
+
+- Resize the extension icon to 1024 × 1024 pixels to meet the Marketplace upload limit.
+
 ## 1.1.1
 
 - Keep selected commit and operation details open during automatic graph refresh in all views, and refresh their information.
