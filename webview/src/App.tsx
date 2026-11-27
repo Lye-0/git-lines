@@ -48,6 +48,7 @@ export function App() {
           && !allOverlayRelations(message.layout).some(relation => relation.id === selection);
         const repositoryChanged = repositoryRef.current !== undefined && repositoryRef.current !== message.repository.root;
         repositoryRef.current = message.repository.root;
+        if (repositoryChanged) setFilter('');
         if (repositoryChanged || vanished) { selectionRef.current = undefined; setSelected(undefined); setSelectedWorkingTree(undefined); setSelectedEvent(undefined); setDetail(null); setDetailEvent(undefined); }
         // Keep the current detail visible while refreshing its evidence and metadata.
         if (selection && !repositoryChanged && !vanished) {

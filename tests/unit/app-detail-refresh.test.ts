@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 const compiled = buildSync({ entryPoints: ['webview/src/App.tsx'], bundle: true, write: false,
-  platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime'] }).outputFiles[0].text;
+  platform: 'node', format: 'cjs', jsx: 'automatic', external: ['react', 'react/jsx-runtime', 'react-dom'] }).outputFiles[0].text;
 afterEach(() => vi.unstubAllGlobals());
 
 it.each(['standard', 'sidebar'])('preserves and refreshes selected details across graph updates (%s)', presentation => {
@@ -26,20 +26,24 @@ it.each(['standard', 'sidebar'])('preserves and refreshes selected details acros
   const find = (tree: any, name: string): any => {
     if (!tree) return undefined;
     if (Array.isArray(tree)) return tree.map(x => find(x, name)).find(Boolean);
-    return tree.type?.name === name ? tree : find(tree.props?.children, name);
+    return tree.type?.name === name ? tree : find(tree.props?.children, name) ?? find(tree.props?.header, name);
   };
   const graph: any = { type: 'graph', presentation, repository: { root: 'A' }, layout: { nodes: [{ id: 'commit:abc', oid: 'abc', kind: 'commit', commit: {} }], tracks: [], historyRelations: [] } };
   render(); receive({ data: graph }); let tree = render();
   find(tree, 'GraphViewport').props.onSelect('abc');
   receive({ data: { type: 'detail', detail: { oid: 'abc', files: [] } } }); tree = render();
   expect(find(tree, 'DetailPanel')).toBeTruthy();
+  find(tree, 'Toolbar').props.onFilter('abc branch:main');
+  tree = render();
   receive({ data: { type: 'loading', loading: true } });
   receive({ data: graph }); tree = render();
   expect(find(tree, 'GraphViewport').props.selected).toBe('abc');
+  expect(find(tree, 'GraphViewport').props.filter).toBe('abc branch:main');
   expect(find(tree, 'DetailPanel').props.detail.oid).toBe('abc');
   expect(postMessage).toHaveBeenLastCalledWith({ type: 'select', oid: 'abc' });
   receive({ data: { ...graph, repository: { root: 'B' } } }); tree = render();
   expect(find(tree, 'DetailPanel')).toBeUndefined();
+  expect(find(tree, 'GraphViewport').props.filter).toBe('');
   receive({ data: { type: 'detail', detail: { oid: 'abc', files: [] } } });
   expect(find(render(), 'DetailPanel')).toBeUndefined();
 });

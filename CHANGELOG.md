@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- Add a filter menu integrated with the search field, with synchronized branch, row type, and worktree selections while preserving free-text search.
+- Add branch candidate search, independent lists showing up to five options with thin scrollbars, and one-click filter clearing.
+- Preserve filters during refresh and history loading, and reset them when switching repositories.
+- Replace Load more text with a compact commit-and-plus icon and a loading indicator.
+- Limit filter focus to the input and dismiss the graph legend on outside clicks, scrolling, or Escape.
+
 ## 1.1.3
 
 - Remove the default Webview side padding so the graph fills the available width in all view locations.

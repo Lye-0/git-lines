@@ -33,6 +33,10 @@ Amend・Cherry-pick・Rebase などの操作は、reflog や commit 本文など
 
 メイン画面・下部パネルの初期Densityは **Compact** です。履歴の読み込み・追加取得を高速化し、長距離の接続線や列位置も見やすく調整しました。
 
+### Filters
+
+入力欄のメニューから、Branch / Route・Type・Worktreeで絞り込めます。メニューの選択と入力は同期し、コミットIDやメッセージの文字検索も併用できます。ブランチ候補の検索、各一覧内のスクロール、全解除に対応しています。絞り込みは読み込み済みの行を対象に、一致しない行を薄く表示します。
+
 ## Visual Overview
 
 Git Lines全体の見え方です。個別のGit操作の意味は、後ろの各 accordion で説明します。

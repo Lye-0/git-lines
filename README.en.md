@@ -33,6 +33,10 @@ Choose the editor, bottom panel, or left sidebar from **Git Lines** in the statu
 
 Editor and bottom-panel views default to **Compact** density. History loading and pagination use performance optimizations, with improved long-distance connections and column alignment.
 
+### Filters
+
+Use the search-field menu to filter by Branch / Route, Type, or Worktree. Menu selections and typed clauses stay in sync, alongside free-text commit ID and message searches. Search branch candidates, scroll each list, or clear all filters at once. Filtering dims non-matching rows in the loaded history.
+
 ## Visual Overview
 
 An overview of the graph. Expand the operation sections below for the meaning of each Git operation.
