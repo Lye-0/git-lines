@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1
+
+- Keep selected commit and operation details open during automatic graph refresh in all views, and refresh their information.
+- Clear details when the selected item disappears or the repository changes, and ignore late responses for an old selection.
+- Replace the leading Linked Worktree icon and text with a compact two-line badge that fits within the row.
+
 ## 1.1.0
 
 - Add saved graph settings beside the help button, including Standard and Default Fixed lane modes, Reflog, and Density.

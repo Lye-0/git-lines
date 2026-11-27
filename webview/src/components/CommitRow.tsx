@@ -113,7 +113,7 @@ export function CommitRow({ contentInset, node, rowHeight, selected, selectedEve
           <div className="row-heading">
             {rowPresentation.previousBadgeLabel && <span className="previous-badge" title="Previous route">{rowPresentation.previousBadgeLabel}</span>}
             {historicalBadgeLabel && <span className="previous-badge" title="Historical route classification">{historicalBadgeLabel}</span>}
-            {linkedWorktrees.length > 0 && <span className="linked-worktree-label" title={linkedWorktreeInfo}><span className="linked-worktree-icon" aria-hidden="true">□</span> Linked Worktree{linkedWorktrees.length > 1 ? ` ×${linkedWorktrees.length}` : ''}</span>}
+            {linkedWorktrees.length > 0 && <span className="linked-worktree-label" title={linkedWorktreeInfo} aria-label={`Linked Worktree${linkedWorktrees.length > 1 ? ` ×${linkedWorktrees.length}` : ''}`}><span>Linked</span><span>Worktree</span></span>}
             <span className={`subject${previousRoute ? ' previous-subject' : ''}`} title={node.subject ?? node.label}>{title}</span>
             {working?.operation && <span className="working-operation" title={working.operation}>{`(+ ${working.operation})`}</span>}
             {(badges.length > 0 || ghostBadges.length > 0) && <div className="row-meta">

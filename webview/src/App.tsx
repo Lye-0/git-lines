@@ -18,8 +18,7 @@ export function App() {
   const [graph, setGraph] = useState<GraphMessage | undefined>();
   const receivedAt = useRef(0);
   const sidebar = graph?.presentation === 'sidebar';
-  const sidebarRef = useRef(false);
-  sidebarRef.current = sidebar;
+  const repositoryRef = useRef<string>();
   const selectionRef = useRef<string>();
   const [anchor, setAnchor] = useState({ top: 60, bottom: 88 });
   useEffect(() => {
@@ -47,7 +46,15 @@ export function App() {
         const selection = selectionRef.current;
         const vanished = selection && !message.layout.nodes.some(node => node.id === selection || node.oid === selection)
           && !allOverlayRelations(message.layout).some(relation => relation.id === selection);
-        if (sidebarRef.current || vanished) { selectionRef.current = undefined; setSelected(undefined); setSelectedWorkingTree(undefined); setSelectedEvent(undefined); setDetail(null); setDetailEvent(undefined); }
+        const repositoryChanged = repositoryRef.current !== undefined && repositoryRef.current !== message.repository.root;
+        repositoryRef.current = message.repository.root;
+        if (repositoryChanged || vanished) { selectionRef.current = undefined; setSelected(undefined); setSelectedWorkingTree(undefined); setSelectedEvent(undefined); setDetail(null); setDetailEvent(undefined); }
+        // Keep the current detail visible while refreshing its evidence and metadata.
+        if (selection && !repositoryChanged && !vanished) {
+          const node = message.layout.nodes.find(node => node.id === selection || node.oid === selection);
+          if (node?.kind === 'commit' || node?.kind === 'reflog-commit') vscode.postMessage({ type: 'select', oid: selection });
+          else if (node?.event) vscode.postMessage({ type: 'selectEvent', id: selection });
+        }
         receivedAt.current = performance.now(); setGraph(message); setError(undefined);
       }
       if (message.type === 'loading') setLoading(Boolean(message.loading));

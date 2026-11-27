@@ -169,7 +169,7 @@ it('uses fresh OFF evidence across toggles, refresh and repository changes, with
   await graphSettings(ctx).save('showReflog', false, 'C:/a');
   await vi.waitFor(() => expect(latest().reflogEnabled).toBe(false));
   expect(latest().layout).toEqual(cold);
-  expect(surface.messages).toContainEqual({ type: 'detail', detail: null, event: null });
+  expect(surface.messages).not.toContainEqual({ type: 'detail', detail: null, event: null });
   const count = surface.messages.length;
   await surface.incoming.fire({ type: 'selectEvent', id: eventId });
   expect(surface.messages).toHaveLength(count);
@@ -472,7 +472,13 @@ describe('shared editor/panel graph session', () => {
       return graph;
     });
     expect(finalGraphs[0]).toEqual(finalGraphs[1]);
+    for (const surface of surfaces) surface.messages.length = 0;
     await editor.refresh();
+    await provider.refresh();
+    for (const surface of surfaces) {
+      expect(surface.messages.some(m => m.type === 'graph')).toBe(true);
+      expect(surface.messages.some(m => m.type === 'detail')).toBe(false);
+    }
     provider.dispose();
   });
 

@@ -214,7 +214,6 @@ export class GraphViewSession implements vscode.Disposable {
         density: this.density,
       });
       this.output.appendLine(`perf request=${requestId} sendMs=${(performance.now() - sendStart).toFixed(1)}`);
-      if (!reuseSnapshot) await this.send({ type: 'detail', detail: null, event: null });
     } catch (error) {
       if (this.disposed) return;
       const detail = error instanceof Error ? error.message : String(error);
