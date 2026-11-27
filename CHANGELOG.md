@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.3
+
+- Remove the default Webview side padding so the graph fills the available width in all view locations.
+- Center commit metadata vertically in compact Linked Worktree rows.
+- Align file counts, additions, and deletions toward the right edge on wide views.
+
 ## 1.1.2
 
 - Resize the extension icon to 1024 × 1024 pixels to meet the Marketplace upload limit.

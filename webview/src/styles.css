@@ -11,7 +11,7 @@
 
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; width: 100%; height: 100%; min-height: 0; }
-body { overflow: hidden; background: var(--graph-bg); color: var(--graph-text); font-family: var(--vscode-font-family, system-ui, sans-serif); font-size: 13px; }
+body { padding: 0; overflow: hidden; background: var(--graph-bg); color: var(--graph-text); font-family: var(--vscode-font-family, system-ui, sans-serif); font-size: 13px; }
 button, select, input { font: inherit; }
 button:focus-visible, select:focus-visible, input:focus-visible, .graph-scroll:focus-visible, .legend-menu summary:focus-visible { outline: 2px solid var(--graph-accent); outline-offset: 2px; }
 
@@ -99,7 +99,7 @@ h1, h2, p { margin: 0; }
 .node-reflog-commit { opacity: .63; }
 .node-history-boundary { opacity: .55; }
 
-.rows { position: relative; min-width: 300px; min-height: 100%; --changes-column-start: max(var(--required-changes-column-start, 0px), min(1180px, max(0px, calc(100% - var(--changes-column-width, 222px) - 18px)))); --changes-column-content-width: calc(var(--changes-column-start) + var(--changes-column-width, 222px) + 11px); }
+.rows { position: relative; min-width: 300px; min-height: 100%; --changes-column-start: max(var(--required-changes-column-start, 0px), max(0px, calc(100% - var(--changes-column-width, 222px) - 18px))); --changes-column-content-width: calc(var(--changes-column-start) + var(--changes-column-width, 222px) + 11px); }
 .rows::before { content: ''; position: absolute; z-index: 2; top: 0; bottom: 0; left: calc(var(--changes-column-start, 1180px) - 10px); border-left: 1px solid color-mix(in srgb, var(--graph-border) 72%, transparent); pointer-events: none; }
 .commit-row { position: absolute; z-index: 1; left: 0; right: auto; width: 100%; display: flex; align-items: center; padding-right: 14px; }
 .commit-row.filtered-out { opacity: .18; }
@@ -116,6 +116,7 @@ h1, h2, p { margin: 0; }
 .row-heading { min-width: 0; display: flex; align-items: baseline; gap: 9px; overflow: visible; }
 .subject { min-width: 0; max-width: 620px; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .linked-worktree-row .row-heading { align-items: center; }
+.compact-row .linked-worktree-row .row-text { align-items: center; }
 .linked-worktree-label { flex: 0 0 48px; display: grid; grid-template-rows: repeat(2, 8px); place-content: center; width: 48px; height: 20px; padding: 1px 3px; border: 1px solid currentColor; border-radius: 3px; color: #c084fc; font-size: 8px; line-height: 8px; font-weight: 600; letter-spacing: 0; text-align: center; white-space: nowrap; }
 .previous-badge { flex: 0 0 auto; color: #a9a9b5; background: color-mix(in srgb, #777783 18%, transparent); border: 1px solid color-mix(in srgb, #a9a9b5 42%, var(--graph-border)); border-radius: 4px; padding: 1px 5px; line-height: 14px; font-size: 9px; font-weight: 600; letter-spacing: .06em; white-space: nowrap; }
 .previous-subject { color: color-mix(in srgb, var(--graph-text) 78%, var(--graph-muted)); }
